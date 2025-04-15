@@ -1,8 +1,9 @@
 FROM ros:humble
 
-# Instalirajte potrebne alate i Python ovisnosti
+# Instalirajte potrebne alate i ROS 2 RMW implementaciju
 RUN apt-get update && apt-get install -y \
     python3-pip \
+    ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # Kopirajte projekt u Docker container
