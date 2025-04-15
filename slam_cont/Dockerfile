@@ -1,9 +1,11 @@
-FROM ros:humble
+FROM --platform=linux/arm64 ros:humble
 
 # Instalirajte potrebne alate
 RUN apt-get update && apt-get install -y \
+    apt-utils \
     python3-pip \
     libpq-dev \
+    && dpkg --configure -a || true \
     && rm -rf /var/lib/apt/lists/*
 
 # Instalirajte potrebne Python ovisnosti
