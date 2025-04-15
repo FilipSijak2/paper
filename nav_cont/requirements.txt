@@ -1,5 +1,1 @@
-rclpy
-geometry_msgs
-nav_msgs
-psycopg2
-json
+psycopg2-binary

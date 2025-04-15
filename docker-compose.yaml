@@ -1,4 +1,4 @@
-version: '3.8'
+version: '3.9'
 services:
   nav_cont:
     image: nav_cont:latest  # Koristite ime i tag Docker image-a

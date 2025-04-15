@@ -1,4 +1,5 @@
-FROM ros:humble-ros-base:latest
+FROM ros:humble
+
 # Instalirajte potrebne alate i Python ovisnosti
 RUN apt-get update && apt-get install -y \
     python3-pip \
