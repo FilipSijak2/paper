@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y \
     apt-utils \
     python3-pip \
     libpq-dev \
-    ros-humble-nav2-msgs \  # Dodano: Instalacija nav2_msgs
+    ros-humble-nav2-msgs \  # Dodano: Instalacija nav2_msgs \
     && dpkg --configure -a || true \
     && rm -rf /var/lib/apt/lists/*
 
