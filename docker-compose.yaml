@@ -1,0 +1,38 @@
+version: '3.8'
+services:
+  nav_cont:
+    build: ./nav_cont
+    container_name: nav_cont
+    network_mode: host  # ROS 2 koristi DDS, koji zahtijeva host mrežu
+    environment:
+      - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    depends_on:
+      - database_cont
+      - slam_cont
+
+  database_cont:
+    image: postgres:15
+    container_name: database_cont
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: maps
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - ros_network
+
+  slam_cont:
+    build: ./slam_cont
+    container_name: slam_cont
+    network_mode: host  # ROS 2 zahtijeva host mrežu
+    depends_on:
+      - database_cont
+
+volumes:
+  db_data:
+
+networks:
+  ros_network:
