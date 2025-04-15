@@ -1,7 +1,7 @@
 version: '3.8'
 services:
   nav_cont:
-    build: ./nav_cont
+    image: nav_cont:latest  # Koristite ime i tag Docker image-a
     container_name: nav_cont
     network_mode: host  # ROS 2 koristi DDS, koji zahtijeva host mrežu
     environment:
@@ -11,7 +11,7 @@ services:
       - slam_cont
 
   database_cont:
-    image: postgres:15
+    image: postgres:15  # Koristite službeni PostgreSQL image
     container_name: database_cont
     environment:
       POSTGRES_USER: user
@@ -25,7 +25,7 @@ services:
       - ros_network
 
   slam_cont:
-    build: ./slam_cont
+    image: slam_cont:latest  # Koristite ime i tag Docker image-a
     container_name: slam_cont
     network_mode: host  # ROS 2 zahtijeva host mrežu
     depends_on:
