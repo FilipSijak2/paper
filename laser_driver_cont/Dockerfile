@@ -13,4 +13,4 @@ RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 RUN echo "export PS1='\[\033[1;34m\]driver_cont: \[\033[0m\]'" >> /root/.bashrc
 
 # Postavite ulaznu točku za pokretanje drivera
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch rplidar_ros rplidar_a1.launch.py || bash"]
+CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch rplidar_ros rplidar.launch.py || bash"]
