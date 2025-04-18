@@ -1,8 +1,9 @@
 FROM ros:humble
 
-# Instalirajte RPLIDAR ROS 2 driver
+# Instalirajte RPLIDAR ROS 2 driver i RMW implementaciju
 RUN apt-get update && apt-get install -y \
     ros-humble-rplidar-ros \
+    ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # Postavite ROS 2 okruženje u bashrc
