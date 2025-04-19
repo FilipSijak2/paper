@@ -1,0 +1,99 @@
+{
+  "configById": {
+    "3D!7drvna": {
+      "cameraState": {
+        "perspective": true,
+        "distance": 4.756537705103877,
+        "phi": 47.57951186352071,
+        "thetaOffset": 58.97306951230219,
+        "targetOffset": [
+          -0.9518788875548664,
+          -1.6911911744185528,
+          -7.883031656225975e-17
+        ],
+        "target": [
+          0,
+          0,
+          0
+        ],
+        "targetOrientation": [
+          0,
+          0,
+          0,
+          1
+        ],
+        "fovy": 45,
+        "near": 0.5,
+        "far": 5000
+      },
+      "followMode": "follow-pose",
+      "scene": {},
+      "transforms": {},
+      "topics": {
+        "/scan": {
+          "visible": true,
+          "colorField": "range",
+          "colorMode": "gradient",
+          "colorMap": "turbo",
+          "explicitAlpha": 1,
+          "minValue": -5,
+          "pointShape": "circle",
+          "decayTime": 0,
+          "pointSize": 4,
+          "gradient": [
+            "rgba(100, 47, 105, 1)",
+            "#10d233ff"
+          ]
+        },
+        "/slam_toolbox/graph_visualization": {
+          "visible": false
+        },
+        "/move_base_simple/goal": {
+          "visible": false
+        },
+        "/pose": {
+          "visible": true
+        }
+      },
+      "layers": {
+        "grid": {
+          "visible": true,
+          "frameLocked": true,
+          "label": "Grid",
+          "instanceId": "8393d56c-0de8-4be4-b26c-aabdae202953",
+          "layerId": "foxglove.Grid",
+          "size": 10,
+          "divisions": 10,
+          "lineWidth": 1,
+          "color": "#248eff",
+          "position": [
+            0,
+            0,
+            0
+          ],
+          "rotation": [
+            0,
+            0,
+            0
+          ]
+        }
+      },
+      "publish": {
+        "type": "point",
+        "poseTopic": "/move_base_simple/goal",
+        "pointTopic": "/clicked_point",
+        "poseEstimateTopic": "/initialpose",
+        "poseEstimateXDeviation": 0.5,
+        "poseEstimateYDeviation": 0.5,
+        "poseEstimateThetaDeviation": 0.26179939
+      },
+      "imageMode": {}
+    }
+  },
+  "globalVariables": {},
+  "userNodes": {},
+  "playbackConfig": {
+    "speed": 1
+  },
+  "layout": "3D!7drvna"
+}

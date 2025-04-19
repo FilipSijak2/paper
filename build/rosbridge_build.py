@@ -13,13 +13,13 @@ def main():
     os.system("docker run --rm --privileged multiarch/qemu-user-static --reset -p yes")
 
     # Define the build context and Dockerfile paths
-    build_context = os.path.abspath("c:/Users/filip/OneDrive/Desktop/diplomski_rad/laser_driver_cont")
+    build_context = os.path.abspath("c:/Users/filip/OneDrive/Desktop/diplomski_rad/rosbridge_cont")
     dockerfile_path = os.path.join(build_context, "Dockerfile")
     
     # Define the Docker build command
     command = (
         f"docker buildx build --platform linux/arm64 "
-        f"-t driver_cont:{tag} "
+        f"-t rosbridge_cont:{tag} "
         f"-f {dockerfile_path} {build_context} --load"
     )
     
@@ -30,8 +30,8 @@ def main():
     os.system(command)
 
     # Export to .tar
-    output_tar = f"driver_cont_{tag}.tar"
-    save_command = f"docker save driver_cont:{tag} > {output_tar}"
+    output_tar = f"rosbridge_cont_{tag}.tar"
+    save_command = f"docker save rosbridge_cont:{tag} > {output_tar}"
     print(f"Exportam Docker image u {output_tar}...")
     os.system(save_command)
 
