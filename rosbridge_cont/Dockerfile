@@ -1,7 +1,18 @@
 # Koristi službeni ROS 2 Humble image kao osnovu
 FROM ros:humble
 
-# Instaliraj potrebne pakete za rosbridge i CycloneDDS
+# 1. Ukloni stare ros2 repozitorije privremeno
+RUN sed -i '/ros2/d' /etc/apt/sources.list.d/*.list || true && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends curl gnupg2 lsb-release
+
+# 2. Dodaj novi ključ i repozitorij
+RUN rm -f /etc/apt/sources.list.d/ros2.list && \
+    rm -f /usr/share/keyrings/ros-archive-keyring.gpg && \
+    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
+    echo "deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list
+
+# 3. Sada je sigurno pokrenuti apt-get update i instalirati ROS pakete
 RUN apt-get update && apt-get install -y \
     ros-humble-rosbridge-server \
     ros-humble-rmw-cyclonedds-cpp \
