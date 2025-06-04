@@ -6,6 +6,7 @@ RUN sed -i '/ros2/d' /etc/apt/sources.list.d/*.list || true && \
     apt-get update && \
     apt-get install -y --no-install-recommends curl gnupg2 lsb-release
 
+# comment
 # 2. Dodaj novi ključ i repozitorij
 RUN rm -f /etc/apt/sources.list.d/ros2.list && \
     rm -f /usr/share/keyrings/ros-archive-keyring.gpg && \
