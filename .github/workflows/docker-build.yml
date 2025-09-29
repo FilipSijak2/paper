@@ -1,0 +1,286 @@
+name: Build and Push Changed Docker Images
+
+on:
+  push:
+    branches: [ devel ]
+  pull_request:
+    branches: [ devel ]
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  REPO_OWNER_LC: ${{ github.repository_owner }}
+
+jobs:
+  detect-changes:
+    name: Detect changed Docker images
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      any_changed: ${{ steps.set-matrix.outputs.any_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: List changed files
+        id: diff
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA='${{ github.event.pull_request.base.sha }}'
+            HEAD_SHA='${{ github.event.pull_request.head.sha }}'
+          else
+            BASE_SHA="$(git rev-parse HEAD^ || echo '')"
+            HEAD_SHA="$(git rev-parse HEAD)"
+          fi
+          echo "BASE_SHA=$BASE_SHA";
+          echo "HEAD_SHA=$HEAD_SHA";
+          if [ -n "$BASE_SHA" ]; then
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed_files.txt
+          else
+            git ls-files > changed_files.txt
+          fi
+          echo "Changed files:"; cat changed_files.txt
+
+      - name: Determine changed images
+        id: set-matrix
+        run: |
+          set -e
+          # Map: directory -> image name suffix
+          declare -A MAP
+          MAP[laser_driver_cont]=driver_cont
+          MAP[nav_cont]=nav_cont
+          MAP[slam_cont]=slam_cont
+          MAP[rosbridge_cont]=rosbridge_cont
+          MAP[db_cont]=db_cont
+
+          changed_dirs=()
+          while IFS= read -r f; do
+            for d in "${!MAP[@]}"; do
+              if [[ "$f" == $d/Dockerfile* ]]; then
+                changed_dirs+=("$d")
+              fi
+            done
+          done < changed_files.txt
+
+          # Remove duplicates
+          unique_dirs=($(printf '%s\n' "${changed_dirs[@]}" | sort -u))
+
+          if [ ${#unique_dirs[@]} -eq 0 ]; then
+            echo "No Dockerfile changes detected.";
+            echo "matrix={\"include\":[]}" >> $GITHUB_OUTPUT
+            echo "any_changed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "Changed image directories: ${unique_dirs[*]}"
+
+          # Build JSON matrix
+          json="{\"include\":["
+          first=true
+          for dir in "${unique_dirs[@]}"; do
+            img="${MAP[$dir]}"
+            if [ "$first" = true ]; then
+              json+="{\"dir\":\"$dir\",\"image\":\"$img\"}"
+              first=false
+            else
+              json+=" ,{\"dir\":\"$dir\",\"image\":\"$img\"}"
+            fi
+          done
+          json+="]}"
+          echo "Matrix JSON: $json"
+          echo "matrix=$json" >> $GITHUB_OUTPUT
+          echo "any_changed=true" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build & Push
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.any_changed == 'true'
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Prepare tags
+        id: meta
+        run: |
+          set -e
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE=${OWNER_LC}/${{ matrix.image }}
+          COMMIT=${GITHUB_SHA::7}
+          BRANCH=$(echo "${GITHUB_REF_NAME}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
+          DATE_TAG=$(date -u +%Y%m%d-%H%M%S)
+          echo "image=$IMAGE" >> $GITHUB_OUTPUT
+          echo "commit_tag=$COMMIT" >> $GITHUB_OUTPUT
+          echo "branch_tag=$BRANCH" >> $GITHUB_OUTPUT
+          echo "date_tag=$DATE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build image (no push for PR)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.dir }}
+          file: ${{ matrix.dir }}/Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.image }}:pr-${{ steps.meta.outputs.commit_tag }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+      - name: Build image for BananaPi
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.dir }}
+          file: ${{ matrix.dir }}/Dockerfile
+          push: false
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.commit_tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+      - name: Save image as tar
+        if: github.event_name == 'push'
+        run: |
+          docker save ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.commit_tag }} > ${{ matrix.image }}_${{ steps.meta.outputs.commit_tag }}.tar
+          ls -lh ${{ matrix.image }}_${{ steps.meta.outputs.commit_tag }}.tar
+
+      - name: Trigger BananaPi push
+        if: github.event_name == 'push'
+        env:
+          INFRA_DISPATCH_TOKEN: ${{ secrets.INFRA_DISPATCH_TOKEN }}
+        run: |
+          set -e
+          if [ -z "$INFRA_DISPATCH_TOKEN" ]; then
+            echo "INFRA_DISPATCH_TOKEN not set; skipping BananaPi push"
+            exit 0
+          fi
+          
+          # Upload tar file temporarily (GitHub ne podržava artifact sharing između repoa)
+          # Koristimo docker load lokalno i simuliramo GHCR reference za infra workflow
+          docker load < ${{ matrix.image }}_${{ steps.meta.outputs.commit_tag }}.tar
+          
+          # Simuliramo GHCR reference format za infra workflow
+          IMAGE_REF="ghcr.io/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.commit_tag }}"
+          
+          PAYLOAD=$(jq -n \
+            --arg type "bananapi.push" \
+            --arg img "$IMAGE_REF" \
+            --arg mode "copy" \
+            '{
+              "event_type": $type,
+              "client_payload": {
+                "image": $img,
+                "mode": $mode,
+                "source_repo": "${{ github.repository }}",
+                "source_commit": "${{ github.sha }}",
+                "build_context": "${{ matrix.dir }}"
+              }
+            }')
+          
+          echo "Dispatching to infra repo with payload:"
+          echo "$PAYLOAD" | jq .
+          
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
+            -H "Authorization: Bearer $INFRA_DISPATCH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -X POST \
+            "https://api.github.com/repos/FilipSijak2/infra/dispatches" \
+            -d "$PAYLOAD" || true)
+          
+          if [ "$STATUS" != "204" ]; then
+            echo "Failed to dispatch to infra repo. Status: $STATUS" >&2
+            exit 1
+          fi
+          
+          echo "Successfully triggered BananaPi push for $IMAGE_REF" >> $GITHUB_STEP_SUMMARY
+
+      - name: Discord Notification
+        if: always()
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then 
+            echo "Discord webhook not configured"; 
+            exit 0; 
+          fi
+          
+          STATUS='${{ job.status }}'
+          ICON="✅"; COLOR=3066993
+          if [ "$STATUS" != "success" ]; then 
+            ICON="❌"; COLOR=15158332; 
+          fi
+          
+          TITLE="$ICON ${{ matrix.image }} build $STATUS"
+          IMAGE='${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.commit_tag }}'
+          COMMIT_URL='${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}'
+          COMMIT_MSG=$(git log -1 --pretty=%s || echo "commit")
+          COMMIT_TRUNC=$(printf '%s' "$COMMIT_MSG" | head -c 100)
+          ACTOR='${{ github.actor }}'
+          REF_NAME='${{ github.ref_name }}'
+          TS_ISO=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          AVATAR_URL="https://github.com/${ACTOR}.png"
+          
+          PAYLOAD=$(jq -n \
+            --arg title "$TITLE" \
+            --arg url "$COMMIT_URL" \
+            --arg image "$IMAGE" \
+            --arg repo '${{ github.repository }}' \
+            --arg cmsg "$COMMIT_TRUNC" \
+            --arg actor "$ACTOR" \
+            --arg branch "$REF_NAME" \
+            --arg avatar "$AVATAR_URL" \
+            --arg dir "${{ matrix.dir }}" \
+            --argjson color $COLOR \
+            --arg ts "$TS_ISO" \
+            '{embeds:[{
+              title:$title,
+              url:$url,
+              color:$color,
+              author:{
+                name:$actor,
+                icon_url:$avatar,
+                url:("https://github.com/"+$actor)
+              },
+              description:$cmsg,
+              fields:[
+                {name:"Repository",value:$repo,inline:true},
+                {name:"Branch",value:$branch,inline:true},
+                {name:"Directory",value:$dir,inline:true},
+                {name:"Image",value:$image,inline:false},
+                {name:"Actor",value:$actor,inline:true},
+                {name:"Push to BananaPi",value:("${{ github.event_name == 'push' }}" == "true" ? "✅ Yes" : "❌ No"),inline:true}
+              ],
+              timestamp:$ts
+            }]}')
+          
+          curl -s -H "Content-Type: application/json" -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL" || echo 'Discord notify failed'
+
+      - name: Summary
+        run: |
+          echo "## Image Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "Image: ${{ steps.meta.outputs.image }}" >> $GITHUB_STEP_SUMMARY
+          echo "Commit Tag: ${{ steps.meta.outputs.commit_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "Branch Tag: ${{ steps.meta.outputs.branch_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "Directory: ${{ matrix.dir }}" >> $GITHUB_STEP_SUMMARY
+          echo "Pushed to BananaPi: ${{ github.event_name == 'push' }}" >> $GITHUB_STEP_SUMMARY
+
+  no-changes:
+    name: No Docker changes
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.any_changed != 'true'
+    steps:
+      - run: echo "No Dockerfile changes detected; skipping builds."
