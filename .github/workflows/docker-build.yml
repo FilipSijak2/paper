@@ -91,6 +91,8 @@ jobs:
     if: needs.detect-changes.outputs.any_changed == 'true'
     strategy:
       fail-fast: false
+      # Serialize builds to avoid overloading BananaPi registry (no parallel pushes)
+      max-parallel: 1
       matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
     steps:
       - name: Checkout
@@ -293,6 +295,55 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+      - name: Inter-build cooldown
+        if: github.event_name == 'push'
+        env:
+          REGISTRY_HOST: ${{ steps.normalize.outputs.registry_host }}
+          IMAGE_REPO: ${{ steps.meta.outputs.image_repo }}
+          TAG: ${{ steps.meta.outputs.base_name }}.${{ steps.version.outputs.rc_tag }}
+        run: |
+          set -e
+          # Fetch manifest to compute size (single or index). We'll reuse logic similar to verification step but lighter.
+          URL="http://$REGISTRY_HOST/v2/$IMAGE_REPO/manifests/$TAG"
+          ACCEPT='application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json'
+          STATUS=$(curl -s -o manifest.cool.json -w '%{http_code}' -H "Accept: $ACCEPT" "$URL" || echo 000)
+          if [ "$STATUS" != 200 ]; then
+            echo "Could not fetch manifest for cooldown sizing (status $STATUS). Defaulting to 30s.";
+            SLEEP=30
+          else
+            if command -v jq >/dev/null 2>&1; then
+              MTYPE=$(jq -r '.mediaType' manifest.cool.json 2>/dev/null || echo '')
+              if echo "$MTYPE" | grep -Eq 'manifest.list|image.index'; then
+                COUNT=$(jq '.manifests|length' manifest.cool.json)
+                TOTAL=0
+                for i in $(seq 0 $((COUNT-1))); do
+                  DIGEST=$(jq -r ".manifests[$i].digest" manifest.cool.json)
+                  curl -s -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' "http://$REGISTRY_HOST/v2/$IMAGE_REPO/manifests/$DIGEST" -o sub.cool.json || true
+                  PART=$(jq '[.layers[].size] | add' sub.cool.json 2>/dev/null || echo 0)
+                  TOTAL=$((TOTAL + PART))
+                done
+                SIZE_BYTES=$TOTAL
+              else
+                SIZE_BYTES=$(jq '[.layers[].size] | add' manifest.cool.json 2>/dev/null || echo 0)
+              fi
+            else
+              SIZE_BYTES=0
+            fi
+            echo "Calculated image size (bytes): $SIZE_BYTES"
+            # Thresholds: <=200MB ->15s ; 200MB-1GB ->30s ; >1GB ->60s
+            MB=$((200*1024*1024))
+            GB=$((1024*1024*1024))
+            if [ "$SIZE_BYTES" -le $MB ]; then
+              SLEEP=15
+            elif [ "$SIZE_BYTES" -le $GB ]; then
+              SLEEP=30
+            else
+              SLEEP=60
+            fi
+          fi
+          echo "Adaptive cooldown: sleeping ${SLEEP}s based on size threshold";
+          sleep $SLEEP
 
       - name: Verify manifest schema (v2 / OCI)
         if: github.event_name == 'push' && steps.skipcheck.outputs.skip != 'true'
