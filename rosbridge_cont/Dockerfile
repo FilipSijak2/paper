@@ -1,33 +1,47 @@
 # Koristi službeni ROS 2 Humble image kao osnovu
 FROM ros:humble
 
-# 1. Ukloni stare ros2 repozitorije privremeno
-RUN sed -i '/ros2/d' /etc/apt/sources.list.d/*.list || true && \
-    apt-get update && \
-    apt-get install -y --no-install-recommends curl gnupg2 lsb-release
+# ------------------------------------------------------------
+# ROSBridge container
+# Pojednostavljeni Dockerfile – uklonjeno ručno mijenjanje ROS repozitorija
+# jer bazni image već sadrži ispravno podešen keyring i source liste.
+# Dodani su dijagnostički koraci u slučaju da apt zakaže (exit code 100).
+# ------------------------------------------------------------
 
-# comment
-# 2. Dodaj novi ključ i repozitorij
-RUN rm -f /etc/apt/sources.list.d/ros2.list && \
-    rm -f /usr/share/keyrings/ros-archive-keyring.gpg && \
-    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2.list
+ENV DEBIAN_FRONTEND=noninteractive \
+    ROS_DISTRO=humble
 
-# 3. Sada je sigurno pokrenuti apt-get update i instalirati ROS pakete
-RUN apt-get update && apt-get install -y \
-    ros-humble-rosbridge-server \
-    ros-humble-rmw-cyclonedds-cpp \
-    && rm -rf /var/lib/apt/lists/*
+# (Opcionalno) argument za lakše keširanje liste paketa
+ARG ROS_EXTRA_PACKAGES=""
+
+# Instalacija potrebnih ROS paketa + osnovnih alata; uz robustniji apt update
+RUN set -euo pipefail; \
+    echo "Updating APT metadata..."; \
+    apt-get update -o Acquire::Retries=3; \
+    echo "Installing ROS packages..."; \
+    apt-get install -y --no-install-recommends \
+        ros-${ROS_DISTRO}-rosbridge-server \
+        ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+        python3-colcon-common-extensions \
+        curl ca-certificates \
+        $ROS_EXTRA_PACKAGES || { \
+          echo 'APT INSTALL FAILED. Dumping sources & logs:' >&2; \
+          ls -1 /etc/apt/sources.list.d/ >&2 || true; \
+          echo '--- /etc/apt/sources.list:' >&2; cat /etc/apt/sources.list >&2 || true; \
+          echo '--- ROS entries:' >&2; grep -R "ros2/ubuntu" -n /etc/apt/sources.list.d/ || true; \
+          exit 1; \
+        }; \
+    rm -rf /var/lib/apt/lists/*
 
 # Postavi radni direktorij na /ros_ws
 WORKDIR /ros_ws
 
-# Kopiraj sve iz trenutnog direktorija u /ros_ws
+# Kopiraj samo manifest datoteke prvo (bolje keširanje) pa ostatak izvornog koda
 COPY ./src /ros_ws/src
 
-# Instaliraj zavisnosti za ROS 2 workspace
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
+# Build radnog prostora
+RUN bash -c "set -e; source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build --symlink-install"
 
 # Pokreni rosbridge automatski koristeći XML launch datoteku
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch rosbridge_server rosbridge_websocket_launch.xml"]
+CMD ["bash", "-c", "source /opt/ros/${ROS_DISTRO}/setup.bash && source /ros_ws/install/setup.bash && ros2 launch rosbridge_server rosbridge_websocket_launch.xml"]
 

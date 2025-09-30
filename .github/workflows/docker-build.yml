@@ -153,6 +153,39 @@ jobs:
           echo 'Tailscale status:'
           sudo tailscale status || true
 
+      - name: Pre-check BananaPi registry connectivity
+        if: github.event_name == 'push'
+        env:
+          REGISTRY_HOST: ${{ secrets.BANANAPI_REGISTRY_HOST }}
+          REGISTRY_SKIP_IF_DOWN: ${{ secrets.BANANAPI_REGISTRY_SKIP_IF_DOWN }}
+        run: |
+          set -e
+          if [ -z "$REGISTRY_HOST" ]; then
+            echo "No REGISTRY_HOST provided" >&2; exit 1; fi
+          HOST_PART=${REGISTRY_HOST%%:*}
+          PORT_PART=${REGISTRY_HOST##*:}
+          if [ "$HOST_PART" = "$PORT_PART" ]; then PORT_PART=5000; fi
+          echo "Checking DNS resolution / host reachability for $HOST_PART:$PORT_PART";
+          (getent hosts "$HOST_PART" || nslookup "$HOST_PART" || echo 'Host lookup failed') | sed 's/^/HOSTLOOKUP: /'
+          echo "Attempting raw TCP connectivity (5 attempts)...";
+          ok=false
+          for i in 1 2 3 4 5; do
+            if timeout 2 bash -c "</dev/tcp/$HOST_PART/$PORT_PART" 2>/dev/null; then
+              echo "Connection succeeded on attempt $i"; ok=true; break; fi
+            echo "Attempt $i failed"; sleep 2;
+          done
+          if [ "$ok" = false ]; then
+            echo "Registry not reachable on TCP level." >&2
+            if [ -n "$REGISTRY_SKIP_IF_DOWN" ]; then
+              echo "Skip flag present -> marking for skip";
+              echo "skip_push=true" >> $GITHUB_ENV
+            else
+              echo "Will proceed to login (it may still fail).";
+            fi
+          else
+            echo "Connectivity OK";
+          fi
+
       - name: Login to BananaPi registry
         if: github.event_name == 'push'
         env:
@@ -162,11 +195,17 @@ jobs:
           INSECURE: ${{ secrets.BANANAPI_REGISTRY_INSECURE }}
         run: |
           set -e
+          if [ "$skip_push" = "true" ]; then
+            echo "Skipping login due to earlier connectivity failure (skip flag)."; exit 0; fi
           if [ -z "$REGISTRY_HOST" ]; then echo 'BANANAPI_REGISTRY_HOST missing'; exit 1; fi
+          # Default to insecure=true when secret not explicitly provided
+          if [ -z "$INSECURE" ]; then
+            echo "BANANAPI_REGISTRY_INSECURE not set -> defaulting to true (insecure registry).";
+            INSECURE=true
+          fi
           if [ "${INSECURE,,}" = "true" ]; then
             echo "Configuring insecure registry $REGISTRY_HOST"
             if [ -f /etc/docker/daemon.json ]; then
-              # Append or merge (simple strategy)
               sudo jq --arg h "$REGISTRY_HOST" '. + {"insecure-registries": ((."insecure-registries" // []) + [$h])}' /etc/docker/daemon.json > tmp.d && sudo mv tmp.d /etc/docker/daemon.json || echo '{"insecure-registries":["'$REGISTRY_HOST'"]}' | sudo tee /etc/docker/daemon.json
             else
               echo '{"insecure-registries":["'$REGISTRY_HOST'"]}' | sudo tee /etc/docker/daemon.json
@@ -174,10 +213,30 @@ jobs:
             sudo systemctl restart docker || sudo service docker restart || true
             sleep 2
           fi
-          echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" -u "$REGISTRY_USERNAME" --password-stdin
+          echo "Logging in (with retry)..."
+          tries=0
+          until [ $tries -ge 5 ]; do
+            if echo "$REGISTRY_PASSWORD" | docker login "$REGISTRY_HOST" -u "$REGISTRY_USERNAME" --password-stdin; then
+              echo "Login successful"; break; fi
+            tries=$((tries+1))
+            echo "Login attempt $tries failed; waiting..."; sleep 3;
+          done
+          if [ $tries -ge 5 ]; then
+            echo "Login failed after retries" >&2; exit 1; fi
+
+      - name: Evaluate push skip flag
+        id: skipcheck
+        if: github.event_name == 'push'
+        run: |
+          if [ "$skip_push" = "true" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Push will be skipped due to earlier connectivity decision.";
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Build & Push (BananaPi)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && steps.skipcheck.outputs.skip != 'true'
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.dir }}
