@@ -135,15 +135,21 @@ jobs:
       - name: Connect to Tailscale (if key)
         if: github.event_name == 'push'
         env:
-          HAS_TAILSCALE_KEY: ${{ secrets.TAILSCALE_AUTHKEY != '' }}
+          TAILSCALE_KEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
-          if [ "${{ env.HAS_TAILSCALE_KEY }}" = "true" ]; then
-            sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname gh-run-${GITHUB_RUN_ID} --accept-routes --ssh --timeout 40s
-          else
-            echo "Tailscale auth key not provided; skipping connection."
+          set -e
+          if [ -z "$TAILSCALE_KEY" ]; then
+            echo "No Tailscale key provided; skipping tailscale setup.";
+            exit 0;
           fi
+          echo "Installing Tailscale..."
           curl -fsSL https://tailscale.com/install.sh | sh
-          sudo tailscale up --authkey ${{ secrets.TAILSCALE_AUTHKEY }} --hostname gh-run-${GITHUB_RUN_ID} --accept-routes --ssh --timeout 40s
+          echo "Bringing up Tailscale tunnel..."
+          sudo tailscale up --authkey "$TAILSCALE_KEY" --hostname gh-run-${GITHUB_RUN_ID} --accept-routes --ssh --timeout 40s || {
+            echo "Tailscale up failed" >&2;
+            sudo tailscale status || true
+            exit 1
+          }
           echo 'Tailscale status:'
           sudo tailscale status || true
 
@@ -196,32 +202,39 @@ jobs:
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then echo 'Discord webhook not configured'; exit 0; fi
           STATUS='${{ job.status }}'
-          ICON='✅'; COLOR=3066993
-          if [ "$STATUS" != 'success' ]; then ICON='❌'; COLOR=15158332; fi
-          TITLE="$ICON ${{ matrix.image }} build $STATUS"
+          if [ "$STATUS" = 'success' ]; then ICON='✅'; COLOR=3066993; else ICON='❌'; COLOR=15158332; fi
+          ACTOR='${{ github.actor }}'
+          REF='${{ github.ref_name }}'
           COMMIT_URL='${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}'
           COMMIT_MSG=$(git log -1 --pretty=%s || echo commit)
           COMMIT_TRUNC=$(printf '%s' "$COMMIT_MSG" | head -c 120)
-          ACTOR='${{ github.actor }}'
-          REF='${{ github.ref_name }}'
-          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           AVATAR="https://github.com/${ACTOR}.png"
           DEST_REG='${{ secrets.BANANAPI_REGISTRY_HOST }}'
-          IMAGE_LIST=$(if [ '${{ github.event_name }}' = 'push' ]; then printf '%s/%s:%s\n%s/%s:%s\n%s/%s:latest' "$DEST_REG" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.commit_tag }}' "$DEST_REG" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.branch_tag }}' "$DEST_REG" '${{ steps.meta.outputs.image }}'; else echo 'n/a (PR build)'; fi)
+          if [ '${{ github.event_name }}' = 'push' ]; then
+            IMAGE_LINES=$(printf '%s/%s:%s\n%s/%s:%s\n%s/%s:latest' "$DEST_REG" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.commit_tag }}' "$DEST_REG" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.branch_tag }}' "$DEST_REG" '${{ steps.meta.outputs.image }}')
+          else
+            IMAGE_LINES='n/a (PR build)'
+          fi
+          PUSHED='No'
+          [ '${{ github.event_name }}' = 'push' ] && PUSHED='Yes'
+          TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+          # Use jq -n with --arg to safely construct JSON
           PAYLOAD=$(jq -n \
-            --arg title "$TITLE" \
+            --arg title "$ICON ${{ matrix.image }} build $STATUS" \
             --arg url "$COMMIT_URL" \
             --arg repo '${{ github.repository }}' \
             --arg cmsg "$COMMIT_TRUNC" \
             --arg actor "$ACTOR" \
             --arg branch "$REF" \
             --arg dir '${{ matrix.dir }}' \
-            --arg images "$IMAGE_LIST" \
+            --arg images "$IMAGE_LINES" \
             --arg ts "$TS" \
             --arg avatar "$AVATAR" \
-            --arg push '${{ github.event_name == 'push' }}' \
-            --argjson color $COLOR \
-            '{embeds:[{title:$title,url:$url,color:$color,author:{name:$actor,icon_url:$avatar,url:("https://github.com/"+$actor)},description:$cmsg,fields:[{name:"Repository",value:$repo,inline:true},{name:"Branch",value:$branch,inline:true},{name:"Directory",value:$dir,inline:true},{name:"Pushed Images",value:$images,inline:false},{name:"Push Performed",value:($push=="true"?"Yes":"No"),inline:true}],timestamp:$ts}]}')
+            --arg pushed "$PUSHED" \
+            --arg color "$COLOR" \
+            '{embeds:[{title:$title,url:$url,color:($color|tonumber),author:{name:$actor,icon_url:$avatar,url:("https://github.com/"+$actor)},description:$cmsg,fields:[{name:"Repository",value:$repo,inline:true},{name:"Branch",value:$branch,inline:true},{name:"Directory",value:$dir,inline:true},{name:"Pushed Images",value:$images,inline:false},{name:"Push Performed",value:$pushed,inline:true}],timestamp:$ts}]}')
+
           curl -s -H 'Content-Type: application/json' -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL" || echo 'Discord notify failed'
 
       - name: Summary
