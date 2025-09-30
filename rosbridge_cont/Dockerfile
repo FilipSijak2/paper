@@ -30,3 +30,5 @@ RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build"
 
 # Pokreni rosbridge automatski koristeći XML launch datoteku
 CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && ros2 launch rosbridge_server rosbridge_websocket_launch.xml"]
+
+#test_push
