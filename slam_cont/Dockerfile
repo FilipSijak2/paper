@@ -25,4 +25,3 @@ COPY slam_manager.py /app/slam_manager.py
 # Postavite ulaznu točku za pokretanje mapiranja
 CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && python3 /app/slam_manager.py"]
 
-#test_push

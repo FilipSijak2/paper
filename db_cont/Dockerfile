@@ -26,3 +26,4 @@ RUN echo "export PS1='\[\033[1;34m\]db_cont: \[\033[0m\]'" >> /root/.bashrc
 # Koristi zadani PostgreSQL entrypoint
 CMD ["postgres"]
 
+#test

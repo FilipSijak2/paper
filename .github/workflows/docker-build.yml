@@ -48,20 +48,14 @@ jobs:
         id: set-matrix
         run: |
           set -e
-          declare -A MAP
-          MAP[laser_driver_cont]=driver_cont
-          MAP[nav_cont]=nav_cont
-          MAP[slam_cont]=slam_cont
-          MAP[rosbridge_cont]=rosbridge_cont
-          MAP[db_cont]=db_cont
-
           changed_dirs=()
           while IFS= read -r f; do
-            for d in "${!MAP[@]}"; do
-              if [[ "$f" == $d/Dockerfile* ]]; then
-                changed_dirs+=("$d")
-              fi
-            done
+            case "$f" in
+              */Dockerfile|*/Dockerfile.*)
+                dir="${f%%/Dockerfile*}"
+                [ -d "$dir" ] && changed_dirs+=("$dir")
+              ;;
+            esac
           done < changed_files.txt
 
           unique_dirs=($(printf '%s\n' "${changed_dirs[@]}" | sort -u))
@@ -75,12 +69,14 @@ jobs:
             json='{"include":['
             first=true
             for dir in "${unique_dirs[@]}"; do
-              img="${MAP[$dir]}"
+              base="${dir%_cont}" # remove trailing _cont if present
+              # Fallback if removal leads to empty string
+              [ -z "$base" ] && base="$dir"
               if [ "$first" = true ]; then
-                json+='{"dir":"'$dir'","image":"'$img'"}'
+                json+='{"dir":"'$dir'","base":"'$base'"}'
                 first=false
               else
-                json+=',{"dir":"'$dir'","image":"'$img'"}'
+                json+=',{"dir":"'$dir'","base":"'$base'"}'
               fi
             done
             json+=']}';
@@ -111,14 +107,27 @@ jobs:
         run: |
           set -e
           OWNER_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
-          IMAGE=${OWNER_LC}/${{ matrix.image }}
-          COMMIT=${GITHUB_SHA::7}
-          BRANCH=$(echo '${{ github.ref_name }}' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
-          DATE_TAG=$(date -u +%Y%m%d-%H%M%S)
-          echo "image=$IMAGE" >> $GITHUB_OUTPUT
-          echo "commit_tag=$COMMIT" >> $GITHUB_OUTPUT
-          echo "branch_tag=$BRANCH" >> $GITHUB_OUTPUT
-          echo "date_tag=$DATE_TAG" >> $GITHUB_OUTPUT
+          BASE='${{ matrix.base }}'
+          IMAGE_REPO=${OWNER_LC}/${BASE}
+          echo "image_repo=$IMAGE_REPO" >> $GITHUB_OUTPUT
+          echo "base_name=$BASE" >> $GITHUB_OUTPUT
+
+      - name: Derive RC suffix
+        id: version
+        run: |
+          set -e
+          MSG=$(git log -1 --pretty=%s || echo '')
+          # Extract last .rcN pattern (case-insensitive) from commit message
+          SUFFIX=$(echo "$MSG" | grep -oE '\\.[Rr][Cc][0-9]+' | tail -n1 | tr 'A-Z' 'a-z' || true)
+          if [ -z "$SUFFIX" ]; then
+            echo "No .rcN pattern in commit message; defaulting to .rc1";
+            SUFFIX=.rc1
+          fi
+          # Docker tag cannot start with '.'; create tag value without leading dot
+          TAG=${SUFFIX#.}
+          # Also allow increment override via manual suffix env (optional future)
+          echo "Using release candidate tag: $TAG (derived from $SUFFIX)";
+          echo "rc_tag=$TAG" >> $GITHUB_OUTPUT
 
       - name: Build (PR - no push)
         if: github.event_name == 'pull_request'
@@ -128,7 +137,7 @@ jobs:
           file: ${{ matrix.dir }}/Dockerfile
           platforms: linux/arm64
           push: false
-          tags: test/${{ steps.meta.outputs.image }}:pr-${{ steps.meta.outputs.commit_tag }}
+          tags: test/${{ steps.meta.outputs.image_repo }}:pr-${{ steps.meta.outputs.base_name }}.${{ steps.version.outputs.rc_tag }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
@@ -276,10 +285,7 @@ jobs:
           file: ${{ matrix.dir }}/Dockerfile
           platforms: linux/arm64
           push: true
-          tags: |
-            ${{ steps.normalize.outputs.registry_host }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.commit_tag }}
-            ${{ steps.normalize.outputs.registry_host }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.branch_tag }}
-            ${{ steps.normalize.outputs.registry_host }}/${{ steps.meta.outputs.image }}:latest
+          tags: ${{ steps.normalize.outputs.registry_host }}/${{ steps.meta.outputs.image_repo }}:${{ steps.meta.outputs.base_name }}.${{ steps.version.outputs.rc_tag }}
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -303,7 +309,7 @@ jobs:
           AVATAR="https://github.com/${ACTOR}.png"
           DEST_REG='${{ secrets.BANANAPI_REGISTRY_HOST }}'
           if [ '${{ github.event_name }}' = 'push' ]; then
-            IMAGE_LINES=$(printf '%s/%s:%s\n%s/%s:%s\n%s/%s:latest' "${{ steps.normalize.outputs.registry_host }}" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.commit_tag }}' "${{ steps.normalize.outputs.registry_host }}" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.branch_tag }}' "${{ steps.normalize.outputs.registry_host }}" '${{ steps.meta.outputs.image }}')
+            IMAGE_LINES=$(printf '%s/%s:%s.%s' "${{ steps.normalize.outputs.registry_host }}" '${{ steps.meta.outputs.image_repo }}' '${{ steps.meta.outputs.base_name }}' '${{ steps.version.outputs.rc_tag }}')
           else
             IMAGE_LINES='n/a (PR build)'
           fi
@@ -332,9 +338,8 @@ jobs:
       - name: Summary
         run: |
           echo '## Build Summary' >> $GITHUB_STEP_SUMMARY
-          echo "Image (logical): ${{ steps.meta.outputs.image }}" >> $GITHUB_STEP_SUMMARY
-          echo "Commit Tag: ${{ steps.meta.outputs.commit_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "Branch Tag: ${{ steps.meta.outputs.branch_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "Repository: ${{ steps.meta.outputs.image_repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "Tag: ${{ steps.meta.outputs.base_name }}.${{ steps.version.outputs.rc_tag }}" >> $GITHUB_STEP_SUMMARY
           echo "Directory: ${{ matrix.dir }}" >> $GITHUB_STEP_SUMMARY
           if [ '${{ github.event_name }}' = 'push' ]; then
             echo "Pushed to: ${{ steps.normalize.outputs.registry_host }}" >> $GITHUB_STEP_SUMMARY
