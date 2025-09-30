@@ -11,27 +11,33 @@ FROM ros:humble
 ENV DEBIAN_FRONTEND=noninteractive \
     ROS_DISTRO=humble
 
-# (Opcionalno) argument za lakše keširanje liste paketa
+## Opcionalni argumenti
 ARG ROS_EXTRA_PACKAGES=""
+ARG DEBUG_APT="false"
 
 # Instalacija potrebnih ROS paketa + osnovnih alata; uz robustniji apt update
 RUN set -euo pipefail; \
-    echo "Updating APT metadata..."; \
-    apt-get update -o Acquire::Retries=3; \
-    echo "Installing ROS packages..."; \
-    apt-get install -y --no-install-recommends \
-        ros-${ROS_DISTRO}-rosbridge-server \
-        ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
-        python3-colcon-common-extensions \
-        curl ca-certificates \
-        $ROS_EXTRA_PACKAGES || { \
-          echo 'APT INSTALL FAILED. Dumping sources & logs:' >&2; \
-          ls -1 /etc/apt/sources.list.d/ >&2 || true; \
-          echo '--- /etc/apt/sources.list:' >&2; cat /etc/apt/sources.list >&2 || true; \
-          echo '--- ROS entries:' >&2; grep -R "ros2/ubuntu" -n /etc/apt/sources.list.d/ || true; \
-          exit 1; \
-        }; \
-    rm -rf /var/lib/apt/lists/*
+        echo "[rosbridge] Updating APT metadata..."; \
+        apt-get update -o Acquire::Retries=3; \
+        echo "[rosbridge] Installing base & ROS packages..."; \
+        if [ "$DEBUG_APT" = "true" ]; then set -x; fi; \
+        apt-get install -y --no-install-recommends \
+                ros-${ROS_DISTRO}-rosbridge-server \
+                ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+                python3-colcon-common-extensions \
+                curl ca-certificates \
+                $ROS_EXTRA_PACKAGES \
+                && echo "[rosbridge] Packages installed." \
+                || { \
+                    rc=$?; echo "[rosbridge][ERROR] apt install failed (rc=$rc)" >&2; \
+                    echo '---- /etc/apt/sources.list:' >&2; sed -n '1,120p' /etc/apt/sources.list >&2 || true; \
+                    echo '---- /etc/apt/sources.list.d listing:' >&2; ls -1 /etc/apt/sources.list.d/ >&2 || true; \
+                    echo '---- ROS related entries:' >&2; grep -R "ros2/ubuntu" -n /etc/apt/sources.list.d/ || true; \
+                    echo '---- /var/log/apt/term.log (tail):' >&2; tail -n 60 /var/log/apt/term.log 2>/dev/null || echo '[no term.log]'; \
+                    exit $rc; \
+                }; \
+        rm -rf /var/lib/apt/lists/*; \
+        if [ "$DEBUG_APT" = "true" ]; then set +x; fi
 
 # Postavi radni direktorij na /ros_ws
 WORKDIR /ros_ws

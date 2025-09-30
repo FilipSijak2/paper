@@ -153,10 +153,35 @@ jobs:
           echo 'Tailscale status:'
           sudo tailscale status || true
 
+      - name: Normalize registry host
+        if: github.event_name == 'push'
+        env:
+          RAW_HOST: ${{ secrets.BANANAPI_REGISTRY_HOST }}
+        run: |
+          set -e
+          if [ -z "$RAW_HOST" ]; then echo "BANANAPI_REGISTRY_HOST not set" >&2; exit 1; fi
+          ORIG="$RAW_HOST"
+          # Strip protocol if present
+          STRIPPED=${RAW_HOST#http://}
+          STRIPPED=${STRIPPED#https://}
+          # Remove any path component after first '/'
+          CORE=${STRIPPED%%/*}
+          # Append default port 5000 if no port specified
+            if [[ "$CORE" != *:* ]]; then
+            CORE="$CORE:5000"
+            echo "No port detected in registry host. Defaulting to :5000 -> $CORE"
+          fi
+          echo "Using normalized registry host: $CORE (original: $ORIG)"
+          echo "REGISTRY_HOST_EFFECTIVE=$CORE" >> $GITHUB_ENV
+          # Warn if protocol was included originally
+          if [[ "$ORIG" == http://* || "$ORIG" == https://* ]]; then
+            echo "Warning: Do not include protocol scheme in BANANAPI_REGISTRY_HOST secret. It was stripped." >&2
+          fi
+
       - name: Pre-check BananaPi registry connectivity
         if: github.event_name == 'push'
         env:
-          REGISTRY_HOST: ${{ secrets.BANANAPI_REGISTRY_HOST }}
+          REGISTRY_HOST: ${{ env.REGISTRY_HOST_EFFECTIVE }}
           REGISTRY_SKIP_IF_DOWN: ${{ secrets.BANANAPI_REGISTRY_SKIP_IF_DOWN }}
         run: |
           set -e
@@ -189,7 +214,7 @@ jobs:
       - name: Login to BananaPi registry
         if: github.event_name == 'push'
         env:
-          REGISTRY_HOST: ${{ secrets.BANANAPI_REGISTRY_HOST }}
+          REGISTRY_HOST: ${{ env.REGISTRY_HOST_EFFECTIVE }}
           REGISTRY_USERNAME: ${{ secrets.BANANAPI_REGISTRY_USER }}
           REGISTRY_PASSWORD: ${{ secrets.BANANAPI_REGISTRY_PASS }}
           INSECURE: ${{ secrets.BANANAPI_REGISTRY_INSECURE }}
@@ -212,6 +237,7 @@ jobs:
             fi
             sudo systemctl restart docker || sudo service docker restart || true
             sleep 2
+            echo "Current /etc/docker/daemon.json:"; cat /etc/docker/daemon.json || true
           fi
           echo "Logging in (with retry)..."
           tries=0
@@ -244,9 +270,9 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: |
-            ${{ secrets.BANANAPI_REGISTRY_HOST }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.commit_tag }}
-            ${{ secrets.BANANAPI_REGISTRY_HOST }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.branch_tag }}
-            ${{ secrets.BANANAPI_REGISTRY_HOST }}/${{ steps.meta.outputs.image }}:latest
+            ${{ env.REGISTRY_HOST_EFFECTIVE }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.commit_tag }}
+            ${{ env.REGISTRY_HOST_EFFECTIVE }}/${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.branch_tag }}
+            ${{ env.REGISTRY_HOST_EFFECTIVE }}/${{ steps.meta.outputs.image }}:latest
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -270,7 +296,7 @@ jobs:
           AVATAR="https://github.com/${ACTOR}.png"
           DEST_REG='${{ secrets.BANANAPI_REGISTRY_HOST }}'
           if [ '${{ github.event_name }}' = 'push' ]; then
-            IMAGE_LINES=$(printf '%s/%s:%s\n%s/%s:%s\n%s/%s:latest' "$DEST_REG" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.commit_tag }}' "$DEST_REG" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.branch_tag }}' "$DEST_REG" '${{ steps.meta.outputs.image }}')
+            IMAGE_LINES=$(printf '%s/%s:%s\n%s/%s:%s\n%s/%s:latest' "${{ env.REGISTRY_HOST_EFFECTIVE }}" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.commit_tag }}' "${{ env.REGISTRY_HOST_EFFECTIVE }}" '${{ steps.meta.outputs.image }}' '${{ steps.meta.outputs.branch_tag }}' "${{ env.REGISTRY_HOST_EFFECTIVE }}" '${{ steps.meta.outputs.image }}')
           else
             IMAGE_LINES='n/a (PR build)'
           fi
@@ -304,7 +330,7 @@ jobs:
           echo "Branch Tag: ${{ steps.meta.outputs.branch_tag }}" >> $GITHUB_STEP_SUMMARY
           echo "Directory: ${{ matrix.dir }}" >> $GITHUB_STEP_SUMMARY
           if [ '${{ github.event_name }}' = 'push' ]; then
-            echo "Pushed to: ${{ secrets.BANANAPI_REGISTRY_HOST }}" >> $GITHUB_STEP_SUMMARY
+            echo "Pushed to: ${{ env.REGISTRY_HOST_EFFECTIVE }}" >> $GITHUB_STEP_SUMMARY
           else
             echo 'PR build – no push' >> $GITHUB_STEP_SUMMARY
           fi
