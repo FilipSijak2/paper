@@ -50,5 +50,3 @@ RUN bash -c "set -e; source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build --
 
 # Pokreni rosbridge automatski koristeći XML launch datoteku
 CMD ["bash", "-c", "source /opt/ros/${ROS_DISTRO}/setup.bash && source /ros_ws/install/setup.bash && ros2 launch rosbridge_server rosbridge_websocket_launch.xml"]
-
-#test

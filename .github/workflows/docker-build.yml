@@ -118,9 +118,10 @@ jobs:
           set -e
           MSG=$(git log -1 --pretty=%s || echo '')
           # Extract last .rcN pattern (case-insensitive) from commit message
-          SUFFIX=$(echo "$MSG" | grep -oE '\\.[Rr][Cc][0-9]+' | tail -n1 | tr 'A-Z' 'a-z' || true)
+          echo "Commit message: $MSG"
+          SUFFIX=$(echo "$MSG" | grep -oE '\.[Rr][Cc][0-9]+' | tail -n1 | tr 'A-Z' 'a-z' || true)
           if [ -z "$SUFFIX" ]; then
-            echo "No .rcN pattern in commit message; defaulting to .rc1";
+            echo "No .rcN pattern matched with regex \.rc[0-9]+ ; defaulting to .rc1";
             SUFFIX=.rc1
           fi
           # Docker tag cannot start with '.'; create tag value without leading dot
@@ -292,6 +293,82 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+      - name: Verify manifest schema (v2 / OCI)
+        if: github.event_name == 'push' && steps.skipcheck.outputs.skip != 'true'
+        run: |
+          set -e
+          HOST='${{ steps.normalize.outputs.registry_host }}'
+          REPO='${{ steps.meta.outputs.image_repo }}'
+          TAG='${{ steps.meta.outputs.base_name }}.${{ steps.version.outputs.rc_tag }}'
+          URL="http://$HOST/v2/$REPO/manifests/$TAG"
+          echo "Fetching manifest: $URL";
+          # Try OCI first then classic docker v2 mediaType
+          ACCEPT_LIST=(
+            'application/vnd.oci.image.manifest.v1+json'
+            'application/vnd.docker.distribution.manifest.v2+json'
+            'application/vnd.docker.distribution.manifest.list.v2+json'
+            'application/vnd.oci.image.index.v1+json'
+          )
+          fetched=false
+          for a in "${ACCEPT_LIST[@]}"; do
+            echo "Attempt with Accept: $a";
+            STATUS=$(curl -s -o manifest.json -w '%{http_code}' -H "Accept: $a" "$URL" || echo 000)
+            if [ "$STATUS" = 200 ]; then
+              fetched=true; break; fi
+          done
+          if [ "$fetched" != true ]; then
+            echo "Failed to retrieve manifest with v2/OCI Accept headers (status $STATUS). Dumping generic fetch..." >&2
+            curl -i "$URL" || true
+            exit 1
+          fi
+          echo '--- Manifest summary ---'
+          if command -v jq >/dev/null 2>&1; then
+            MTYPE=$(jq -r '.mediaType' manifest.json)
+            if echo "$MTYPE" | grep -Eq 'manifest.list|image.index'; then
+              echo "Detected manifest index ($MTYPE). Enumerating referenced manifests...";
+              COUNT=$(jq '.manifests|length' manifest.json)
+              echo "Sub-manifests: $COUNT";
+              TOTAL=0
+              for i in $(seq 0 $((COUNT-1))); do
+                DIGEST=$(jq -r ".manifests[$i].digest" manifest.json)
+                MT=$(jq -r ".manifests[$i].mediaType" manifest.json)
+                echo "Fetching sub-manifest $i digest=$DIGEST mediaType=$MT";
+                curl -s -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' "http://$HOST/v2/$REPO/manifests/$DIGEST" -o sub.json || true
+                # Sum layer sizes if layers present
+                PART=$(jq '[.layers[].size] | add' sub.json 2>/dev/null || echo 0)
+                echo "  -> layers total size: $PART bytes"
+                TOTAL=$((TOTAL + PART))
+              done
+              echo "Aggregate image (all platform manifests) size: $TOTAL bytes";
+              echo "Aggregate Size (bytes): $TOTAL" >> $GITHUB_STEP_SUMMARY
+            else
+              jq '{schemaVersion, mediaType, layerCount: (.layers|length), layers: (.layers[] | {size, mediaType})}' manifest.json | head -n 120
+              SIZE=$(jq '[.layers[].size] | add' manifest.json 2>/dev/null || echo 0)
+              echo "Single-manifest total size: $SIZE bytes";
+              echo "Image Size (bytes): $SIZE" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            grep -E 'schemaVersion|mediaType' manifest.json || true
+            MTYPE=$(grep -o 'mediaType" *: *"[^"]*' manifest.json | head -1 | sed 's/.*"//')
+          fi
+          case "$MTYPE" in
+            application/vnd.docker.distribution.manifest.v1+json)
+              echo "WARNING: Registry returned schema v1 manifest (size aggregation in some UIs may be missing)." >&2
+              echo "If you need schema2/OCI: upgrade registry (distribution >=2.3) or ensure Accept header is respected." >&2
+              ;;
+            application/vnd.docker.distribution.manifest.v2+json|application/vnd.oci.image.manifest.v1+json)
+              echo "OK: Using modern manifest ($MTYPE).";
+              ;;
+            application/vnd.docker.distribution.manifest.list.v2+json|application/vnd.oci.image.index.v1+json)
+               echo "OK: Using manifest list ($MTYPE).";
+               ;;
+            *)
+              echo "Unknown/other manifest type: $MTYPE" >&2
+              ;;
+          esac
+          # Append a short note to summary
+          echo "Manifest mediaType: $MTYPE" >> $GITHUB_STEP_SUMMARY
 
       - name: Discord Notification
         if: always()
