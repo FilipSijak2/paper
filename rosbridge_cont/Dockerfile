@@ -16,7 +16,7 @@ ARG ROS_EXTRA_PACKAGES=""
 ARG DEBUG_APT="false"
 
 # Instalacija potrebnih ROS paketa + osnovnih alata; uz robustniji apt update
-RUN set -euo pipefail; \
+RUN set -eu; \
         echo "[rosbridge] Updating APT metadata..."; \
         apt-get update -o Acquire::Retries=3; \
         echo "[rosbridge] Installing base & ROS packages..."; \
