@@ -1,0 +1,21 @@
+# Placeholder configuration for sensor fusion / robot_localization or custom node
+# Extend as needed.
+
+serial:
+  port: /dev/ttyACM0
+  baudrate: 115200
+  timeout_ms: 200
+
+imu:
+  frame_id: imu_link
+  publish_rate_hz: 30.0
+  covariance_orientation: [0.0025, 0, 0, 0, 0.0025, 0, 0, 0, 0.0025]
+  covariance_angular_velocity: [0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01]
+  covariance_linear_acceleration: [0.04,0,0,0,0.04,0,0,0,0.04]
+
+logging:
+  level: INFO
+
+# Example expected serial line formats (implementation supports both):
+#   IMU,qw,qx,qy,qz,ax,ay,az,gx,gy,gz
+#   RAW,ax,ay,az,gx,gy,gz,mx,my,mz,yaw,roll,pitch
