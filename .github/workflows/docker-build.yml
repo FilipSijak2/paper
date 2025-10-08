@@ -48,17 +48,34 @@ jobs:
         id: set-matrix
         run: |
           set -e
-          changed_dirs=()
+          # Collect candidate directories that contain a Dockerfile when any file under them changed
+          candidates=()
           while IFS= read -r f; do
-            case "$f" in
-              */Dockerfile|*/Dockerfile.*)
-                dir="${f%%/Dockerfile*}"
-                [ -d "$dir" ] && changed_dirs+=("$dir")
-              ;;
-            esac
+            [ ! -f "$f" ] && continue
+            d=$(dirname "$f")
+            # ascend until repo root or Dockerfile found
+            while [ "$d" != "." ] && [ -n "$d" ]; do
+              if [ -f "$d/Dockerfile" ]; then
+                candidates+=("$d")
+                break
+              fi
+              d=$(dirname "$d")
+            done
           done < changed_files.txt
 
-          unique_dirs=($(printf '%s\n' "${changed_dirs[@]}" | sort -u))
+          # Also add any directory whose Dockerfile itself changed (already covered but keeps logic explicit)
+          while IFS= read -r f; do
+            case "$f" in */Dockerfile|*/Dockerfile.*) candidates+=("${f%%/Dockerfile*}");; esac
+          done < changed_files.txt
+
+          if [ ${#candidates[@]} -eq 0 ]; then
+            echo "No Docker-related changes detected.";
+            echo 'matrix={"include":[]}' >> $GITHUB_OUTPUT
+            echo 'any_changed=false' >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          unique_dirs=($(printf '%s\n' "${candidates[@]}" | sort -u))
           if [ ${#unique_dirs[@]} -eq 0 ]; then
             echo "No Dockerfile changes detected.";
             echo 'matrix={"include":[]}' >> $GITHUB_OUTPUT
@@ -302,12 +319,22 @@ jobs:
           REGISTRY_HOST: ${{ steps.normalize.outputs.registry_host }}
           IMAGE_REPO: ${{ steps.meta.outputs.image_repo }}
           TAG: ${{ steps.meta.outputs.base_name }}.${{ steps.version.outputs.rc_tag }}
+          REGISTRY_USERNAME: ${{ secrets.BANANAPI_REGISTRY_USER }}
+          REGISTRY_PASSWORD: ${{ secrets.BANANAPI_REGISTRY_PASS }}
         run: |
           set -e
           # Fetch manifest to compute size (single or index). We'll reuse logic similar to verification step but lighter.
           URL="http://$REGISTRY_HOST/v2/$IMAGE_REPO/manifests/$TAG"
+          AUTH=""
+          if [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]; then
+            AUTH="-u $REGISTRY_USERNAME:$REGISTRY_PASSWORD"
+          fi
           ACCEPT='application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.index.v1+json'
-          STATUS=$(curl -s -o manifest.cool.json -w '%{http_code}' -H "Accept: $ACCEPT" "$URL" || echo 000)
+          STATUS=$(curl -s -o manifest.cool.json -w '%{http_code}' -H "Accept: $ACCEPT" $AUTH "$URL" || echo 000)
+          if [ "$STATUS" = 401 ] && [ -z "$AUTH" ]; then
+            echo "Manifest fetch unauthorized and no credentials provided; defaulting to 30s sleep.";
+            SLEEP=30; STATUS=401;
+          fi
           if [ "$STATUS" != 200 ]; then
             echo "Could not fetch manifest for cooldown sizing (status $STATUS). Defaulting to 30s.";
             SLEEP=30
@@ -347,6 +374,9 @@ jobs:
 
       - name: Verify manifest schema (v2 / OCI)
         if: github.event_name == 'push' && steps.skipcheck.outputs.skip != 'true'
+        env:
+          REGISTRY_USERNAME: ${{ secrets.BANANAPI_REGISTRY_USER }}
+          REGISTRY_PASSWORD: ${{ secrets.BANANAPI_REGISTRY_PASS }}
         run: |
           set -e
           HOST='${{ steps.normalize.outputs.registry_host }}'
@@ -362,15 +392,29 @@ jobs:
             'application/vnd.oci.image.index.v1+json'
           )
           fetched=false
+          AUTH=""
+          if [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]; then
+            AUTH="-u $REGISTRY_USERNAME:$REGISTRY_PASSWORD"
+          fi
           for a in "${ACCEPT_LIST[@]}"; do
             echo "Attempt with Accept: $a";
-            STATUS=$(curl -s -o manifest.json -w '%{http_code}' -H "Accept: $a" "$URL" || echo 000)
+            STATUS=$(curl -s -o manifest.json -w '%{http_code}' -H "Accept: $a" $AUTH "$URL" || echo 000)
             if [ "$STATUS" = 200 ]; then
               fetched=true; break; fi
+            if [ "$STATUS" = 401 ]; then
+              echo "Received 401 Unauthorized while fetching manifest (Accept: $a).";
+              if [ -z "$AUTH" ]; then
+                echo "No credentials supplied. Provide BANANAPI_REGISTRY_USER/PASS secrets to enable verification.";
+              fi
+            fi
           done
           if [ "$fetched" != true ]; then
-            echo "Failed to retrieve manifest with v2/OCI Accept headers (status $STATUS). Dumping generic fetch..." >&2
-            curl -i "$URL" || true
+            if [ "$STATUS" = 401 ]; then
+              echo "Skipping manifest verification due to 401 (private registry)." >&2
+              exit 0
+            fi
+            echo "Failed to retrieve manifest (status $STATUS). Dumping generic fetch..." >&2
+            curl -i $AUTH "$URL" || true
             exit 1
           fi
           echo '--- Manifest summary ---'
