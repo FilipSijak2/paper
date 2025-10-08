@@ -28,6 +28,10 @@ WORKDIR /app/ws
 COPY ws/src ./src
 COPY sensor_fusion.yaml /app/sensor_fusion.yaml
 
+# Place config inside package tree so setup.py can install it
+RUN mkdir -p src/sensor_fusion_pkg/config \
+    && cp /app/sensor_fusion.yaml src/sensor_fusion_pkg/config/sensor_fusion.yaml
+
 # Build the workspace
 RUN bash -c "source /opt/ros/humble/setup.bash && colcon build --symlink-install"
 

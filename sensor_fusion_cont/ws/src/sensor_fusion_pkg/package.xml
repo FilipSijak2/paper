@@ -5,10 +5,14 @@
   <description>Arduino IMU listener and sensor fusion scaffolding.</description>
   <maintainer email="example@example.com">Maintainer</maintainer>
   <license>MIT</license>
-  <buildtool_depend>ament_cmake</buildtool_depend>
+  <!-- Python package: use ament_python instead of ament_cmake -->
+  <buildtool_depend>ament_python</buildtool_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
+  <!-- Optional: declare dependencies explicitly for clarity -->
+  <exec_depend>pyserial</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
   <export/>
 </package>

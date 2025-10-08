@@ -10,7 +10,8 @@ setup(
         ('share/ament_index/resource_index/packages', [f'resource/{package_name}']),
         (f'share/{package_name}', ['package.xml']),
         (f'share/{package_name}/launch', ['launch/sensor_fusion.launch.py']),
-        (f'share/{package_name}', ['../../../../sensor_fusion.yaml']),
+        # Install config file placed into config/ by Dockerfile copy step
+        (f'share/{package_name}/config', ['config/sensor_fusion.yaml']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
