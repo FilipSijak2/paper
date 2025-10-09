@@ -33,13 +33,8 @@ RUN mkdir -p src/sensor_fusion_pkg/config \
     && cp /app/sensor_fusion.yaml src/sensor_fusion_pkg/config/sensor_fusion.yaml
 
 # Build the workspace (verbose diagnostics)
-RUN bash -c 'set -euo pipefail \ 
-    && echo "[DEBUG] Python version: $(python3 --version)" \ 
-    && echo "[DEBUG] Listing src tree:" \ 
-    && find src -maxdepth 4 -type f -print \ 
-    && echo "[DEBUG] Launching colcon build (verbose)" \ 
-    && source /opt/ros/humble/setup.bash \ 
-    && colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo || { echo "[ERROR] Colcon failed; dumping logs"; ls -R log || true; exit 1; }'
+RUN bash -c "set -euo pipefail; echo '[DEBUG] Python version:'; python3 --version; echo '[DEBUG] Listing src tree:'; find src -maxdepth 4 -type f -print"
+RUN bash -c "set -e; source /opt/ros/humble/setup.bash; echo '[DEBUG] Running colcon build'; colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo || { echo '[ERROR] Colcon failed; ls log dir:'; ls -R log || true; exit 1; }"
 
 # Source overlay and launch package
 CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /app/ws/install/setup.bash && ros2 launch sensor_fusion_pkg sensor_fusion.launch.py"]
