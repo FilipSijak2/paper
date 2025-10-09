@@ -1,0 +1,264 @@
+# Hardware Wiring Guide - Devastator Robot System
+
+## System Overview
+The robot system consists of three main units:
+1. **Arduino Nano ESP32** - Central micro-ROS client (sensors + command distribution)
+2. **Arduino UNO R4 WiFi** - Motor driver + LED visualization
+3. **Host PC/Raspberry Pi** - ROS 2 navigation stack
+
+## Component List
+
+### Arduino Nano ESP32 Unit
+- **Main Board**: Arduino Nano ESP32
+- **IMU**: LSM6DSO32 breakout board (I2C)
+- **Encoders**: 2x AS5600 magnetic rotary encoder breakouts
+- **I2C Multiplexer**: TCA9548A breakout board
+- **Level Shifter**: Bi-directional 3.3V ↔ 5V logic level converter (if needed)
+- **Connectors**: Dupont wires, breadboard or custom PCB
+
+### Arduino UNO R4 WiFi Unit
+- **Main Board**: Arduino UNO R4 WiFi (with built-in LED matrix)
+- **Motor Drivers**: 2x IBT-2 (BTS7960) high-current motor driver modules
+- **Motors**: 2x DC geared motors (12V recommended)
+- **Power Supply**: 12V DC power supply (min 3A capacity)
+- **Connectors**: Screw terminals, Dupont wires
+
+### Mechanical Components
+- **Magnets**: 2x diametrically magnetized magnets for AS5600 (6mm diameter recommended)
+- **Wheels**: 2x wheels compatible with motor shafts
+- **Chassis**: Robot platform (aluminum, 3D printed, or acrylic)
+- **Mounting**: Standoffs, screws, brackets for component mounting
+
+---
+
+## Detailed Wiring Diagrams
+
+### 1. Arduino Nano ESP32 Connections
+
+#### Power Distribution
+```
+Nano ESP32 VIN  → 5V from USB or external 5V supply
+Nano ESP32 GND  → Common ground
+Nano ESP32 3V3  → 3.3V rail for sensors
+```
+
+#### I2C Bus (3.3V)
+```
+Nano ESP32 Pin 21 (SDA) → TCA9548A SDA
+Nano ESP32 Pin 22 (SCL) → TCA9548A SCL
+Nano ESP32 3V3         → TCA9548A VCC
+Nano ESP32 GND         → TCA9548A GND
+
+TCA9548A A0, A1, A2 → GND (address 0x70)
+TCA9548A RESET      → 3V3 (or leave floating)
+```
+
+#### TCA9548A Multiplexer Channels
+```
+Channel 0 (SD0/SC0):
+  SD0 → AS5600 #1 (LEFT encoder) SDA
+  SC0 → AS5600 #1 (LEFT encoder) SCL
+
+Channel 1 (SD1/SC1):
+  SD1 → AS5600 #2 (RIGHT encoder) SDA
+  SC1 → AS5600 #2 (RIGHT encoder) SCL
+
+Unused channels 2-7: Leave disconnected
+```
+
+#### IMU Connection (Direct I2C)
+```
+LSM6DSO32 VCC → Nano ESP32 3V3
+LSM6DSO32 GND → Nano ESP32 GND
+LSM6DSO32 SDA → Nano ESP32 Pin 21 (shared with TCA9548A)
+LSM6DSO32 SCL → Nano ESP32 Pin 22 (shared with TCA9548A)
+LSM6DSO32 CS  → 3V3 (disable SPI mode)
+```
+
+#### UART to UNO R4
+```
+Nano ESP32 Pin 17 (TX) → UNO R4 Pin 0 (RX) [via level shifter if needed]
+Nano ESP32 Pin 16 (RX) → UNO R4 Pin 1 (TX) [via level shifter if needed]
+Nano ESP32 GND        → UNO R4 GND (signal ground)
+```
+
+**Note**: UNO R4 operates at 5V logic levels. If using 3.3V signals from Nano ESP32:
+- UNO R4 RX pin typically accepts 3.3V as HIGH (check datasheet)
+- For UNO TX → Nano RX, use voltage divider (5V → 3.3V) or bi-directional level shifter
+
+#### AS5600 Encoder Mounting
+```
+AS5600 #1 (LEFT):
+  VCC → 3V3
+  GND → GND  
+  SDA → TCA9548A Channel 0 SD0
+  SCL → TCA9548A Channel 0 SC0
+  DIR → Leave floating (default direction)
+  Magnet: 6mm diametrically magnetized, 1-3mm above sensor
+
+AS5600 #2 (RIGHT):
+  VCC → 3V3
+  GND → GND
+  SDA → TCA9548A Channel 1 SD1
+  SCL → TCA9548A Channel 1 SC1  
+  DIR → Leave floating
+  Magnet: 6mm diametrically magnetized, 1-3mm above sensor
+```
+
+---
+
+### 2. Arduino UNO R4 WiFi Connections
+
+#### Power Distribution
+```
+UNO R4 VIN → 12V power supply (+)
+UNO R4 GND → 12V power supply (-) and common ground
+UNO R4 5V  → Logic power for motor drivers (if needed)
+```
+
+#### Motor Driver Connections (IBT-2/BTS7960)
+```
+LEFT Motor Driver (IBT-2):
+  VCC → UNO R4 5V (logic power)
+  GND → Common ground
+  B_VCC → 12V power supply (+)
+  B_GND → 12V power supply (-)
+  RPWM → UNO R4 Pin 5  (Left motor forward PWM)
+  LPWM → UNO R4 Pin 6  (Left motor reverse PWM)
+  R_EN → UNO R4 5V (enable - always high)
+  L_EN → UNO R4 5V (enable - always high)
+  R_IS → Not connected (current sense, optional)
+  L_IS → Not connected (current sense, optional)
+  Motor+ → Left motor positive terminal
+  Motor- → Left motor negative terminal
+
+RIGHT Motor Driver (IBT-2):
+  VCC → UNO R4 5V (logic power)
+  GND → Common ground  
+  B_VCC → 12V power supply (+)
+  B_GND → 12V power supply (-)
+  RPWM → UNO R4 Pin 9  (Right motor forward PWM)
+  LPWM → UNO R4 Pin 10 (Right motor reverse PWM)
+  R_EN → UNO R4 5V (enable - always high)
+  L_EN → UNO R4 5V (enable - always high) 
+  R_IS → Not connected
+  L_IS → Not connected
+  Motor+ → Right motor positive terminal
+  Motor- → Right motor negative terminal
+```
+
+#### Built-in LED Matrix
+```
+No external wiring needed - controlled via Arduino_LED_Matrix library
+Matrix displays robot status and movement animations
+```
+
+---
+
+### 3. Power Supply Recommendations
+
+#### Main Power (12V Rail)
+```
+Supply: 12V DC, minimum 3A capacity
+- Powers both motor drivers
+- UNO R4 via VIN pin (onboard regulator)
+- Fuse: 5A fast-blow for protection
+- Connector: 2.1mm DC jack or screw terminals
+```
+
+#### Logic Power (5V Rail)
+```
+Generated by UNO R4 onboard regulator from 12V
+- Powers motor driver logic
+- Total current: <500mA
+```
+
+#### Sensor Power (3.3V Rail)
+```
+Generated by Nano ESP32 onboard regulator
+- Powers all I2C sensors (IMU, encoders, multiplexer)
+- Total current: <200mA
+```
+
+---
+
+## Physical Mounting Guidelines
+
+### Encoder Placement
+- Mount AS5600 sensors on fixed chassis points
+- Mount magnets on rotating wheel hubs/axles
+- Maintain 1-3mm air gap between sensor and magnet
+- Ensure magnet rotates parallel to sensor face
+- Shield from metallic interference
+
+### IMU Placement  
+- Mount LSM6DSO32 at robot center of rotation
+- Align X-axis with forward direction
+- Secure mounting to minimize vibration
+- Avoid proximity to motors (magnetic interference)
+
+### Motor Driver Heat Management
+- Ensure adequate ventilation around IBT-2 modules
+- Consider heat sinks for continuous high-current operation
+- Mount away from sensitive electronics
+
+### Cable Management
+- Use shielded cables for encoder signals (if cable length >20cm)
+- Keep power and signal cables separated
+- Secure all connections with strain relief
+- Label all wires for maintenance
+
+---
+
+## Troubleshooting Checklist
+
+### Power Issues
+- [ ] 12V supply voltage stable under load
+- [ ] All ground connections secure
+- [ ] No voltage drops across connectors
+- [ ] UNO R4 LED indicators functioning
+
+### I2C Communication
+- [ ] Pull-up resistors present (usually on breakout boards)
+- [ ] SDA/SCL not swapped
+- [ ] TCA9548A address correct (0x70)
+- [ ] AS5600 sensors respond on correct channels
+- [ ] IMU responds at default address (0x6A or 0x6B)
+
+### UART Communication
+- [ ] TX/RX not swapped between boards
+- [ ] Baud rate matching (115200)
+- [ ] Logic level compatibility (3.3V ↔ 5V)
+- [ ] Common ground connection
+
+### Mechanical
+- [ ] Encoder magnets properly centered
+- [ ] No binding in rotating mechanisms
+- [ ] Motor mounting secure
+- [ ] Wheel alignment correct
+
+---
+
+## Initial Testing Procedure
+
+1. **Power-on Test**: Apply 12V, verify all LED indicators
+2. **I2C Scan**: Run I2C scanner on Nano ESP32, verify all sensor addresses
+3. **Encoder Test**: Manually rotate wheels, verify angle readings change
+4. **IMU Test**: Tilt robot, verify accelerometer/gyroscope readings
+5. **UART Test**: Send test packets between boards
+6. **Motor Test**: Apply low PWM values, verify motor rotation direction
+7. **Integration Test**: Run full system with micro-ROS agent
+
+---
+
+## Safety Considerations
+
+- **Electrical**: Use appropriate fuses and circuit protection
+- **Mechanical**: Ensure emergency stop capability
+- **Software**: Implement watchdog timers and timeout protection
+- **Testing**: Start with low speeds and currents during initial tests
+
+---
+
+*Last updated: October 2025*
+*Compatible with: Arduino IDE 2.x, micro-ROS Humble, ROS 2 Humble*
