@@ -2,21 +2,23 @@ FROM ros:humble
 
 # Napomena: uklonjen paket 'ros-humble-serial' (nije službeni paket); koristimo pyserial iz pip-a.
 RUN set -e; \
-        apt-get update -y; \
-        apt-get install -y --no-install-recommends \
-            python3-pip \
-            python3-yaml \
-            ros-humble-robot-localization \
-            ros-humble-imu-tools \
-            ros-humble-tf2-ros \
-            ros-humble-geometry-msgs \
-            ros-humble-nav-msgs \
-            ros-humble-diagnostic-msgs \
-        ; \
-        rm -rf /var/lib/apt/lists/*
+    apt-get update -y; \
+    apt-get install -y --no-install-recommends \
+        python3-pip \
+        python3-colcon-common-extensions \
+        python3-yaml \
+        ros-humble-rclpy \
+        ros-humble-robot-localization \
+        ros-humble-imu-tools \
+        ros-humble-tf2-ros \
+        ros-humble-geometry-msgs \
+        ros-humble-nav-msgs \
+        ros-humble-diagnostic-msgs \
+    ; \
+    rm -rf /var/lib/apt/lists/*
 
-# Python dependencies & build tools
-RUN pip3 install --no-cache-dir pyserial numpy colcon-common-extensions
+# Python dependencies (colcon via apt now)
+RUN pip3 install --no-cache-dir pyserial numpy
 
 # Postavi ROS okruženje
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
@@ -33,7 +35,10 @@ RUN mkdir -p src/sensor_fusion_pkg/config \
 
 # Build the workspace (verbose diagnostics)
 RUN bash -c "set -euo pipefail; echo '[DEBUG] Python version:'; python3 --version; echo '[DEBUG] Listing src tree:'; find src -maxdepth 4 -type f -print"
-RUN bash -c "set -e; source /opt/ros/humble/setup.bash; echo '[DEBUG] Running colcon build'; colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo || { echo '[ERROR] Colcon failed; ls log dir:'; ls -R log || true; exit 1; }"
+RUN bash -c "set -e; source /opt/ros/humble/setup.bash; echo '[DEBUG] Running colcon build'; \
+    colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+    || { code=$?; echo '[ERROR] Colcon failed; dumping first 120 lines of each log file:'; if [ -d log ]; then find log -type f -maxdepth 4 -print -exec sed -n '1,120p' {} \; ; fi; exit $code; }"
 
 # Source overlay and launch package
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /app/ws/install/setup.bash && ros2 launch sensor_fusion_pkg sensor_fusion.launch.py"]
+ENV SF_VERSION_TAG=unset
+CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /app/ws/install/setup.bash && echo SENSOR_FUSION_IMAGE_TAG=$SF_VERSION_TAG && ros2 launch sensor_fusion_pkg sensor_fusion.launch.py"]
