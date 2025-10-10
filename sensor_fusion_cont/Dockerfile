@@ -1,6 +1,5 @@
 FROM ros:humble
 
-# OS dependencies + ROS 2 paketi
 # Napomena: uklonjen paket 'ros-humble-serial' (nije službeni paket); koristimo pyserial iz pip-a.
 RUN set -e; \
         apt-get update -y; \
