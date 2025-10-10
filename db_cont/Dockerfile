@@ -1,27 +1,27 @@
 FROM postgres:15
 
-# Instaliraj PostGIS ekstenziju za prostorne podatke
+# Install PostGIS for spatial data support
 RUN apt-get update && apt-get install -y \
     postgresql-15-postgis-3 \
     postgresql-15-postgis-3-scripts \
     && rm -rf /var/lib/apt/lists/*
 
-# Postavke za bazu podataka
+# Settings for the database
 ENV POSTGRES_DB=robot_data
 ENV POSTGRES_USER=robot_user
 ENV POSTGRES_PASSWORD=robot_pass
 
-# Kopiraj initialization skripte
+# Copy initialization scripts
 COPY init-db.sql /docker-entrypoint-initdb.d/
 
-# Postavke za performance
+# Performance settings
 ENV POSTGRES_SHARED_PRELOAD_LIBRARIES=postgis
 
-# Izloži port
+# Expose port
 EXPOSE 5432
 
-# Postavi custom prompt (samo 'db_cont:' u plavoj boji)
+# Set custom prompt (just 'db_cont:' in blue)
 RUN echo "export PS1='\[\033[1;34m\]db_cont: \[\033[0m\]'" >> /root/.bashrc
 
-# Koristi zadani PostgreSQL entrypoint
+# Use default PostgreSQL entrypoint
 CMD ["postgres"]

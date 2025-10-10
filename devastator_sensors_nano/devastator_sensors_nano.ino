@@ -1,67 +1,211 @@
 /*
-  Devastator Nano ESP32 (Arduino IDE version)
-  Central micro-ROS client: /cmd_vel SUB, /imu/data PUB, /wheel_odom PUB, /system_status PUB
-  Sends motor commands to UNO R4 via Serial1 using 16-byte CommandPacket.
+  Devastator Nano ESP32 - Custom Serial Protocol Version
+  Robust communication: Host PC ↔ Nano ESP32 ↔ UNO R4
+  
+  Replaces micro-ROS with custom binary protocol for better stability and debugging.
+  
+  Architecture:
+    - Host PC: Python ROS 2 node bridges custom protocol ↔ standard ROS topics
+    - Nano ESP32: Sensor fusion + command distribution (this file)  
+    - UNO R4: Motor control + LED visualization
 
   Hardware:
     - Arduino Nano ESP32
     - IMU: LSM6DSO32 (I2C, Adafruit library)
-    - Encoders: 2x AS5600 (same address 0x36 -> need solution: I2C multiplexer OR one encoder in analog mode)
+    - Encoders: 2x AS5600 via TCA9548A I2C multiplexer (addresses resolved)
     - Motor driver BTS7960 handled by UNO R4
+    - Link to Host: USB Serial (115200 baud)
     - Link to UNO R4: Serial1 (GPIO16 RX, GPIO17 TX) 115200
 
   Arduino IDE Setup:
     1. Install "Arduino ESP32 Boards" in Boards Manager.
-    2. Libraries (Library Manager): Adafruit LSM6DS, Adafruit BusIO.
-    3. micro_ros_arduino: clone https://github.com/micro-ROS/micro_ros_arduino to Arduino/libraries, run provided scripts (choose esp32 + humble) OR install if available.
-    4. Select Board: Arduino Nano ESP32. Upload.
-    5. On host run agent:
-         ros2 run micro_ros_agent micro_ros_agent serial --dev <PORT>
+    2. Libraries: Adafruit LSM6DS, Adafruit BusIO.
+    3. Select Board: Arduino Nano ESP32. Upload.
+    4. On host run Python bridge:
+         python3 robot_serial_bridge.py
 
-  CommandPacket (little endian, 16 bytes):
-    uint32_t header (0xA55AA55A)
-    float    linear
-    float    angular
-    uint16_t crc16 (CCITT over first 12 bytes)
-    uint16_t tail (0x55AA)
-
-  NOTE: Both encoder reads still target 0x36 (placeholder). Adapt once hardware addressing solved.
+  Protocol: 
+    Host → ESP32: CommandPacket (20 bytes, includes cmd_vel)
+    ESP32 → Host: SensorPacket (64 bytes, includes IMU + encoders + odometry)
+    ESP32 → UNO: CommandPacket (20 bytes, motor commands)
+    
+  Robust features: CRC validation, sequence numbers, timeout handling, error flags.
 */
 
 #include <Arduino.h>
 #include <Wire.h>
-
-#include <micro_ros_arduino.h>
-#include <rcl/rcl.h>
-#include <rclc/rclc.h>
-#include <rclc/executor.h>
-
-#include <geometry_msgs/msg/twist.h>
-#include <sensor_msgs/msg/imu.h>
-#include <nav_msgs/msg/odometry.h>
-#include <std_msgs/msg/string.h>
-
 #include <Adafruit_LSM6DSO32.h>
+
+// ===== PROTOCOL DEFINITIONS =====
+// Custom serial protocol for robust communication
+// Host (Python ROS node) ↔ Nano ESP32 ↔ UNO R4
+
+// Protocol version for compatibility checking
+static const uint8_t PROTOCOL_VERSION = 1;
+
+// Packet headers for sync and type identification
+static const uint32_t SENSOR_PACKET_HEADER = 0xDEADBEEF;
+static const uint32_t SENSOR_PACKET_TAIL   = 0xCAFEBABE;
+
+static const uint32_t COMMAND_PACKET_HEADER = 0xFEEDFACE;  
+static const uint32_t COMMAND_PACKET_TAIL   = 0xDEADC0DE;
+
+static const uint32_t STATUS_PACKET_HEADER  = 0xABCDEF01;
+static const uint32_t STATUS_PACKET_TAIL    = 0x12345678;
+
+// Packet sizes for parsing
+static const uint8_t SENSOR_PACKET_SIZE  = 64;  // Fixed size for easy parsing
+static const uint8_t COMMAND_PACKET_SIZE = 20;
+static const uint8_t STATUS_PACKET_SIZE  = 32;
+
+// Sensor data from Nano ESP32 → Host PC (64 bytes total)
+struct __attribute__((packed)) SensorPacket {
+    uint32_t header;        // 0xDEADBEEF
+    uint8_t version;        // Protocol version
+    uint8_t sequence;       // Rolling counter (0-255)
+    uint16_t flags;         // Status flags (sensor health, etc.)
+    
+    uint32_t timestamp_ms;  // millis() from ESP32
+    
+    // IMU data (24 bytes)
+    float accel_x;          // m/s²
+    float accel_y;
+    float accel_z;
+    float gyro_x;           // rad/s
+    float gyro_y;
+    float gyro_z;
+    
+    // Encoder data (8 bytes)
+    float left_angle;       // radians (absolute, unwrapped)
+    float right_angle;      // radians (absolute, unwrapped)
+    
+    // Odometry (computed on ESP32) (12 bytes)
+    float odom_x;           // meters
+    float odom_y;           // meters  
+    float odom_yaw;         // radians
+    
+    // System health (4 bytes)
+    uint16_t battery_mv;    // Battery voltage in millivolts (optional)
+    uint8_t temperature;    // Temperature in °C + 50 (so 0-255 maps to -50 to +205°C)
+    uint8_t error_flags;    // Error status bits
+    
+    uint16_t crc16;         // CRC-16/CCITT over bytes 0 to (size-4)
+    uint32_t tail;          // 0xCAFEBABE
+};
+
+// Command data from Host PC → Nano ESP32 (20 bytes total)
+struct __attribute__((packed)) CommandPacket {
+    uint32_t header;        // 0xFEEDFACE  
+    uint8_t version;        // Protocol version
+    uint8_t sequence;       // Rolling counter
+    uint16_t timeout_ms;    // Command timeout (default 1200ms)
+    
+    float linear_x;         // m/s
+    float angular_z;        // rad/s
+    
+    uint16_t crc16;         // CRC-16/CCITT  
+    uint32_t tail;          // 0xDEADC0DE
+};
+
+// Status/heartbeat from Nano ESP32 → Host PC (32 bytes total)
+struct __attribute__((packed)) StatusPacket {
+    uint32_t header;        // 0xABCDEF01
+    uint8_t version;        // Protocol version  
+    uint8_t sequence;       // Rolling counter
+    uint16_t flags;         // Status flags
+    
+    uint32_t uptime_ms;     // System uptime
+    uint32_t loop_count;    // Main loop iterations
+    uint16_t loop_rate_hz;  // Measured loop rate
+    uint16_t free_heap_kb;  // Free heap in KB
+    
+    char status_msg[12];    // Short status string (null terminated)
+    
+    uint16_t crc16;         // CRC-16/CCITT
+    uint32_t tail;          // 0x12345678
+};
+
+// Status flags definitions
+#define SENSOR_FLAG_IMU_OK       (1 << 0)
+#define SENSOR_FLAG_ENC_LEFT_OK  (1 << 1)  
+#define SENSOR_FLAG_ENC_RIGHT_OK (1 << 2)
+#define SENSOR_FLAG_MUX_OK       (1 << 3)
+#define SENSOR_FLAG_UNO_COMM_OK  (1 << 4)
+
+#define ERROR_FLAG_IMU_FAIL      (1 << 0)
+#define ERROR_FLAG_ENC_FAIL      (1 << 1)
+#define ERROR_FLAG_COMM_TIMEOUT  (1 << 2)
+#define ERROR_FLAG_OVERHEAT      (1 << 3)
+
+// CRC-16/CCITT implementation
+static inline uint16_t crc16_ccitt(const uint8_t* data, uint16_t len, uint16_t crc = 0xFFFF) {
+    for (uint16_t i = 0; i < len; ++i) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (uint8_t b = 0; b < 8; ++b) {
+            if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
+            else crc <<= 1;
+        }
+    }
+    return crc;
+}
+
+// Packet validation helpers
+static inline bool validate_sensor_packet(const SensorPacket* pkt) {
+    if (pkt->header != SENSOR_PACKET_HEADER || pkt->tail != SENSOR_PACKET_TAIL) return false;
+    if (pkt->version != PROTOCOL_VERSION) return false;
+    uint16_t expected = crc16_ccitt((const uint8_t*)pkt, sizeof(SensorPacket) - 6); // -6 for crc+tail
+    return expected == pkt->crc16;
+}
+
+static inline bool validate_command_packet(const CommandPacket* pkt) {
+    if (pkt->header != COMMAND_PACKET_HEADER || pkt->tail != COMMAND_PACKET_TAIL) return false;
+    if (pkt->version != PROTOCOL_VERSION) return false;
+    uint16_t expected = crc16_ccitt((const uint8_t*)pkt, sizeof(CommandPacket) - 6);
+    return expected == pkt->crc16;
+}
+
+static inline void build_command_packet(CommandPacket* pkt, float linear, float angular, uint8_t seq = 0) {
+    pkt->header = COMMAND_PACKET_HEADER;
+    pkt->version = PROTOCOL_VERSION;
+    pkt->sequence = seq;
+    pkt->timeout_ms = 1200;
+    pkt->linear_x = linear;
+    pkt->angular_z = angular;
+    pkt->tail = COMMAND_PACKET_TAIL;
+    pkt->crc16 = crc16_ccitt((const uint8_t*)pkt, sizeof(CommandPacket) - 6);
+}
+
+static inline void build_sensor_packet(SensorPacket* pkt, uint8_t seq = 0) {
+    pkt->header = SENSOR_PACKET_HEADER;
+    pkt->version = PROTOCOL_VERSION;
+    pkt->sequence = seq;
+    pkt->tail = SENSOR_PACKET_TAIL;
+    // CRC filled after data population
+}
+
+static inline void finalize_sensor_packet(SensorPacket* pkt) {
+    pkt->crc16 = crc16_ccitt((const uint8_t*)pkt, sizeof(SensorPacket) - 6);
+}
+
+// ===== END PROTOCOL DEFINITIONS =====
 
 // ---------------- UART to UNO R4 ----------------
 HardwareSerial MotorSerial(1); // Serial1
 static const int UNO_RX_PIN = 16; // Nano ESP32 RX (from UNO TX) (optional currently unused)
 static const int UNO_TX_PIN = 17; // Nano ESP32 TX (to UNO RX)
 
-// ---------------- micro-ROS objects ----------------
-rcl_subscription_t cmd_sub;
-rcl_publisher_t imu_pub;
-rcl_publisher_t odom_pub;
-rcl_publisher_t status_pub;
-rcl_node_t node;
-rclc_support_t support;
-rcl_allocator_t allocator;
-rclc_executor_t executor;
+// ---------------- Protocol Objects ----------------
+SensorPacket sensor_packet;
+CommandPacket command_packet; 
+StatusPacket status_packet;
 
-geometry_msgs__msg__Twist cmd_msg;
-sensor_msgs__msg__Imu imu_msg;
-nav_msgs__msg__Odometry odom_msg;
-std_msgs__msg__String status_msg;
+uint8_t sensor_seq = 0;
+uint8_t command_seq = 0;
+uint8_t status_seq = 0;
+
+// Command parsing buffer
+uint8_t cmd_buffer[COMMAND_PACKET_SIZE];
+uint8_t cmd_buffer_pos = 0;
 
 // ---------------- IMU ----------------
 Adafruit_LSM6DSO32 imu;
@@ -147,80 +291,148 @@ void send_motor_command();
 void setup() {
   Serial.begin(115200);
   delay(400);
-  Serial.println("Nano ESP32 micro-ROS (Arduino IDE) start");
+  Serial.println("Nano ESP32 Custom Protocol v1.0");
 
   Wire.begin();
   MotorSerial.begin(115200, SERIAL_8N1, UNO_RX_PIN, UNO_TX_PIN);
 
+  // Initialize sensor packet structure
+  build_sensor_packet(&sensor_packet, sensor_seq++);
+  sensor_packet.flags = 0;
+  sensor_packet.error_flags = 0;
+
   if (!imu.begin_I2C()) {
     Serial.println("IMU init FAIL");
+    sensor_packet.error_flags |= ERROR_FLAG_IMU_FAIL;
   } else {
     imu.setAccelRange(LSM6DS_ACCEL_RANGE_4_G);
     imu.setGyroRange(LSM6DS_GYRO_RANGE_500_DPS);
     imu.setAccelDataRate(LSM6DS_RATE_52_HZ);
     imu.setGyroDataRate(LSM6DS_RATE_52_HZ);
+    sensor_packet.flags |= SENSOR_FLAG_IMU_OK;
     Serial.println("IMU OK");
   }
 
-  if (!micro_ros_init()) {
-    Serial.println("micro-ROS init FAILED");
-    while (true) { delay(1000); }
+  // Test I2C multiplexer
+  if (selectMuxChannel(0)) {
+    sensor_packet.flags |= SENSOR_FLAG_MUX_OK;
+    Serial.println("I2C MUX OK");
+  } else {
+    Serial.println("I2C MUX FAIL");
   }
-  Serial.println("micro-ROS ready");
+
+  Serial.println("Custom protocol ready - waiting for commands");
   last_cmd_time = millis();
 }
 
 void loop() {
   unsigned long now = millis();
-  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(5));
+  
+  // Process incoming commands from host
+  process_host_commands();
 
-  if (now - last_cmd_time > CMD_TIMEOUT_MS) { cmd_linear = 0.0f; cmd_angular = 0.0f; }
-  if (now - last_imu_time >= IMU_PERIOD_MS) { publish_imu(); last_imu_time = now; }
-  if (now - last_odom_time >= ODOM_PERIOD_MS) { read_encoders(); publish_odom(); last_odom_time = now; }
-  if (now - last_status_time >= STATUS_PERIOD_MS) { publish_status("ok"); last_status_time = now; }
+  // Safety timeout
+  if (now - last_cmd_time > CMD_TIMEOUT_MS) { 
+    cmd_linear = 0.0f; 
+    cmd_angular = 0.0f; 
+    sensor_packet.error_flags |= ERROR_FLAG_COMM_TIMEOUT;
+  } else {
+    sensor_packet.error_flags &= ~ERROR_FLAG_COMM_TIMEOUT;
+  }
 
+  // Periodic sensor tasks
+  if (now - last_imu_time >= IMU_PERIOD_MS) { 
+    update_imu_data(); 
+    last_imu_time = now; 
+  }
+  if (now - last_odom_time >= ODOM_PERIOD_MS) { 
+    read_encoders(); 
+    update_odometry(); 
+    send_sensor_packet();
+    last_odom_time = now; 
+  }
+  if (now - last_status_time >= STATUS_PERIOD_MS) { 
+    send_status_packet(); 
+    last_status_time = now; 
+  }
+
+  // Send commands to UNO R4
   send_motor_command();
 }
 
-bool micro_ros_init() {
-  set_microros_transports();
-  allocator = rcl_get_default_allocator();
-  if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) return false;
-  if (rclc_node_init_default(&node, "devastator_nano", "", &support) != RCL_RET_OK) return false;
-  if (rclc_subscription_init_default(&cmd_sub, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "cmd_vel") != RCL_RET_OK) return false;
-  if (rclc_publisher_init_default(&imu_pub, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(sensor_msgs, msg, Imu), "imu/data") != RCL_RET_OK) return false;
-  if (rclc_publisher_init_default(&odom_pub, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry), "wheel_odom") != RCL_RET_OK) return false;
-  if (rclc_publisher_init_default(&status_pub, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, String), "system_status") != RCL_RET_OK) return false;
-  if (rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK) return false;
-  if (rclc_executor_add_subscription(&executor, &cmd_sub, &cmd_msg, &cmd_callback, ON_NEW_DATA) != RCL_RET_OK) return false;
-  return true;
+void process_host_commands() {
+  // Read available bytes from USB Serial
+  while (Serial.available() > 0) {
+    uint8_t byte = Serial.read();
+    cmd_buffer[cmd_buffer_pos++] = byte;
+    
+    // Check if we have a complete packet
+    if (cmd_buffer_pos >= COMMAND_PACKET_SIZE) {
+      CommandPacket* cmd = (CommandPacket*)cmd_buffer;
+      
+      if (validate_command_packet(cmd)) {
+        // Valid command received
+        cmd_linear = cmd->linear_x;
+        cmd_angular = cmd->angular_z;
+        last_cmd_time = millis();
+        sensor_packet.flags |= SENSOR_FLAG_UNO_COMM_OK;
+      }
+      
+      // Reset buffer for next packet
+      cmd_buffer_pos = 0;
+    }
+    
+    // Buffer overflow protection
+    if (cmd_buffer_pos >= COMMAND_PACKET_SIZE) {
+      cmd_buffer_pos = 0;
+    }
+  }
 }
 
-void cmd_callback(const void* msg_in) {
-  const geometry_msgs__msg__Twist* m = (const geometry_msgs__msg__Twist*)msg_in;
-  cmd_linear = m->linear.x;
-  cmd_angular = m->angular.z;
-  last_cmd_time = millis();
+void send_sensor_packet() {
+  sensor_packet.timestamp_ms = millis();
+  sensor_packet.sequence = sensor_seq++;
+  sensor_packet.battery_mv = 12000; // Placeholder - add ADC reading if needed
+  sensor_packet.temperature = 75;   // 25°C (temp + 50)
+  sensor_packet.free_heap_kb = ESP.getFreeHeap() / 1024;
+  
+  finalize_sensor_packet(&sensor_packet);
+  Serial.write((uint8_t*)&sensor_packet, sizeof(SensorPacket));
 }
 
-void publish_imu() {
+void send_status_packet() {
+  static uint32_t loop_count = 0;
+  loop_count++;
+  
+  status_packet.header = STATUS_PACKET_HEADER;
+  status_packet.version = PROTOCOL_VERSION;
+  status_packet.sequence = status_seq++;
+  status_packet.flags = sensor_packet.flags;
+  status_packet.uptime_ms = millis();
+  status_packet.loop_count = loop_count;
+  status_packet.loop_rate_hz = 1000 / ODOM_PERIOD_MS; // Approximate
+  status_packet.free_heap_kb = ESP.getFreeHeap() / 1024;
+  strncpy(status_packet.status_msg, "running", 11);
+  status_packet.tail = STATUS_PACKET_TAIL;
+  status_packet.crc16 = crc16_ccitt((const uint8_t*)&status_packet, sizeof(StatusPacket) - 6);
+  
+  Serial.write((uint8_t*)&status_packet, sizeof(StatusPacket));
+}
+
+void update_imu_data() {
   sensors_event_t accel, gyro, temp;
-  if (!imu.getEvent(&accel, &gyro, &temp)) return;
-  imu_msg.header.stamp.sec = millis() / 1000;
-  imu_msg.header.stamp.nanosec = (millis() % 1000) * 1000000;
-  imu_msg.header.frame_id.data = (char*)"imu_link";
-  imu_msg.header.frame_id.size = strlen("imu_link");
-  imu_msg.linear_acceleration.x = accel.acceleration.x;
-  imu_msg.linear_acceleration.y = accel.acceleration.y;
-  imu_msg.linear_acceleration.z = accel.acceleration.z;
-  imu_msg.angular_velocity.x = gyro.gyro.x;
-  imu_msg.angular_velocity.y = gyro.gyro.y;
-  imu_msg.angular_velocity.z = gyro.gyro.z;
-  rcl_publish(&imu_pub, &imu_msg, NULL);
+  if (imu.getEvent(&accel, &gyro, &temp)) {
+    sensor_packet.accel_x = accel.acceleration.x;
+    sensor_packet.accel_y = accel.acceleration.y;
+    sensor_packet.accel_z = accel.acceleration.z;
+    sensor_packet.gyro_x = gyro.gyro.x;
+    sensor_packet.gyro_y = gyro.gyro.y;
+    sensor_packet.gyro_z = gyro.gyro.z;
+    sensor_packet.flags |= SENSOR_FLAG_IMU_OK;
+  } else {
+    sensor_packet.flags &= ~SENSOR_FLAG_IMU_OK;
+    sensor_packet.error_flags |= ERROR_FLAG_IMU_FAIL;
+  }
 }
 
 bool selectMuxChannel(uint8_t ch) {
@@ -252,6 +464,9 @@ void read_encoders() {
     uint16_t raw_l = as5600_read_raw(0x36);
     if (raw_l != 0) {
       left_angle = angle_from_raw(raw_l);
+      sensor_packet.flags |= SENSOR_FLAG_ENC_LEFT_OK;
+    } else {
+      sensor_packet.flags &= ~SENSOR_FLAG_ENC_LEFT_OK;
     }
   }
 
@@ -260,6 +475,9 @@ void read_encoders() {
     uint16_t raw_r = as5600_read_raw(0x36);
     if (raw_r != 0) {
       right_angle = angle_from_raw(raw_r);
+      sensor_packet.flags |= SENSOR_FLAG_ENC_RIGHT_OK;
+    } else {
+      sensor_packet.flags &= ~SENSOR_FLAG_ENC_RIGHT_OK;
     }
   }
 
@@ -273,34 +491,24 @@ void read_encoders() {
   right_angle = unwrap(prev_right_angle, right_angle);
 }
 
-void publish_odom() {
+void update_odometry() {
   float d_left = (left_angle - prev_left_angle) * WHEEL_RADIUS;
   float d_right = (right_angle - prev_right_angle) * WHEEL_RADIUS;
   float d_center = 0.5f * (d_left + d_right);
   float d_theta = (d_right - d_left) / WHEEL_BASE;
+  
   yaw += d_theta;
   x_pose += d_center * cos(yaw);
   y_pose += d_center * sin(yaw);
-  odom_msg.header.stamp.sec = millis() / 1000;
-  odom_msg.header.stamp.nanosec = (millis() % 1000) * 1000000;
-  odom_msg.header.frame_id.data = (char*)"odom";
-  odom_msg.header.frame_id.size = strlen("odom");
-  odom_msg.child_frame_id.data = (char*)"base_link";
-  odom_msg.child_frame_id.size = strlen("base_link");
-  odom_msg.pose.pose.position.x = x_pose;
-  odom_msg.pose.pose.position.y = y_pose;
-  odom_msg.pose.pose.position.z = 0.0f;
-  float vx = d_center / (ODOM_PERIOD_MS / 1000.0f);
-  float wz = d_theta / (ODOM_PERIOD_MS / 1000.0f);
-  odom_msg.twist.twist.linear.x = vx;
-  odom_msg.twist.twist.angular.z = wz;
-  rcl_publish(&odom_pub, &odom_msg, NULL);
-}
-
-void publish_status(const char* text) {
-  status_msg.data.data = (char*)text;
-  status_msg.data.size = strlen(text);
-  rcl_publish(&status_pub, &status_msg, NULL);
+  
+  // Update sensor packet with odometry
+  sensor_packet.odom_x = x_pose;
+  sensor_packet.odom_y = y_pose;
+  sensor_packet.odom_yaw = yaw;
+  
+  // Store encoder angles
+  sensor_packet.left_angle = left_angle;
+  sensor_packet.right_angle = right_angle;
 }
 
 void send_motor_command() {
@@ -308,6 +516,8 @@ void send_motor_command() {
   unsigned long now = millis();
   if (now - last_send < 50) return; // 20 Hz
   last_send = now;
-  CommandPacket pkt; buildCommand(pkt, cmd_linear, cmd_angular);
-  MotorSerial.write(reinterpret_cast<uint8_t*>(&pkt), sizeof(pkt));
+  
+  CommandPacket uno_cmd;
+  build_command_packet(&uno_cmd, cmd_linear, cmd_angular, command_seq++);
+  MotorSerial.write((uint8_t*)&uno_cmd, sizeof(CommandPacket));
 }

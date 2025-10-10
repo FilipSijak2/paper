@@ -1,35 +1,84 @@
-// Arduino UNO R4 WiFi + micro-ROS Humble (ULTRA MINIMAL)
-// Goal: Achieve successful micro-ROS handshake with minimal RAM usage.
-// Features kept: cmd_vel subscription + motor actuation.
-// Features removed temporarily: IMU publish, encoder I2C, LED matrix graphics (only simple blink), patterns array.
-// After confirming this builds & runs, re-enable features incrementally.
+// Arduino UNO R4 WiFi - Custom Protocol Motor Controller
+// Role: Receive motor commands from Nano ESP32, drive BTS7960 modules, LED visualization
+// Communication: Custom binary protocol (robust, deterministic, easy debugging)
+// 
+// Architecture change: 
+//   OLD: micro-ROS client (unstable, memory issues)
+//   NEW: Serial protocol bridge (Nano ESP32 ↔ UNO R4)
+//
+// Protocol: CommandPacket (20 bytes) with CRC validation, timeout safety
+// Features: Motor control + LED matrix animation + error handling
 #include <Arduino.h>
-// Removed Wire (I2C) include to save a little flash/RAM since encoder & IMU are disabled
 
-// micro-ROS core
-// NOTE: Removed manual profile/limit macros because micro_ros_arduino is precompiled.
-// Defining them here prevented the proper inclusion of the serial platform struct
-// leading to: 'field platform has incomplete type uxrSerialPlatform'.
-// Any real memory reduction at middleware level requires rebuilding the library
-// with a custom Micro XRCE-DDS config, not redefining macros in the sketch.
-#include <micro_ros_arduino.h>
-#include <rcl/rcl.h>
-#include <rclc/rclc.h>
-#include <rclc/executor.h>
-
-// ROS message types
-// Keep only essential message types (reduce RAM usage)
-#include <geometry_msgs/msg/twist.h>
-// IMU removed for now
-
-// Hardware libraries
-// Hardware libraries
-// IMU library removed to save memory
-
-// LED Matrix for visualization (re-added minimal version)
+// LED Matrix for visualization
 #include <ArduinoGraphics.h>
 #include <Arduino_LED_Matrix.h>
 ArduinoLEDMatrix matrix;
+
+// ===== PROTOCOL DEFINITIONS =====
+// Custom protocol definitions (shared with Nano ESP32)
+// Simplified structures for UNO R4 (only what's needed)
+
+static const uint8_t PROTOCOL_VERSION = 1;
+static const uint32_t COMMAND_PACKET_HEADER = 0xFEEDFACE;  
+static const uint32_t COMMAND_PACKET_TAIL   = 0xDEADC0DE;
+static const uint8_t COMMAND_PACKET_SIZE = 20;
+
+// Command data from Host PC → Nano ESP32 → UNO R4 (20 bytes total)
+struct __attribute__((packed)) CommandPacket {
+    uint32_t header;        // 0xFEEDFACE  
+    uint8_t version;        // Protocol version
+    uint8_t sequence;       // Rolling counter
+    uint16_t timeout_ms;    // Command timeout (default 1200ms)
+    
+    float linear_x;         // m/s
+    float angular_z;        // rad/s
+    
+    uint16_t crc16;         // CRC-16/CCITT  
+    uint32_t tail;          // 0xDEADC0DE
+};
+
+// CRC-16/CCITT implementation
+static inline uint16_t crc16_ccitt(const uint8_t* data, uint16_t len, uint16_t crc = 0xFFFF) {
+    for (uint16_t i = 0; i < len; ++i) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (uint8_t b = 0; b < 8; ++b) {
+            if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
+            else crc <<= 1;
+        }
+    }
+    return crc;
+}
+
+// Validate command packet
+static inline bool validate_command_packet(const CommandPacket* pkt) {
+    if (pkt->header != COMMAND_PACKET_HEADER || pkt->tail != COMMAND_PACKET_TAIL) return false;
+    if (pkt->version != PROTOCOL_VERSION) return false;
+    uint16_t expected = crc16_ccitt((const uint8_t*)pkt, sizeof(CommandPacket) - 6);
+    return expected == pkt->crc16;
+}
+
+// ===== END PROTOCOL DEFINITIONS =====
+
+// CRC-16/CCITT (simplified version for UNO)
+uint16_t crc16_ccitt(const uint8_t* data, uint16_t len) {
+    uint16_t crc = 0xFFFF;
+    for (uint16_t i = 0; i < len; ++i) {
+        crc ^= (uint16_t)data[i] << 8;
+        for (uint8_t b = 0; b < 8; ++b) {
+            if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
+            else crc <<= 1;
+        }
+    }
+    return crc;
+}
+
+bool validate_command_packet(const CommandPacket* pkt) {
+    if (pkt->header != COMMAND_PACKET_HEADER || pkt->tail != COMMAND_PACKET_TAIL) return false;
+    if (pkt->version != PROTOCOL_VERSION) return false;
+    uint16_t expected = crc16_ccitt((const uint8_t*)pkt, sizeof(CommandPacket) - 6);
+    return expected == pkt->crc16;
+}
 
 // Hardware configuration
 const int RPWM_R = 9;   // Right motor PWM
@@ -41,22 +90,11 @@ const int LPWM_L = 6;   // Left motor DIR
 const float WHEEL_BASE = 0.20f;
 // Wheel radius not needed now
 
-// I2C communication with Nano ESP32 encoder processor
-// Encoder disabled
-
-// Hardware instances
-// Removed hardware heavy objects
-
-// micro-ROS objects (minimal)
-rcl_subscription_t cmd_sub;
-rcl_node_t node;
-rclc_executor_t executor;
-rclc_support_t support;
-rcl_allocator_t allocator;
-
-// ROS messages (minimal)
-geometry_msgs__msg__Twist cmd_msg;
-// No IMU message now
+// Serial communication buffer for commands from Nano ESP32
+uint8_t cmd_buffer[COMMAND_PACKET_SIZE];
+uint8_t cmd_buffer_pos = 0;
+CommandPacket current_command;
+bool command_valid = false;
 
 // Control variables
 volatile float cmd_linear = 0.0f;
@@ -119,19 +157,21 @@ void displayPattern(const uint32_t p[3]);
 // Patterns removed to save flash/RAM; single LED used instead.
 
 // Function prototypes
-void cmd_callback(const void * msg_in);
-bool setupMicroROS();
+void processSerialCommands();
 void updateMotorControl();
 void updateRobotState();
 void blinkStatus();
-uint32_t freeMemory();
+void updateLEDDisplay();
+void displayPattern(const uint32_t p[3]);
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
   
-  Serial.println("Arduino R4 WiFi Robot Controller with micro-ROS Humble");
-  Serial.println("Init status LED (pin 13)...");
+  Serial.println("Arduino R4 WiFi Custom Protocol Motor Controller");
+  Serial.println("Waiting for commands from Nano ESP32...");
+  
+  // LED matrix + status LED
   pinMode(LED_BUILTIN, OUTPUT);
   matrix.begin();
   displayPattern(pattern_connect);
@@ -148,24 +188,7 @@ void setup() {
   analogWrite(RPWM_L, 0);
   analogWrite(LPWM_L, 0);
   
-  // I2C skipped for now
-  
-  Serial.println("IMU disabled in ultra-minimal build");
-  
-  Serial.println("Setting up micro-ROS...");
-  // Setup micro-ROS
-  if (!setupMicroROS()) {
-    Serial.println("micro-ROS setup failed!");
-    current_state = ERROR_STATE;
-    // Turn LED solid ON to indicate error (matrix disabled)
-    digitalWrite(LED_BUILTIN, HIGH);
-    return; // stay minimal; could loop forever if preferred
-  }
-  
-  Serial.println("Arduino R4 WiFi Robot Controller ready!");
-  Serial.print("Approx free RAM (bytes): ");
-  Serial.println(freeMemory());
-  // Status publisher removed to save RAM
+  Serial.println("Motor controller ready - protocol v1.0");
   current_state = IDLE;
   last_cmd_time = millis();
 }
@@ -173,8 +196,8 @@ void setup() {
 void loop() {
   unsigned long now = millis();
   
-  // Execute micro-ROS callbacks
-  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+  // Process incoming commands from Nano ESP32
+  processSerialCommands();
   
   // Update robot state based on commands
   updateRobotState();
@@ -182,64 +205,51 @@ void loop() {
   // Control motors
   updateMotorControl();
   
+  // Visual feedback
   blinkStatus();
-
-  // LED matrix pattern update (independent of built-in LED blink)
   if (now - last_display_update >= DISPLAY_UPDATE_INTERVAL) {
     updateLEDDisplay();
     last_display_update = now;
   }
-
-  static unsigned long last_mem = 0;
-  if (now - last_mem > 5000) {
-    Serial.print("[RAM] Free: ");
-    Serial.println(freeMemory());
-    last_mem = now;
-  }
 }
 
-bool setupMicroROS() {
-  Serial.println("Setting micro-ROS transport (generic)...");
-  set_microros_transports();
-  allocator = rcl_get_default_allocator();
-  if (rclc_support_init(&support, 0, NULL, &allocator) != RCL_RET_OK) {
-    Serial.println("support init FAIL");
-    return false;
+void processSerialCommands() {
+  // Read available bytes from Serial (from Nano ESP32)
+  while (Serial.available() > 0) {
+    uint8_t byte = Serial.read();
+    cmd_buffer[cmd_buffer_pos++] = byte;
+    
+    // Check if we have a complete packet
+    if (cmd_buffer_pos >= COMMAND_PACKET_SIZE) {
+      CommandPacket* cmd = (CommandPacket*)cmd_buffer;
+      
+      if (validate_command_packet(cmd)) {
+        // Valid command received
+        cmd_linear = cmd->linear_x;
+        cmd_angular = cmd->angular_z;
+        last_cmd_time = millis();
+        command_valid = true;
+        current_command = *cmd; // Store for potential debugging
+        
+        // Optional debug output (comment out for production)
+        Serial.print("CMD: L=");
+        Serial.print(cmd_linear, 3);
+        Serial.print(" A=");
+        Serial.println(cmd_angular, 3);
+      } else {
+        // Invalid packet - could be noise or sync issue
+        command_valid = false;
+      }
+      
+      // Reset buffer for next packet
+      cmd_buffer_pos = 0;
+    }
+    
+    // Buffer overflow protection
+    if (cmd_buffer_pos >= COMMAND_PACKET_SIZE) {
+      cmd_buffer_pos = 0;
+    }
   }
-  if (rclc_node_init_default(&node, "devastator_r4", "", &support) != RCL_RET_OK) {
-    Serial.println("node init FAIL");
-    return false;
-  }
-  if (rclc_subscription_init_default(
-        &cmd_sub, &node,
-        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-        "cmd_vel") != RCL_RET_OK) {
-    Serial.println("cmd_vel sub FAIL");
-    return false;
-  }
-  // IMU publisher removed in minimal variant
-  if (rclc_executor_init(&executor, &support.context, 1, &allocator) != RCL_RET_OK) {
-    Serial.println("executor init FAIL");
-    return false;
-  }
-  if (rclc_executor_add_subscription(&executor, &cmd_sub, &cmd_msg, &cmd_callback, ON_NEW_DATA) != RCL_RET_OK) {
-    Serial.println("exec add sub FAIL");
-    return false;
-  }
-  Serial.println("micro-ROS minimal OK");
-  return true;
-}
-
-void cmd_callback(const void * msg_in) {
-  const geometry_msgs__msg__Twist * msg = (const geometry_msgs__msg__Twist *)msg_in;
-  cmd_linear = msg->linear.x;
-  cmd_angular = msg->angular.z;
-  last_cmd_time = millis();
-  
-  Serial.print("Received cmd_vel: linear=");
-  Serial.print(cmd_linear);
-  Serial.print(", angular=");
-  Serial.println(cmd_angular);
 }
 
 void updateRobotState() {
@@ -335,23 +345,6 @@ void updateMotorControl() {
   }
 }
 
-// IMU, encoder and status removed in ultra-minimal variant
-
-// Simple free memory approximation (stack pointer vs heap end).
-// Works for bare-metal style Arduino cores; may be approximate on this board.
-extern unsigned int _sbrk_r(struct _reent*, ptrdiff_t); // forward declare to avoid pulling in large malloc metadata
-uint32_t freeMemory() {
-  // Use linker symbols if available (common names for ARM GCC newlib). If not, fallback to stack-heap diff.
-  char stack_var; // on stack
-  // These externs may not exist; if they don't, the compiler will optimize them out unless referenced.
-  extern char _end;      // end of bss
-  extern char _estack;   // top of stack (origin + size)
-  // Heuristic: current stack address minus current heap end.
-  // micro_ros_arduino uses malloc; we can query __malloc_free_list indirectly but keep it minimal.
-  char* heap_end = (char*)malloc(0); // calling malloc(0) returns current heap end pointer in many newlib implementations
-  if (!heap_end) {
-    return 0; // allocation failure indicates severe memory pressure
-  }
-  uint32_t free_bytes = (&stack_var > heap_end) ? (&stack_var - heap_end) : 0;
-  return free_bytes;
-}
+// Custom protocol implementation complete
+// Motor control + LED visualization driven by serial commands from Nano ESP32
+// Much more stable and debuggable than micro-ROS approach

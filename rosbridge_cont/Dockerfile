@@ -1,21 +1,21 @@
 # Koristi službeni ROS 2 Humble image kao osnovu
 FROM ros:humble
 
-# ------------------------------------------------------------
+# ---------------------------------------------------------
 # ROSBridge container
-# Pojednostavljeni Dockerfile – uklonjeno ručno mijenjanje ROS repozitorija
-# jer bazni image već sadrži ispravno podešen keyring i source liste.
-# Dodani su dijagnostički koraci u slučaju da apt zakaže (exit code 100).
+# Simplified Dockerfile – removed manual ROS repository changes
+# since the base image already contains a correctly configured keyring and source lists.
+# Diagnostic steps have been added in case apt fails (exit code 100).
 # ------------------------------------------------------------
 
 ENV DEBIAN_FRONTEND=noninteractive \
     ROS_DISTRO=humble
 
-## Opcionalni argumenti
+# Optional arguments
 ARG ROS_EXTRA_PACKAGES=""
 ARG DEBUG_APT="false"
 
-# Instalacija potrebnih ROS paketa + osnovnih alata; uz robustniji apt update
+# Install necessary ROS packages + basic tools; with more robust apt update
 RUN set -eu; \
         echo "[rosbridge] Updating APT metadata..."; \
         apt-get update -o Acquire::Retries=3; \
@@ -39,14 +39,16 @@ RUN set -eu; \
         rm -rf /var/lib/apt/lists/*; \
         if [ "$DEBUG_APT" = "true" ]; then set +x; fi
 
-# Postavi radni direktorij na /ros_ws
+# Set working directory to /ros_ws
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc
+RUN echo "export PS1='\[\033[1;34m\]rosbridge: \[\033[0m\]'" >> /root/.bashrc
 WORKDIR /ros_ws
 
-# Kopiraj samo manifest datoteke prvo (bolje keširanje) pa ostatak izvornog koda
+# Copy only manifest files first (better caching) then the rest of the source code
 COPY ./src /ros_ws/src
 
-# Build radnog prostora
+# Build workspace
 RUN bash -c "set -e; source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build --symlink-install"
 
-# Pokreni rosbridge automatski koristeći XML launch datoteku
+# Start rosbridge automatically using XML launch file
 CMD ["bash", "-c", "source /opt/ros/${ROS_DISTRO}/setup.bash && source /ros_ws/install/setup.bash && ros2 launch rosbridge_server rosbridge_websocket_launch.xml"]

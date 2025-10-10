@@ -1,6 +1,6 @@
 FROM ros:humble
 
-# Instalirajte potrebne alate i ROS 2 pakete
+# Install necessary tools and ROS 2 packages
 RUN apt-get update && apt-get install -y \
     apt-utils \
     python3-pip \
@@ -10,21 +10,21 @@ RUN apt-get update && apt-get install -y \
     imagemagick \
     && rm -rf /var/lib/apt/lists/*
 
-# Postavite ROS 2 okruženje u bashrc
+# Service environment setup
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 
-# Postavite prilagođeni prompt (samo 'slam_cont:' u plavoj boji)
+# Set custom prompt (just 'slam_cont:' in blue)
 RUN echo "export PS1='\[\033[1;34m\]slam_cont: \[\033[0m\]'" >> /root/.bashrc
 
-# Instalirajte potrebne Python ovisnosti
+# Install necessary Python dependencies
 RUN pip3 install psycopg2 pyyaml pillow
 
-# Kopirajte Python skriptu u container
+# Copy Python script into container
 WORKDIR /app
 COPY slam_manager.py /app/slam_manager.py
 COPY run_mapping.sh /app/run_mapping.sh
 RUN chmod +x /app/run_mapping.sh
 
-# Jedinstveni način rada: uvijek se pokreće slam_manager (slam_toolbox za lokalizaciju),
-# a mapiranje + snimanje može se ručno pokrenuti naredbom: bash /app/run_mapping.sh
+# Unique operation mode: always runs slam_manager (slam_toolbox for localization),
+# while mapping + recording can be manually started with the command: bash /app/run_mapping.sh
 CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && python3 /app/slam_manager.py"]

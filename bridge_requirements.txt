@@ -1,0 +1,17 @@
+# Robot Serial Bridge Requirements
+# Run: pip install -r bridge_requirements.txt
+
+# Core ROS 2 dependencies
+rclpy>=3.0.0
+
+# Standard Python packages for ROS message types
+geometry-msgs>=4.0.0
+sensor-msgs>=4.0.0
+nav-msgs>=4.0.0
+std-msgs>=4.0.0
+
+# Serial communication
+pyserial>=3.5
+
+# Optional: For enhanced logging and debugging
+colorlog>=6.0.0
