@@ -12,8 +12,8 @@ RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
 
 WORKDIR /app
 
-# Copy bridge script
-COPY ../robot_serial_bridge.py /app/robot_serial_bridge.py
+# Copy bridge script (local copy placed in this directory)
+COPY robot_serial_bridge.py /app/robot_serial_bridge.py
 COPY run_bridge.sh /app/run_bridge.sh
 RUN chmod +x /app/run_bridge.sh
 
