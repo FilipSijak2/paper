@@ -18,6 +18,17 @@ RUN set -e; \
     ; \
     rm -rf /var/lib/apt/lists/*
 
+# Optional: install editors (nano) only when explicitly requested.
+# Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
+ARG INSTALL_EDITORS=true
+RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
+            echo "Installing editors (nano) for debugging..." && \
+            apt-get update && apt-get install -y --no-install-recommends nano && \
+            rm -rf /var/lib/apt/lists/*; \
+        else \
+            echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
+        fi
+
 # Python dependencies (colcon via apt now)
 RUN pip3 install --no-cache-dir pyserial numpy
 
