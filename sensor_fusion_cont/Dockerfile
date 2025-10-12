@@ -51,6 +51,12 @@ RUN bash -c "set -e; source /opt/ros/humble/setup.bash; echo '[DEBUG] Running co
     colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     || { code=$?; echo '[ERROR] Colcon failed; dumping first 120 lines of each log file:'; if [ -d log ]; then find log -type f -maxdepth 4 -print -exec sed -n '1,120p' {} \; ; fi; exit $code; }"
 
-# Source overlay and launch package
+# Runtime wrapper (self-healing build if image tag mismatch or cache issue)
+COPY run_sensor_fusion.sh /app/run_sensor_fusion.sh
+RUN chmod +x /app/run_sensor_fusion.sh
+
+# Version tag (can be overridden at run time)
 ENV SF_VERSION_TAG=unset
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /app/ws/install/setup.bash && echo SENSOR_FUSION_IMAGE_TAG=$SF_VERSION_TAG && ros2 launch sensor_fusion_pkg sensor_fusion.launch.py"]
+
+# Use wrapper script that ensures workspace is built & sourced before launching
+CMD ["bash", "/app/run_sensor_fusion.sh"]

@@ -37,6 +37,10 @@ USE_REPLAY=${USE_REPLAY:-0}   # 0 = no replay (default), 1 = perform replay refi
 STORAGE_BACKEND=${STORAGE_BACKEND:-sqlite3} # sqlite3|mcap
 FALLBACK_MAP_TIMEOUT=${FALLBACK_MAP_TIMEOUT:-8}  # seconds to wait for /map in fallback exporter
 MAP_AVAILABLE_TIMEOUT=${MAP_AVAILABLE_TIMEOUT:-10} # total seconds to wait after CTRL+C for /map to appear
+FORCE_NEW_SLAM=${FORCE_NEW_SLAM:-0} # 1 = kill any existing slam_toolbox and start fresh with params
+SLAM_PARAMS_FILE=${SLAM_PARAMS_FILE:-/app/slam_params.yaml} # path to param file (mounted from compose)
+PUBLISH_MAP_PARAM_KEY=${PUBLISH_MAP_PARAM_KEY:-publish_map}
+SAVE_SERVICE_TYPE=""  # will be detected on first successful SaveMap call; keep empty safely under set -u with :- expansion
 
 # Reentrancy lock for cleanup
 CLEANUP_LOCK=0
@@ -114,18 +118,51 @@ log "Root: $MAP_ROOT"
 
 # Detect existing slam_toolbox instance (avoid parallel)
 EXISTING_SLAM_PID=""
+start_slam(){
+  local reason="$1"; shift || true
+  info "Starting slam_toolbox ($reason)..."
+  if [[ -f "$SLAM_PARAMS_FILE" ]]; then
+    # Ensure publish_map true is present (non-destructive append if missing)
+    if ! grep -q "^\s*${PUBLISH_MAP_PARAM_KEY}:" "$SLAM_PARAMS_FILE"; then
+      warn "Param ${PUBLISH_MAP_PARAM_KEY} not found in $SLAM_PARAMS_FILE; appending publish_map: true under slam_toolbox: block"
+      # naive append; assumes file has slam_toolbox: root. Could be improved with yq.
+      printf '\n# Injected to ensure /map publication\n  %s: true\n' "${PUBLISH_MAP_PARAM_KEY}" >> "$SLAM_PARAMS_FILE" || true
+    fi
+    ros2 launch slam_toolbox online_async_launch.py params_file:=$SLAM_PARAMS_FILE &
+  else
+    warn "Params file $SLAM_PARAMS_FILE not found; launching without explicit params (may not publish /map)."
+    ros2 launch $SLAM_LAUNCH &
+  fi
+  SLAM_PID=$!
+  sleep 5
+  # Post-launch param enforcement (best-effort)
+  for n in slam_toolbox async_slam_toolbox_node async_slam_toolbox; do
+    ros2 param set $n ${PUBLISH_MAP_PARAM_KEY} true >/dev/null 2>&1 || true
+  done
+}
+
+EXISTING_SLAM_PID=""
 if pgrep -f "slam_toolbox.*online_async_launch.py" >/dev/null 2>&1; then
   EXISTING_SLAM_PID=$(pgrep -f "slam_toolbox.*online_async_launch.py" | head -n1)
-  info "Detected existing slam_toolbox process (pid ${EXISTING_SLAM_PID}); will reuse for live mapping (no new instance)."
+  if [[ "$FORCE_NEW_SLAM" == "1" ]]; then
+    warn "FORCE_NEW_SLAM=1 -> killing existing slam_toolbox (pid ${EXISTING_SLAM_PID}) to relaunch with params"
+    kill "$EXISTING_SLAM_PID" || true
+    sleep 2
+    start_slam "forced restart"
+  else
+    info "Detected existing slam_toolbox process (pid ${EXISTING_SLAM_PID}); will reuse (set FORCE_NEW_SLAM=1 to restart)."
+  fi
 else
-  info "Starting new slam_toolbox instance..."
-  ros2 launch $SLAM_LAUNCH &
-  SLAM_PID=$!
-  sleep 4
-  # Try to enforce publish_map param (node names sometimes: slam_toolbox or async_slam_toolbox)
-  for n in slam_toolbox async_slam_toolbox_node async_slam_toolbox; do
-    ros2 param set $n publish_map true >/dev/null 2>&1 || true
-  done
+  start_slam "fresh start"
+fi
+
+# Early check: wait briefly for /map; if absent and FORCE_NEW_SLAM=2 (aggressive), restart once automatically
+if [[ "$FORCE_NEW_SLAM" == "2" ]]; then
+  if ! ros2 topic list | grep -q "^${WAIT_MAP_TOPIC}$"; then
+    warn "/map not present after initial launch; restarting slam_toolbox once (FORCE_NEW_SLAM=2 aggressive mode)"
+    if [[ -n "${SLAM_PID:-}" ]] && kill -0 ${SLAM_PID} 2>/dev/null; then kill ${SLAM_PID}; wait ${SLAM_PID} 2>/dev/null || true; fi
+    start_slam "aggressive restart"
+  fi
 fi
 
 # Start rosbag record
@@ -367,7 +404,7 @@ cleanup(){
   if [[ "${USE_NAV2_EXPORT}" != "never" ]]; then
     local have_nav2="false"
     if [[ -d /opt/ros/humble/share/nav2_map_server ]]; then have_nav2="true"; fi
-    if [[ "${USE_NAV2_EXPORT}" == "always" ]] || [[ "${USE_NAV2_EXPORT}" == "auto" && "$SAVE_SERVICE_TYPE" != "nav2_msgs/srv/SaveMap" ]]; then
+  if [[ "${USE_NAV2_EXPORT}" == "always" ]] || [[ "${USE_NAV2_EXPORT}" == "auto" && "${SAVE_SERVICE_TYPE:-}" != "nav2_msgs/srv/SaveMap" ]]; then
       if [[ "$have_nav2" == "true" ]]; then
   info "Export occupancy (mode=${OCCUPANCY_MODE})"
         # Use float for save_map_timeout parameter to satisfy rcl parameter type expectations
