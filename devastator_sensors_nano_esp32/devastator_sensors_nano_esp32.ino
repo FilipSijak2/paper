@@ -250,33 +250,16 @@ float x_pose = 0.0f;
 float y_pose = 0.0f;
 float yaw = 0.0f;
 
-// ---------------- Packet Protocol ----------------
-static const uint32_t CMD_HEADER = 0xA55AA55A;
-static const uint16_t CMD_TAIL   = 0x55AA;
-struct __attribute__((packed)) CommandPacket {
-  uint32_t header;
-  float linear;
-  float angular;
-  uint16_t crc;
-  uint16_t tail;
-};
-
-uint16_t crc16_ccitt(const uint8_t* data, uint16_t len, uint16_t crc = 0xFFFF) {
-  for (uint16_t i = 0; i < len; ++i) {
-    crc ^= (uint16_t)data[i] << 8;
-    for (uint8_t b = 0; b < 8; ++b) {
-      if (crc & 0x8000) crc = (crc << 1) ^ 0x1021; else crc <<= 1;
-    }
-  }
-  return crc;
-}
-
+// Helper function to build command packets (using the protocol-defined structure)
 void buildCommand(CommandPacket &pkt, float lin, float ang) {
-  pkt.header = CMD_HEADER;
-  pkt.linear = lin;
-  pkt.angular = ang;
-  pkt.tail = CMD_TAIL;
-  pkt.crc = crc16_ccitt(reinterpret_cast<const uint8_t*>(&pkt), 12);
+  pkt.header = COMMAND_PACKET_HEADER;
+  pkt.version = PROTOCOL_VERSION;
+  pkt.sequence = 0; // Will be set by caller
+  pkt.timeout_ms = 1200;
+  pkt.linear_x = lin;
+  pkt.angular_z = ang;
+  pkt.tail = COMMAND_PACKET_TAIL;
+  pkt.crc16 = crc16_ccitt(reinterpret_cast<const uint8_t*>(&pkt), sizeof(CommandPacket) - 6);
 }
 
 // Forward declarations
@@ -305,7 +288,7 @@ void setup() {
     Serial.println("IMU init FAIL");
     sensor_packet.error_flags |= ERROR_FLAG_IMU_FAIL;
   } else {
-    imu.setAccelRange(LSM6DS_ACCEL_RANGE_4_G);
+    imu.setAccelRange(LSM6DSO32_ACCEL_RANGE_4_G);
     imu.setGyroRange(LSM6DS_GYRO_RANGE_500_DPS);
     imu.setAccelDataRate(LSM6DS_RATE_52_HZ);
     imu.setGyroDataRate(LSM6DS_RATE_52_HZ);
@@ -394,7 +377,6 @@ void send_sensor_packet() {
   sensor_packet.sequence = sensor_seq++;
   sensor_packet.battery_mv = 12000; // Placeholder - add ADC reading if needed
   sensor_packet.temperature = 75;   // 25°C (temp + 50)
-  sensor_packet.free_heap_kb = ESP.getFreeHeap() / 1024;
   
   finalize_sensor_packet(&sensor_packet);
   Serial.write((uint8_t*)&sensor_packet, sizeof(SensorPacket));
@@ -521,3 +503,4 @@ void send_motor_command() {
   build_command_packet(&uno_cmd, cmd_linear, cmd_angular, command_seq++);
   MotorSerial.write((uint8_t*)&uno_cmd, sizeof(CommandPacket));
 }
+

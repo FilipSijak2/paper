@@ -54,31 +54,11 @@ static inline uint16_t crc16_ccitt(const uint8_t* data, uint16_t len, uint16_t c
 static inline bool validate_command_packet(const CommandPacket* pkt) {
     if (pkt->header != COMMAND_PACKET_HEADER || pkt->tail != COMMAND_PACKET_TAIL) return false;
     if (pkt->version != PROTOCOL_VERSION) return false;
-    uint16_t expected = crc16_ccitt((const uint8_t*)pkt, sizeof(CommandPacket) - 6);
+    uint16_t expected = crc16_ccitt((const uint8_t*)pkt, sizeof(CommandPacket) - 6, 0xFFFF);
     return expected == pkt->crc16;
 }
 
 // ===== END PROTOCOL DEFINITIONS =====
-
-// CRC-16/CCITT (simplified version for UNO)
-uint16_t crc16_ccitt(const uint8_t* data, uint16_t len) {
-    uint16_t crc = 0xFFFF;
-    for (uint16_t i = 0; i < len; ++i) {
-        crc ^= (uint16_t)data[i] << 8;
-        for (uint8_t b = 0; b < 8; ++b) {
-            if (crc & 0x8000) crc = (crc << 1) ^ 0x1021;
-            else crc <<= 1;
-        }
-    }
-    return crc;
-}
-
-bool validate_command_packet(const CommandPacket* pkt) {
-    if (pkt->header != COMMAND_PACKET_HEADER || pkt->tail != COMMAND_PACKET_TAIL) return false;
-    if (pkt->version != PROTOCOL_VERSION) return false;
-    uint16_t expected = crc16_ccitt((const uint8_t*)pkt, sizeof(CommandPacket) - 6);
-    return expected == pkt->crc16;
-}
 
 // Hardware configuration
 const int RPWM_R = 9;   // Right motor PWM
