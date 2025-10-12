@@ -7,6 +7,7 @@ RUN set -e; \
         python3-pip \
         python3-colcon-common-extensions \
         python3-yaml \
+        ros-humble-rmw-cyclonedds-cpp \
         ros-humble-rclpy \
         ros-humble-robot-localization \
         ros-humble-imu-tools \

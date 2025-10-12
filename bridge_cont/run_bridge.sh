@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
-# Source ROS environment
+# Source ROS environment (temporarily disable unbound variable check)
+set +u
 source /opt/ros/humble/setup.bash
+set -u
 
 PORT="${SERIAL_PORT:-/dev/ttyUSB0}"
 BAUD="${SERIAL_BAUD:-115200}"

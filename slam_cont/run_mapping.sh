@@ -19,9 +19,27 @@ DB_HOST="db_cont"
 DB_NAME="robot_data"
 DB_USER="app_user"
 DB_PASS="app_pass"
-SAVE_SERVICE="/slam_toolbox/save_map"
+SAVE_SERVICE="/slam_toolbox/save_map"          # slam_toolbox exposes a SaveMap service compatible with nav2_msgs/srv/SaveMap in Humble
+SAVE_SERVICE_TYPE_DEFAULT="nav2_msgs/srv/SaveMap"  # We'll verify at runtime
 SLAM_LAUNCH="slam_toolbox online_async_launch.py"
 RESTART_LOCALIZATION=${RESTART_LOCALIZATION:-0}
+MAX_SAVEMAP_SECONDS=${MAX_SAVEMAP_SECONDS:-10}   # Max wall time for a single SaveMap call
+USE_NAV2_EXPORT=${USE_NAV2_EXPORT:-auto}        # auto|always|never
+OCCUPANCY_MODE=${OCCUPANCY_MODE:-trinary}
+OCC_FREE_THRESH=${OCC_FREE_THRESH:-0.25}
+OCC_OCC_THRESH=${OCC_OCC_THRESH:-0.65}
+NAV2_MAP_SERVER_NODE=temp_nav2_map_server
+NAV2_SAVE_TIMEOUT=${NAV2_SAVE_TIMEOUT:-20}
+WAIT_MAP_TOPIC=${WAIT_MAP_TOPIC:-/map}
+WAIT_MAP_TIMEOUT=${WAIT_MAP_TIMEOUT:-8}
+BAG_REPLAY_RATE=${BAG_REPLAY_RATE:-1.0}
+USE_REPLAY=${USE_REPLAY:-0}   # 0 = no replay (default), 1 = perform replay refinement
+STORAGE_BACKEND=${STORAGE_BACKEND:-sqlite3} # sqlite3|mcap
+FALLBACK_MAP_TIMEOUT=${FALLBACK_MAP_TIMEOUT:-8}  # seconds to wait for /map in fallback exporter
+MAP_AVAILABLE_TIMEOUT=${MAP_AVAILABLE_TIMEOUT:-10} # total seconds to wait after CTRL+C for /map to appear
+
+# Reentrancy lock for cleanup
+CLEANUP_LOCK=0
 
 RED="\033[0;31m"; GREEN="\033[0;32m"; YELLOW="\033[1;33m"; BLUE="\033[0;34m"; NC="\033[0m"
 
@@ -41,13 +59,19 @@ while [[ $# -gt 0 ]]; do
     --db-user) DB_USER="$2"; shift 2;;
   --db-pass) DB_PASS="$2"; shift 2;;
   --root-dir) MAP_ROOT="$2"; shift 2;;
+    --with-replay) USE_REPLAY=1; shift;;
+    --storage) STORAGE_BACKEND="$2"; shift 2;;
     *) warn "Unknown arg $1"; shift;;
   esac
 done
 
-# Ensure ROS is sourced
+# Ensure ROS is sourced (handle unbound AMENT_TRACE_SETUP_FILES under set -u)
 if [[ -f /opt/ros/humble/setup.bash ]]; then
+  # Provide default to avoid 'unbound variable' in setup files when tracing disabled
+  : "${AMENT_TRACE_SETUP_FILES:=}"
+  set +u
   source /opt/ros/humble/setup.bash
+  set -u
 else
   err "ROS 2 environment not found"; exit 1
 fi
@@ -63,6 +87,20 @@ MAP_BAG_REPLAY_BASE="$REPLAY_DIR/map"
 mkdir -p "$BAG_DIR" "$REPLAY_DIR" "$FINAL_DIR" "$LIVE_DIR"
 MAP_OUTPUT_BASE="$LIVE_DIR/map"
 
+# Ensure bag directory uniqueness (if user re-runs within same second or leftover from aborted run)
+if [[ -e "$BAG_DIR" ]]; then
+  if [[ -n "$(find "$BAG_DIR" -mindepth 1 -maxdepth 1 2>/dev/null)" ]]; then
+    suffix=1
+    while [[ -e "${BAG_DIR}_$suffix" ]]; do suffix=$((suffix+1)); done
+    warn "Bag directory $BAG_DIR already exists and not empty -> using ${BAG_DIR}_$suffix"
+    BAG_DIR="${BAG_DIR}_$suffix"
+    mkdir -p "$BAG_DIR"
+  else
+    # Empty leftover
+    warn "Reusing empty existing bag dir $BAG_DIR"
+  fi
+fi
+
 # Resolve topics list
 if [[ -n "$TOPICS_FILE" ]]; then
   if [[ ! -f "$TOPICS_FILE" ]]; then err "Topics file $TOPICS_FILE not found"; exit 1; fi
@@ -71,8 +109,8 @@ else
   # Default essential topics for slam_toolbox map reproduction (adjust as needed)
   TOPICS="/tf /tf_static /odom /scan /imu /robot_description /clock"
 fi
-info "Recording topics: $TOPICS"
-info "Map root directory: $MAP_ROOT"
+info "Topics: $TOPICS"
+log "Root: $MAP_ROOT"
 
 # Detect existing slam_toolbox instance (avoid parallel)
 EXISTING_SLAM_PID=""
@@ -84,32 +122,195 @@ else
   ros2 launch $SLAM_LAUNCH &
   SLAM_PID=$!
   sleep 4
+  # Try to enforce publish_map param (node names sometimes: slam_toolbox or async_slam_toolbox)
+  for n in slam_toolbox async_slam_toolbox_node async_slam_toolbox; do
+    ros2 param set $n publish_map true >/dev/null 2>&1 || true
+  done
 fi
 
 # Start rosbag record
-info "Starting rosbag record into $BAG_DIR (session $SESSION_ID)"
-if [[ $DURATION -gt 0 ]]; then
-  ros2 bag record -o "$BAG_DIR" $TOPICS --max-bag-duration $DURATION &
-else
-  ros2 bag record -o "$BAG_DIR" $TOPICS &
+info "Starting rosbag record into $BAG_DIR (session $SESSION_ID | storage=${STORAGE_BACKEND} | replay=$([[ $USE_REPLAY -eq 1 ]] && echo on || echo off))"
+ROS2_BAG_BASE="$BAG_DIR/record"
+if [[ -e "$ROS2_BAG_BASE"* ]]; then
+  warn "Existing record base $ROS2_BAG_BASE* found; choosing new base name"
+  n=1; while ls "${ROS2_BAG_BASE}_${n}"*.db3 >/dev/null 2>&1; do n=$((n+1)); done
+  ROS2_BAG_BASE="${ROS2_BAG_BASE}_${n}"
 fi
+REC_CMD=(ros2 bag record -o "$ROS2_BAG_BASE" $TOPICS)
+if [[ "$STORAGE_BACKEND" != "sqlite3" ]]; then REC_CMD+=(--storage "$STORAGE_BACKEND"); fi
+if [[ $DURATION -gt 0 ]]; then REC_CMD+=(--max-bag-duration $DURATION); fi
+"${REC_CMD[@]}" &
 BAG_PID=$!
+sleep 2
+if ! kill -0 $BAG_PID 2>/dev/null; then
+  err "ros2 bag record process exited early (PID $BAG_PID). Check topics / permissions. Continuing but replay & final map will be skipped."
+  BAG_PID=0
+else
+  info "ros2 bag record running (pid=$BAG_PID)"
+fi
+
+# Function to save live map immediately (optional intermediate)
+# Helper: wait for a service to appear (since 'ros2 service wait' subcommand does not exist in Humble base install)
+wait_for_service(){
+  local svc="$1"; local timeout="${2:-5}"; local start=$(date +%s)
+  while true; do
+    if ros2 service list 2>/dev/null | grep -q "^${svc}$"; then
+      return 0
+    fi
+    if (( $(date +%s) - start >= timeout )); then
+      return 1
+    fi
+    sleep 0.5
+  done
+}
+
+# Wait until a topic appears and (optionally) a first message is received
+wait_for_topic(){
+  local topic="$1"; local timeout="${2:-5}"; local start=$(date +%s)
+  while true; do
+    if ros2 topic list 2>/dev/null | grep -q "^${topic}$"; then
+      # Try to receive a single message quickly (best-effort)
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 2s ros2 topic echo -n1 "$topic" >/dev/null 2>&1 && return 0 || return 0
+      else
+        return 0
+      fi
+    fi
+    if (( $(date +%s) - start >= timeout )); then
+      return 1
+    fi
+    sleep 0.5
+  done
+}
 
 # Function to save live map immediately (optional intermediate)
 save_live_map(){
   local base="$1"
-  info "Invoking SaveMap service to write ${base}.pgm/yaml"
-  if ros2 service wait "$SAVE_SERVICE" --timeout 5; then
-    ros2 service call "$SAVE_SERVICE" nav2_msgs/srv/SaveMap "{map_url: '${base}', map_format: 'pgm'}" || warn "SaveMap call failed"
-  else
-    warn "SaveMap service not available"
+  info "Invoking SaveMap (target base: ${base})"
+  if ! wait_for_service "$SAVE_SERVICE" 8; then
+    warn "SaveMap service not available (timeout)"; return 1
+  fi
+
+  # Detect actual service type (once) to avoid hard-coding wrong interface
+  if [[ -z "${SAVE_SERVICE_TYPE:-}" ]]; then
+    SAVE_SERVICE_TYPE=$(ros2 service type "$SAVE_SERVICE" 2>/dev/null || echo "$SAVE_SERVICE_TYPE_DEFAULT")
+    log "SaveMap type: $SAVE_SERVICE_TYPE"
+  fi
+
+  case "$SAVE_SERVICE_TYPE" in
+    nav2_msgs/srv/SaveMap)
+  log "nav2 SaveMap -> occupancy expected"
+      local req="{map_url: '${base}', image_format: 'pgm', map_mode: '${OCCUPANCY_MODE}', free_thresh: ${OCC_FREE_THRESH}, occupied_thresh: ${OCC_OCC_THRESH}}"
+      if command -v timeout >/dev/null 2>&1; then
+        if ! timeout ${MAX_SAVEMAP_SECONDS}s ros2 service call "$SAVE_SERVICE" "$SAVE_SERVICE_TYPE" "$req"; then
+          warn "SaveMap (nav2_msgs) call timed out/failed"; return 1; fi
+      else
+        if ! ros2 service call "$SAVE_SERVICE" "$SAVE_SERVICE_TYPE" "$req"; then
+          warn "SaveMap (nav2_msgs) call failed"; return 1; fi
+      fi
+      ;;
+    slam_toolbox/srv/SaveMap)
+  log "slam_toolbox SaveMap -> internal only"
+      local req="{name: {data: '${base}'}}"
+      if command -v timeout >/dev/null 2>&1; then
+        if ! timeout ${MAX_SAVEMAP_SECONDS}s ros2 service call "$SAVE_SERVICE" "$SAVE_SERVICE_TYPE" "$req"; then
+          warn "SaveMap (slam_toolbox) call timed out/failed"; return 1; fi
+      else
+        if ! ros2 service call "$SAVE_SERVICE" "$SAVE_SERVICE_TYPE" "$req"; then
+          warn "SaveMap (slam_toolbox) call failed"; return 1; fi
+      fi
+  log "slam_toolbox SaveMap success"
+      ;;
+    *)
+      warn "Unknown SaveMap service type '$SAVE_SERVICE_TYPE' – cannot construct request"; return 1 ;;
+  esac
+}
+
+# Fallback exporter: subscribes once to /map and writes PGM + YAML if map_saver_cli fails
+fallback_export_map(){
+  local base="${1:-${FALLBACK_BASE:-/tmp/fallback_map}}"; local timeout="${2:-${FALLBACK_MAP_TIMEOUT}}"; local topic="${3:-${WAIT_MAP_TOPIC}}";
+  info "Fallback map export from ${topic} (timeout ${timeout}s)"
+  python3 - <<'PYEOF'
+import os, sys, time, math
+import rclpy
+from rclpy.node import Node
+from nav_msgs.msg import OccupancyGrid
+
+base=os.environ['FALLBACK_BASE']
+topic=os.environ.get('FALLBACK_TOPIC','/map')
+deadline=time.time()+float(os.environ.get('FALLBACK_TIMEOUT','6'))
+
+class Once(Node):
+  def __init__(self):
+    super().__init__('fallback_map_exporter')
+    self.sub=self.create_subscription(OccupancyGrid, topic, self.cb, 10)
+    self.msg=None
+  def cb(self,msg):
+    if self.msg is None:
+      self.msg=msg
+
+rclpy.init()
+node=Once()
+while rclpy.ok() and node.msg is None and time.time()<deadline:
+  rclpy.spin_once(node, timeout_sec=0.2)
+if node.msg is None:
+  print('[FALLBACK] No map message received', file=sys.stderr)
+  rclpy.shutdown(); sys.exit(2)
+m=node.msg
+width=m.info.width; height=m.info.height; res=m.info.resolution
+data=m.data
+if len(data)!=width*height:
+  print('[FALLBACK] Data length mismatch', file=sys.stderr)
+  rclpy.shutdown(); sys.exit(3)
+# PGM: invert occupancy (unknown=205, free=254, occ=0 typical) – replicate nav2 style
+out_pgm=base+'.pgm'
+out_yaml=base+'.yaml'
+with open(out_pgm,'wb') as f:
+  f.write(b'P5\n# fallback exporter\n%d %d\n255\n'%(width,height))
+  # nav2 map_saver writes from top to bottom; OccupancyGrid data is row-major from (0,0) lower-left
+  # We'll flip vertically for same orientation as nav2 output
+  for row in range(height-1,-1,-1):
+    start=row*width; end=start+width
+    line=data[start:end]
+    buf=bytearray(width)
+    for i,val in enumerate(line):
+      if val<0: gv=205
+      elif val>=100: gv=0
+      elif val<=0: gv=254
+      else:
+        # linear interpolate between free(254) and occ(0)
+        gv=int((100-val)/100*254)
+      buf[i]=gv
+    f.write(buf)
+yaml_content=f"""image: {os.path.basename(out_pgm)}
+resolution: {res}
+origin: [0.0, 0.0, 0.0]
+negate: 0
+occupied_thresh: 0.65
+free_thresh: 0.25
+mode: trinary
+"""
+with open(out_yaml,'w') as f: f.write(yaml_content)
+print('[FALLBACK] Map written', out_pgm, out_yaml)
+rclpy.shutdown()
+PYEOF
+  local rc=$?
+  if [[ $rc -ne 0 ]]; then
+  warn "Fallback exporter failed (rc=$rc)"
   fi
 }
 
 # Graceful shutdown handler
 cleanup(){
+  if (( CLEANUP_LOCK == 1 )); then
+    warn "Cleanup already in progress – ignoring extra signal. Please wait..."
+    return
+  fi
+  CLEANUP_LOCK=1
   echo
   warn "CTRL+C detected: stopping recording & SLAM; will extract final map from bag replay."
+  # Ignore further INT/TERM so da ne prekinemo replay / map saver
+  trap '' INT TERM
   set +e
   if kill -0 $BAG_PID 2>/dev/null; then kill $BAG_PID; wait $BAG_PID 2>/dev/null; fi
   if [[ -n "${SLAM_PID:-}" ]] && kill -0 ${SLAM_PID} 2>/dev/null; then
@@ -117,28 +318,82 @@ cleanup(){
   else
     info "Leaving existing slam_toolbox (pid ${EXISTING_SLAM_PID}) to be stopped externally if desired."
   fi
-  # First attempt to save current live map
-  save_live_map "$MAP_OUTPUT_BASE"
+  # First attempt to save current live map (only if slam_toolbox service reachable within timeout)
+  save_live_map "$MAP_OUTPUT_BASE" || warn "Live SaveMap skipped/failed (non-fatal)"
 
-  # Replay bag to regenerate consistent final map
-  info "Replaying bag for clean map (fresh slam_toolbox instance)"
-  ros2 launch $SLAM_LAUNCH &
-  REPLAY_SLAM_PID=$!
-  sleep 4
-  # Play bag (no loop) - no need to record again
-  ros2 bag play "$BAG_DIR"/*.db3 --clock 2> /dev/null &
-  PLAY_PID=$!
+  # Optional replay bag to regenerate consistent final map (if enabled)
+  # Detect bag presence using metadata.yaml to avoid glob race
+  HAVE_BAG_FILES=""
+  if [[ -d "${ROS2_BAG_BASE}" && -f "${ROS2_BAG_BASE}/metadata.yaml" ]]; then
+    HAVE_BAG_FILES=1
+  else
+    # Fallback: any db3 anywhere under bag dir
+    first_db3=$(find "$BAG_DIR" -maxdepth 2 -name '*.db3' -print -quit 2>/dev/null || true)
+    [[ -n "$first_db3" ]] && HAVE_BAG_FILES=1
+  fi
+  if [[ $USE_REPLAY -eq 1 ]]; then
+    if [[ -z "$HAVE_BAG_FILES" ]]; then
+      warn "No bag data (metadata.yaml) found under $BAG_DIR – skipping replay and final SaveMap."
+      PLAY_PID=0; REPLAY_SLAM_PID=0
+    else
+    info "Replay mapping (base ${ROS2_BAG_BASE})"
+      ros2 launch $SLAM_LAUNCH &
+      REPLAY_SLAM_PID=$!
+      sleep 4
+      ros2 bag play "${ROS2_BAG_BASE}" --clock --rate ${BAG_REPLAY_RATE} 2> /dev/null &
+      PLAY_PID=$!
+    fi
+  else
+    info "Replay disabled (USE_REPLAY=0); using live map snapshot only."
+    PLAY_PID=0; REPLAY_SLAM_PID=0
+  fi
 
-  # Wait some seconds for map to build incrementally
-  info "Allowing replay to build map (timed wait)"
-  TIME_WAIT=25
-  while [[ $TIME_WAIT -gt 0 ]]; do
-    sleep 5; TIME_WAIT=$((TIME_WAIT-5)); echo -n '.'
-  done
-  echo
-  # Save final map
   FINAL_BASE="$FINAL_DIR/map"
-  save_live_map "$FINAL_BASE"
+  if [[ $USE_REPLAY -eq 1 && -n "$HAVE_BAG_FILES" ]]; then
+  log "Replay wait"
+    TIME_WAIT=25
+    while [[ $TIME_WAIT -gt 0 ]]; do sleep 5; TIME_WAIT=$((TIME_WAIT-5)); echo -n '.'; done; echo
+    save_live_map "$FINAL_BASE" || warn "Final SaveMap failed"
+  else
+  log "No replay final SaveMap path"
+  fi
+
+  # Wait explicitly for /map to appear if we expect occupancy export or fallback
+  if [[ "${USE_NAV2_EXPORT}" != "never" ]]; then
+    info "Waiting up to ${MAP_AVAILABLE_TIMEOUT}s for ${WAIT_MAP_TOPIC} before export";
+    wait_for_topic "${WAIT_MAP_TOPIC}" "${MAP_AVAILABLE_TIMEOUT}" || warn "${WAIT_MAP_TOPIC} not ready before export attempts"
+  fi
+  # Optional: occupancy grid export via nav2 map_saver if available / requested
+  if [[ "${USE_NAV2_EXPORT}" != "never" ]]; then
+    local have_nav2="false"
+    if [[ -d /opt/ros/humble/share/nav2_map_server ]]; then have_nav2="true"; fi
+    if [[ "${USE_NAV2_EXPORT}" == "always" ]] || [[ "${USE_NAV2_EXPORT}" == "auto" && "$SAVE_SERVICE_TYPE" != "nav2_msgs/srv/SaveMap" ]]; then
+      if [[ "$have_nav2" == "true" ]]; then
+  info "Export occupancy (mode=${OCCUPANCY_MODE})"
+        # Use float for save_map_timeout parameter to satisfy rcl parameter type expectations
+        # Ensure /map topic is actually present (slam_toolbox may publish it; if not, map_saver will fail)
+        if wait_for_topic "${WAIT_MAP_TOPIC}" "${WAIT_MAP_TIMEOUT}"; then
+          # Use CLI flags --occ/--free; provide topic explicitly in case default differs
+          local saver_cmd=(ros2 run nav2_map_server map_saver_cli -f "${FINAL_BASE}" -t "${WAIT_MAP_TOPIC}" --occ ${OCC_OCC_THRESH} --free ${OCC_FREE_THRESH})
+          if command -v setsid >/dev/null 2>&1; then saver_cmd=(setsid "${saver_cmd[@]}"); fi
+          local SAVER_OK=0
+          if command -v timeout >/dev/null 2>&1; then
+            timeout ${NAV2_SAVE_TIMEOUT}s "${saver_cmd[@]}" || SAVER_OK=$?
+          else
+            "${saver_cmd[@]}" || SAVER_OK=$?
+          fi
+          if [[ $SAVER_OK -ne 0 || ! -f "${FINAL_BASE}.yaml" ]]; then
+            warn "map_saver_cli failed or produced no files; attempting fallback exporter"
+            FALLBACK_BASE="${FINAL_BASE}" FALLBACK_TOPIC="${WAIT_MAP_TOPIC}" FALLBACK_TIMEOUT="${FALLBACK_MAP_TIMEOUT}" fallback_export_map "${FINAL_BASE}" "${FALLBACK_MAP_TIMEOUT}" "${WAIT_MAP_TOPIC}" || true
+          fi
+        else
+          warn "/map topic not detected within ${WAIT_MAP_TIMEOUT}s; skipping nav2 occupancy export"
+        fi
+      else
+        info "nav2_map_server not present; skipping occupancy export (set USE_NAV2_EXPORT=never to silence)."
+      fi
+    fi
+  fi
   if kill -0 $PLAY_PID 2>/dev/null; then kill $PLAY_PID; fi
   if kill -0 $REPLAY_SLAM_PID 2>/dev/null; then kill $REPLAY_SLAM_PID; fi
 
@@ -249,6 +504,11 @@ PYEOF
     info "Localization slam_toolbox restarted in background (pid $!)."
   fi
   info "Done."
+  # Update latest symlink (best-effort)
+  if command -v ln >/dev/null 2>&1; then
+    ( cd "${MAP_ROOT}" 2>/dev/null && { rm -f latest; ln -s "${SESSION_ID}" latest; } ) || true
+    info "Symlink updated: ${MAP_ROOT}/latest -> ${SESSION_ID}"
+  fi
   exit 0
 }
 
