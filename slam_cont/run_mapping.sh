@@ -41,6 +41,8 @@ FORCE_NEW_SLAM=${FORCE_NEW_SLAM:-0} # 1 = kill any existing slam_toolbox and sta
 SLAM_PARAMS_FILE=${SLAM_PARAMS_FILE:-/app/slam_params.yaml} # path to param file (mounted from compose)
 PUBLISH_MAP_PARAM_KEY=${PUBLISH_MAP_PARAM_KEY:-publish_map}
 SAVE_SERVICE_TYPE=""  # will be detected on first successful SaveMap call; keep empty safely under set -u with :- expansion
+USE_DIRECT_SLAM=${USE_DIRECT_SLAM:-1}   # 1 => use ros2 run async_slam_toolbox_node with params file, bypass generic launch
+MAP_TOPIC_CANDIDATES=${MAP_TOPIC_CANDIDATES:-"/map /slam_toolbox/map /localized_map"}
 
 # Reentrancy lock for cleanup
 CLEANUP_LOCK=0
@@ -128,7 +130,12 @@ start_slam(){
       # naive append; assumes file has slam_toolbox: root. Could be improved with yq.
       printf '\n# Injected to ensure /map publication\n  %s: true\n' "${PUBLISH_MAP_PARAM_KEY}" >> "$SLAM_PARAMS_FILE" || true
     fi
-    ros2 launch slam_toolbox online_async_launch.py params_file:=$SLAM_PARAMS_FILE &
+    if [[ "$USE_DIRECT_SLAM" == "1" ]]; then
+      # Direct execution avoids extra layers & makes parameter application explicit
+      ros2 run slam_toolbox async_slam_toolbox_node --ros-args --params-file "$SLAM_PARAMS_FILE" &
+    else
+      ros2 launch slam_toolbox online_async_launch.py params_file:=$SLAM_PARAMS_FILE &
+    fi
   else
     warn "Params file $SLAM_PARAMS_FILE not found; launching without explicit params (may not publish /map)."
     ros2 launch $SLAM_LAUNCH &
@@ -164,6 +171,24 @@ if [[ "$FORCE_NEW_SLAM" == "2" ]]; then
     start_slam "aggressive restart"
   fi
 fi
+
+# Dynamic map topic detection (best-effort)
+detect_map_topic(){
+  local chosen=""; local list; list=$(ros2 topic list 2>/dev/null || true)
+  for cand in $MAP_TOPIC_CANDIDATES; do
+    if echo "$list" | grep -q "^${cand}$"; then
+      chosen="$cand"; break
+    fi
+  done
+  if [[ -n "$chosen" ]]; then
+    info "Detected map topic candidate: $chosen"
+    WAIT_MAP_TOPIC="$chosen"
+  else
+    warn "No map topic candidates present yet (${MAP_TOPIC_CANDIDATES}); will continue waiting."
+  fi
+}
+
+detect_map_topic || true
 
 # Start rosbag record
 info "Starting rosbag record into $BAG_DIR (session $SESSION_ID | storage=${STORAGE_BACKEND} | replay=$([[ $USE_REPLAY -eq 1 ]] && echo on || echo off))"

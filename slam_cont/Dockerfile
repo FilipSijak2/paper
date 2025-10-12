@@ -8,6 +8,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-nav2-msgs \
     ros-humble-nav2-map-server \
     ros-humble-slam-toolbox \
+    ros-humble-rmw-cyclonedds-cpp \
     ros-humble-rosbag2-storage-mcap \
     imagemagick \
     && rm -rf /var/lib/apt/lists/*

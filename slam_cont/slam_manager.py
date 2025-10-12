@@ -16,10 +16,23 @@ class SlamManager(Node):
         self.get_logger().info("SlamManager started (bez automatskog spremanja mape).")
 
     def start_slam_toolbox(self):
-        """Pokreće slam_toolbox kao podproces."""
-        self.get_logger().info("Pokrećem slam_toolbox...")
+        """Pokreće slam_toolbox kao podproces uz normalizaciju RMW i params."""
+        rmw = os.environ.get("RMW_IMPLEMENTATION", "")
+        if "cyclonedx" in rmw:
+            self.get_logger().warn(f"RMW tipfeler '{rmw}' -> koristim rmw_cyclonedds_cpp")
+            os.environ["RMW_IMPLEMENTATION"] = "rmw_cyclonedds_cpp"
+        elif not rmw:
+            os.environ["RMW_IMPLEMENTATION"] = "rmw_cyclonedds_cpp"
+        slam_params = "/app/slam_params.yaml"
+        cmd = [
+            "ros2", "run", "slam_toolbox", "async_slam_toolbox_node",
+            "--ros-args", "--params-file", slam_params
+        ] if os.path.exists(slam_params) else [
+            "ros2", "launch", "slam_toolbox", "online_async_launch.py"
+        ]
+        self.get_logger().info(f"Pokrećem slam_toolbox (cmd={' '.join(cmd)})")
         self.process = subprocess.Popen(
-            ["ros2", "launch", "slam_toolbox", "online_async_launch.py"],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )

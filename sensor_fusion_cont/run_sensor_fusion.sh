@@ -18,7 +18,11 @@ if [ -f /etc/timezone ]; then echo "[INFO] Container timezone: $(cat /etc/timezo
 
 echo "SENSOR_FUSION_IMAGE_TAG=${SF_VERSION_TAG:-unset}"
 
+# Prevent 'unbound variable' from /opt/ros/humble/setup.bash when set -u is active
+: "${AMENT_TRACE_SETUP_FILES:=}"
+set +u
 source "$ROS_SETUP"
+set -u
 
 needs_rebuild=false
 if [ ! -f "$OVERLAY_SETUP" ]; then
