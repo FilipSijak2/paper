@@ -14,11 +14,12 @@ TOPICS_FILE=""
 MAP_ROOT_DEFAULT="/app/maps"
 MAP_ROOT="${MAP_ROOT:-$MAP_ROOT_DEFAULT}"
 MAP_OUTPUT_BASE=""  # will be set after session id
-# DB connection defaults aligned with robot_db schema (init-db.sql)
-DB_HOST="db_cont"
-DB_NAME="robot_data"
-DB_USER="app_user"
-DB_PASS="app_pass"
+# DB connection defaults (ALLOW override from container environment). NOTE: earlier hard-coded values blocked compose env.
+# For host networking, service/container names (db_cont, db, database) usually will NOT resolve -> prefer localhost / 127.0.0.1.
+DB_HOST="${DB_HOST:-localhost}"
+DB_NAME="${DB_NAME:-robot_data}"
+DB_USER="${DB_USER:-robot_user}"
+DB_PASS="${DB_PASS:-robot_pass}"
 SAVE_SERVICE="/slam_toolbox/save_map"          # slam_toolbox exposes a SaveMap service compatible with nav2_msgs/srv/SaveMap in Humble
 SAVE_SERVICE_TYPE_DEFAULT="nav2_msgs/srv/SaveMap"  # We'll verify at runtime
 SLAM_LAUNCH="slam_toolbox online_async_launch.py"
@@ -41,7 +42,7 @@ FORCE_NEW_SLAM=${FORCE_NEW_SLAM:-0} # 1 = kill any existing slam_toolbox and sta
 SLAM_PARAMS_FILE=${SLAM_PARAMS_FILE:-/app/slam_params.yaml} # path to param file (mounted from compose)
 PUBLISH_MAP_PARAM_KEY=${PUBLISH_MAP_PARAM_KEY:-publish_map}
 FORCE_MAPPING=${FORCE_MAPPING:-1}  # 1 => enforce mode=mapping after launch
-DB_HOST_CANDIDATES=${DB_HOST_CANDIDATES:-"$DB_HOST db database postgres"}
+DB_HOST_CANDIDATES=${DB_HOST_CANDIDATES:-"localhost 127.0.0.1 $DB_HOST db_cont db database postgres"}
 DB_MAX_RETRIES=${DB_MAX_RETRIES:-3}
 DB_RETRY_DELAY=${DB_RETRY_DELAY:-3}
 SAVE_SERVICE_TYPE=""  # will be detected on first successful SaveMap call; keep empty safely under set -u with :- expansion
@@ -493,7 +494,7 @@ PYEOF
     fi
   fi
   if [[ -f "$YAML_FILE" ]]; then
-  info "Computing YAML sha256 hash and inserting map into database (robot_data.maps) with fallback hosts"
+  info "Computing YAML sha256 hash and inserting map into database (robot_data.maps) with fallback hosts: ${DB_HOST_CANDIDATES} (primary=${DB_HOST})"
     export YAML_FILE="$YAML_FILE" MAP_NAME="${BAG_PREFIX}_${SESSION_TS}" DB_HOST_PRIMARY="$DB_HOST" DB_FULL_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASS="$DB_PASS" DB_HOST_CANDIDATES="$DB_HOST_CANDIDATES" DB_MAX_RETRIES="$DB_MAX_RETRIES" DB_RETRY_DELAY="$DB_RETRY_DELAY"
   python3 - <<'PYEOF'
 import psycopg2, yaml, json, hashlib, os, re, sys, time
@@ -514,23 +515,34 @@ def load_map_meta(path):
   with open(path,'rb') as f: content=f.read()
   sha=hashlib.sha256(content).hexdigest()
   data=yaml.safe_load(content)
+  if not isinstance(data, dict):
+    raise ValueError('YAML root not a dict')
   res=float(data.get('resolution',0.05))
   origin=list(data.get('origin',[0.0,0.0,0.0]))
   if len(origin)<2: origin=[0.0,0.0,0.0]
-  pgm_path=re.sub(r"\\.yaml$",".pgm", path)
+  # Determine image file path: prefer YAML 'image' key if present
+  image_rel=data.get('image', None)
+  if image_rel:
+    # image path is relative to YAML dir
+    base_dir=os.path.dirname(path)
+    pgm_path=os.path.join(base_dir, image_rel)
+  else:
+    pgm_path=re.sub(r"\\.yaml$",".pgm", path)
   width=0;height=0
   try:
     with open(pgm_path,'rb') as pf:
       magic=pf.readline().strip()
-      if magic!=b'P5':
-        raise ValueError('Unsupported PGM format '+magic.decode())
+      if magic not in (b'P5', b'P2'):
+        raise ValueError('Unsupported PGM format magic '+magic.decode(errors='ignore'))
+      # Skip comments
       line=pf.readline()
       while line.startswith(b'#'):
         line=pf.readline()
       dims=line.strip().split()
       if len(dims)==2:
         width=int(dims[0]);height=int(dims[1])
-      _=pf.readline().strip()  # maxval
+      # Read maxval (but ignore content)
+      _=pf.readline().strip()
   except Exception as e:
     print('[DB] Warning: PGM parse failed:', e)
   return content, sha, data, res, origin, pgm_path, width, height

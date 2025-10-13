@@ -1,9 +1,17 @@
 FROM ros:humble
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
+# Install Nav2 and supporting dependencies
+RUN set -e; apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-nav2-map-server \
+    ros-humble-nav2-amcl \
+    ros-humble-nav2-lifecycle-manager \
+    ros-humble-tf2-tools \
+    ros-humble-xacro \
+    ros-humble-diagnostic-updater \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.
@@ -21,11 +29,28 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
 WORKDIR /app
 COPY . /app
 
+# Add start script & goal forwarder (copied below by patch if not present)
+
 # Install Python dependencies
 RUN pip3 install --no-cache-dir -r requirements.txt
 
 # Set custom prompt (just 'nav_cont:' in blue)
 RUN echo "export PS1='\[\033[1;34m\]nav_cont: \[\033[0m\]'" >> /root/.bashrc
 
-# Set entrypoint for launching ROS 2 nodes
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && python3 move.py & python3 path_planner.py"]
+# Provide convenience for interactive shells
+RUN echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc && \
+    echo 'alias rl="ros2 lifecycle"' >> /root/.bashrc && \
+    echo 'alias rtopics="ros2 topic list"' >> /root/.bashrc
+
+# Default map file path can be overridden at runtime (must be mounted via compose)
+ENV MAP_FILE=/srv/maps/active/map.yaml
+ENV NAV2_PARAMS_FILE=/app/nav2_params.yaml
+ENV GOAL_TOPIC=/move_base_simple/goal
+ENV FORCE_MAP_WAIT=1
+
+# Copy start script (added via patch) and make executable
+COPY start_nav.sh /app/start_nav.sh
+RUN chmod +x /app/start_nav.sh
+
+# Entry: start nav2 bringup + goal forwarder + optional move script
+CMD ["/app/start_nav.sh"]

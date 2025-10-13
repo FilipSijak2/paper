@@ -9,6 +9,8 @@ ROS_SETUP=/opt/ros/humble/setup.bash
 OVERLAY_SETUP=/app/ws/install/setup.bash
 PKG_NAME="sensor_fusion_pkg"
 LAUNCH_COMMAND=(ros2 launch ${PKG_NAME} sensor_fusion.launch.py)
+LIBEXEC_DIR=/app/ws/install/lib/${PKG_NAME}
+MAX_LAUNCH_RETRIES=${MAX_LAUNCH_RETRIES:-3}
 
 red() { echo -e "\033[31m$*\033[0m"; }
 green() { echo -e "\033[32m$*\033[0m"; }
@@ -62,9 +64,52 @@ else
   green "[OK] Workspace already built and package present."
 fi
 
+# Additional integrity check: ament_python package should have executables in libexec dir, but for pure python
+# ament index still expects directory existence. Rebuild if missing.
+if [ ! -d "$LIBEXEC_DIR" ]; then
+  yellow "[WARN] Expected libexec directory missing: $LIBEXEC_DIR (will attempt one clean rebuild)"
+  pushd /app/ws >/dev/null
+  rm -rf build install log 2>/dev/null || true
+  colcon build --symlink-install --merge-install || { red "[ERROR] Rebuild (libexec fix) failed"; exit 1; }
+  popd >/dev/null
+  set +u; source "$OVERLAY_SETUP"; set -u
+  if [ ! -d "$LIBEXEC_DIR" ]; then
+    yellow "[WARN] libexec directory still absent after rebuild; will fallback to direct python execution"
+  else
+    green "[OK] libexec directory created after rebuild."
+  fi
+fi
+
 # Show path debugging
 which python3 || true
 python3 -c "import sys; print('[DEBUG] sys.path entries:'); [print('  ', p) for p in sys.path]"
 
-set -x
-"${LAUNCH_COMMAND[@]}"
+attempt=1
+set +e
+while :; do
+  set -x
+  "${LAUNCH_COMMAND[@]}"
+  rc=$?
+  set +x
+  if [ $rc -eq 0 ]; then
+    break
+  fi
+  red "[ERROR] ros2 launch exited with code $rc (attempt ${attempt}/${MAX_LAUNCH_RETRIES})"
+  if [ $attempt -ge $MAX_LAUNCH_RETRIES ]; then
+    yellow "[WARN] Reached max launch retries; invoking direct python fallback."
+    # Direct fallback: run module entry point without launch system
+    python3 - <<'PYEOF'
+import os, rclpy
+from sensor_fusion_pkg.arduino_listener_impl import main
+print('[FALLBACK] Starting direct ArduinoImuNode (no launch)')
+try:
+    main()
+except KeyboardInterrupt:
+    pass
+PYEOF
+    exit $?
+  fi
+  attempt=$((attempt+1))
+  sleep 2
+done
+set -e

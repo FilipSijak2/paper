@@ -354,11 +354,11 @@ jobs:
             MB=$((200*1024*1024))
             GB=$((1024*1024*1024))
             if [ "$SIZE_BYTES" -le $MB ]; then
-              SLEEP=60
+              SLEEP=180
             elif [ "$SIZE_BYTES" -le $GB ]; then
-              SLEEP=60
+              SLEEP=180
             else
-              SLEEP=60
+              SLEEP=180
             fi
           fi
           echo "Adaptive cooldown: sleeping ${SLEEP}s based on size threshold";
