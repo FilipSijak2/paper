@@ -354,9 +354,9 @@ jobs:
             MB=$((200*1024*1024))
             GB=$((1024*1024*1024))
             if [ "$SIZE_BYTES" -le $MB ]; then
-              SLEEP=15
+              SLEEP=60
             elif [ "$SIZE_BYTES" -le $GB ]; then
-              SLEEP=30
+              SLEEP=60
             else
               SLEEP=60
             fi

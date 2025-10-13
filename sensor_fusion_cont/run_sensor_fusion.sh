@@ -18,8 +18,9 @@ if [ -f /etc/timezone ]; then echo "[INFO] Container timezone: $(cat /etc/timezo
 
 echo "SENSOR_FUSION_IMAGE_TAG=${SF_VERSION_TAG:-unset}"
 
-# Prevent 'unbound variable' from /opt/ros/humble/setup.bash when set -u is active
+# Prevent 'unbound variable' issues for traced setup scripts under set -u
 : "${AMENT_TRACE_SETUP_FILES:=}"
+: "${COLCON_TRACE:=}"
 set +u
 source "$ROS_SETUP"
 set -u
@@ -29,7 +30,11 @@ if [ ! -f "$OVERLAY_SETUP" ]; then
   yellow "[WARN] Overlay setup file missing: $OVERLAY_SETUP"
   needs_rebuild=true
 else
+  # Guard COLCON_TRACE for colcon-generated setup scripts
+  : "${COLCON_TRACE:=}"
+  set +u
   source "$OVERLAY_SETUP" || { yellow "[WARN] Failed sourcing overlay, will rebuild"; needs_rebuild=true; }
+  set -u
 fi
 
 # Check if package is visible
@@ -44,7 +49,10 @@ if $needs_rebuild; then
   rm -rf build install log 2>/dev/null || true
   colcon build --symlink-install --merge-install || { red "[ERROR] colcon build failed"; exit 1; }
   popd >/dev/null
+  : "${COLCON_TRACE:=}"
+  set +u
   source "$OVERLAY_SETUP"
+  set -u
   if ros2 pkg list | grep -q "^${PKG_NAME}$"; then
     green "[OK] Package ${PKG_NAME} now discoverable after rebuild."
   else
