@@ -40,6 +40,10 @@ MAP_AVAILABLE_TIMEOUT=${MAP_AVAILABLE_TIMEOUT:-10} # total seconds to wait after
 FORCE_NEW_SLAM=${FORCE_NEW_SLAM:-0} # 1 = kill any existing slam_toolbox and start fresh with params
 SLAM_PARAMS_FILE=${SLAM_PARAMS_FILE:-/app/slam_params.yaml} # path to param file (mounted from compose)
 PUBLISH_MAP_PARAM_KEY=${PUBLISH_MAP_PARAM_KEY:-publish_map}
+FORCE_MAPPING=${FORCE_MAPPING:-1}  # 1 => enforce mode=mapping after launch
+DB_HOST_CANDIDATES=${DB_HOST_CANDIDATES:-"$DB_HOST db database postgres"}
+DB_MAX_RETRIES=${DB_MAX_RETRIES:-3}
+DB_RETRY_DELAY=${DB_RETRY_DELAY:-3}
 SAVE_SERVICE_TYPE=""  # will be detected on first successful SaveMap call; keep empty safely under set -u with :- expansion
 USE_DIRECT_SLAM=${USE_DIRECT_SLAM:-1}   # 1 => use ros2 run async_slam_toolbox_node with params file, bypass generic launch
 MAP_TOPIC_CANDIDATES=${MAP_TOPIC_CANDIDATES:-"/map /slam_toolbox/map /localized_map"}
@@ -146,6 +150,12 @@ start_slam(){
   for n in slam_toolbox async_slam_toolbox_node async_slam_toolbox; do
     ros2 param set $n ${PUBLISH_MAP_PARAM_KEY} true >/dev/null 2>&1 || true
   done
+  if [[ "$FORCE_MAPPING" == "1" ]]; then
+    for n in slam_toolbox async_slam_toolbox_node async_slam_toolbox; do
+      ros2 param set $n mode mapping >/dev/null 2>&1 || true
+    done
+    info "FORCE_MAPPING=1 -> attempted to enforce mode=mapping"
+  fi
 }
 
 EXISTING_SLAM_PID=""
@@ -483,31 +493,34 @@ PYEOF
     fi
   fi
   if [[ -f "$YAML_FILE" ]]; then
-  info "Computing YAML sha256 hash and inserting map into database schema robot_data.maps"
-    export YAML_FILE="$YAML_FILE" MAP_NAME="${BAG_PREFIX}_${SESSION_TS}" DB_HOST="$DB_HOST" DB_FULL_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASS="$DB_PASS"
+  info "Computing YAML sha256 hash and inserting map into database (robot_data.maps) with fallback hosts"
+    export YAML_FILE="$YAML_FILE" MAP_NAME="${BAG_PREFIX}_${SESSION_TS}" DB_HOST_PRIMARY="$DB_HOST" DB_FULL_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASS="$DB_PASS" DB_HOST_CANDIDATES="$DB_HOST_CANDIDATES" DB_MAX_RETRIES="$DB_MAX_RETRIES" DB_RETRY_DELAY="$DB_RETRY_DELAY"
   python3 - <<'PYEOF'
-import psycopg2, yaml, json, hashlib, os, re, sys
+import psycopg2, yaml, json, hashlib, os, re, sys, time
+
 yaml_file=os.environ['YAML_FILE']
 name=os.environ['MAP_NAME']
-db_host=os.environ['DB_HOST']
+primary=os.environ['DB_HOST_PRIMARY']
+candidates=os.environ['DB_HOST_CANDIDATES'].split()
+if primary not in candidates:
+  candidates.insert(0, primary)
 db_name=os.environ['DB_FULL_NAME']
 db_user=os.environ['DB_USER']
 db_pass=os.environ['DB_PASS']
-try:
-  with open(yaml_file,'rb') as f:
-    content=f.read()
+max_retries=int(os.environ.get('DB_MAX_RETRIES','3'))
+retry_delay=int(os.environ.get('DB_RETRY_DELAY','3'))
+
+def load_map_meta(path):
+  with open(path,'rb') as f: content=f.read()
   sha=hashlib.sha256(content).hexdigest()
   data=yaml.safe_load(content)
-  # Extract minimal fields from YAML for required columns
   res=float(data.get('resolution',0.05))
-  origin=list(data.get('origin', [0.0,0.0,0.0]))
+  origin=list(data.get('origin',[0.0,0.0,0.0]))
   if len(origin)<2: origin=[0.0,0.0,0.0]
-  # width/height are not in YAML; derive by loading associated PGM
-  pgm_path=re.sub(r"\.yaml$",".pgm", yaml_file)
+  pgm_path=re.sub(r"\\.yaml$",".pgm", path)
   width=0;height=0
   try:
     with open(pgm_path,'rb') as pf:
-      # Parse PGM header (P5) minimal
       magic=pf.readline().strip()
       if magic!=b'P5':
         raise ValueError('Unsupported PGM format '+magic.decode())
@@ -517,37 +530,63 @@ try:
       dims=line.strip().split()
       if len(dims)==2:
         width=int(dims[0]);height=int(dims[1])
-      maxval=int(pf.readline().strip())
+      _=pf.readline().strip()  # maxval
   except Exception as e:
-    print('[DB] Warning: could not parse PGM dimensions:', e)
-  metadata={'yaml_sha256': sha, 'map_yaml_raw': data}
-  # Connect and check for duplicate by hash in metadata
-  conn=psycopg2.connect(dbname=db_name, user=db_user, password=db_pass, host=db_host, port=5432)
-  cur=conn.cursor()
-  # Look for existing map with same hash (search in metadata JSONB if available)
-  cur.execute("""
-    SELECT id FROM robot_data.maps
-    WHERE metadata ->> 'yaml_sha256' = %s
-    LIMIT 1
-  """, (sha,))
-  existing=cur.fetchone()
-  if existing:
-    print(f"[DB] Duplicate map detected (hash={sha}); skipping insert. Existing id={existing[0]}")
-  else:
-    # Insert minimal binary map_data: store PGM bytes (could be large) or YAML? We'll store PGM if exists else YAML
-    map_binary=b''
+    print('[DB] Warning: PGM parse failed:', e)
+  return content, sha, data, res, origin, pgm_path, width, height
+
+content, sha, data, res, origin, pgm_path, width, height = load_map_meta(yaml_file)
+metadata={'yaml_sha256': sha, 'map_yaml_raw': data}
+
+def attempt(host):
+  try:
+    conn=psycopg2.connect(dbname=db_name, user=db_user, password=db_pass, host=host, port=5432, connect_timeout=3)
+  except Exception as e:
+    return False, f'connect fail: {e}'
+  try:
+    cur=conn.cursor()
+    cur.execute("""
+      SELECT id FROM robot_data.maps
+      WHERE metadata ->> 'yaml_sha256' = %s
+      LIMIT 1
+    """, (sha,))
+    existing=cur.fetchone()
+    if existing:
+      print(f"[DB] Duplicate map (hash={sha}) exists id={existing[0]} host={host}; skipping insert")
+      conn.close(); return True, 'duplicate'
+    # choose data
     try:
       with open(pgm_path,'rb') as pf: map_binary=pf.read()
     except Exception:
-      map_binary=content  # fallback to YAML bytes
+      map_binary=content
     cur.execute("""
       INSERT INTO robot_data.maps (name, description, map_data, resolution, origin_x, origin_y, width, height, metadata)
       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (name, None, psycopg2.Binary(map_binary), res, float(origin[0]), float(origin[1]), width, height, json.dumps(metadata)))
-    print(f"[DB] Map inserted (hash={sha})")
-  conn.commit(); cur.close(); conn.close()
-except Exception as e:
-  print(f"[DB] Failed to insert map: {e}")
+    conn.commit(); cur.close(); conn.close()
+    print(f"[DB] Map inserted (hash={sha}) via host={host}")
+    return True, 'inserted'
+  except Exception as e:
+    try: conn.close()
+    except Exception: pass
+    return False, f'query fail: {e}'
+
+success=False
+for host in candidates:
+  attempts=0
+  while attempts < max_retries and not success:
+    ok, msg = attempt(host)
+    if ok:
+      success=True
+      break
+    print(f"[DB] Host {host} attempt {attempts+1}/{max_retries} failed: {msg}")
+    attempts+=1
+    if attempts < max_retries: time.sleep(retry_delay)
+  if success:
+    break
+
+if not success:
+  print(f"[DB] All hosts failed ({' '.join(candidates)}); map not inserted")
 PYEOF
   else
   warn "Final YAML map not found: $YAML_FILE"

@@ -14,5 +14,8 @@
   <!-- Optional: declare dependencies explicitly for clarity -->
   <exec_depend>pyserial</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
-  <export/>
+  <export>
+    <!-- Explicitly declare this is an ament_python (pure Python) package -->
+    <build_type>ament_python</build_type>
+  </export>
 </package>
