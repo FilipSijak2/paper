@@ -94,6 +94,9 @@ GOAL_FORWARDER_PID=$!
 
 echo "[nav_start] Nav2 PID=${NAV2_PID}; GoalForwarder PID=${GOAL_FORWARDER_PID}"
 echo "[nav_start] Ready. If you later define a map, restart this container to apply it (or use select_map.sh if present)."
+echo "[nav_start] AMCL localization active: postavite početnu pozu preko Foxglove 2D Pose Estimate (publisha na /initialpose) ili:"
+echo "[nav_start]   python3 /app/set_initial_pose.py <x> <y> <yaw_deg> [map_frame]"
+echo "[nav_start] Primjer: python3 /app/set_initial_pose.py 0.0 0.0 90"
 
 trap 'echo "[nav_start] Stopping..."; kill ${GOAL_FORWARDER_PID} ${NAV2_PID} 2>/dev/null || true; wait ${GOAL_FORWARDER_PID} ${NAV2_PID} 2>/dev/null || true; exit 0' INT TERM
 while true; do sleep 60; echo "[nav_start] heartbeat $(date)"; done

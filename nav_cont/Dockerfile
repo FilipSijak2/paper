@@ -34,6 +34,9 @@ COPY . /app
 # Install Python dependencies
 RUN pip3 install --no-cache-dir -r requirements.txt
 
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Europe/Zagreb
+
 # Set custom prompt (just 'nav_cont:' in blue)
 RUN echo "export PS1='\[\033[1;34m\]nav_cont: \[\033[0m\]'" >> /root/.bashrc
 

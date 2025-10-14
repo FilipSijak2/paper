@@ -7,9 +7,19 @@ set -euo pipefail
 # If --duration > 0, recording stops after that many seconds automatically.
 # On Ctrl+C: gracefully stop recording & slam_toolbox, replay bag to save final map, insert into DB.
 
+# Legacy bag prefix (still used for bag file base). Naming overhaul below.
 BAG_PREFIX="session"
 DURATION=0
 TOPICS_FILE=""
+
+# Incremental naming configuration
+# Default behavior now: directories named mapa1, mapa2, ... (NAME_PREFIX + index)
+# Disable by exporting INCREMENTAL_NAMES=0 (then timestamp legacy name is used)
+# Force a specific name with --name <value> (will append _N if already exists)
+INCREMENTAL_NAMES=${INCREMENTAL_NAMES:-1}
+NAME_PREFIX="${NAME_PREFIX:-mapa}"
+CUSTOM_NAME=""
+
 # Base directory for all mapping outputs (can override with env MAP_ROOT)
 MAP_ROOT_DEFAULT="/app/maps"
 MAP_ROOT="${MAP_ROOT:-$MAP_ROOT_DEFAULT}"
@@ -68,10 +78,13 @@ while [[ $# -gt 0 ]]; do
     --db-host) DB_HOST="$2"; shift 2;;
     --db-name) DB_NAME="$2"; shift 2;;
     --db-user) DB_USER="$2"; shift 2;;
-  --db-pass) DB_PASS="$2"; shift 2;;
-  --root-dir) MAP_ROOT="$2"; shift 2;;
+    --db-pass) DB_PASS="$2"; shift 2;;
+    --root-dir) MAP_ROOT="$2"; shift 2;;
     --with-replay) USE_REPLAY=1; shift;;
     --storage) STORAGE_BACKEND="$2"; shift 2;;
+    --name) CUSTOM_NAME="$2"; shift 2;;
+    --prefix) NAME_PREFIX="$2"; shift 2;;
+    --no-incremental) INCREMENTAL_NAMES=0; shift;;
     *) warn "Unknown arg $1"; shift;;
   esac
 done
@@ -87,8 +100,38 @@ else
   err "ROS 2 environment not found"; exit 1
 fi
 
-SESSION_TS=$(date +%Y%m%d-%H%M%S)
-SESSION_ID="${BAG_PREFIX}_${SESSION_TS}"
+SESSION_TS=$(date +%Y%m%d-%H%M%S)          # container local time (likely UTC if tzdata not set)
+SESSION_TS_UTC=$(date -u +%Y%m%d-%H%M%S)
+
+# Determine human-friendly SESSION_ID
+SESSION_INDEX=""
+if [[ -n "$CUSTOM_NAME" ]]; then
+  SESSION_ID="$CUSTOM_NAME"
+  # ensure uniqueness
+  if [[ -e "$MAP_ROOT/$SESSION_ID" ]]; then
+    suffix=1
+    while [[ -e "$MAP_ROOT/${SESSION_ID}_$suffix" ]]; do suffix=$((suffix+1)); done
+    warn "Session name $SESSION_ID exists; using ${SESSION_ID}_$suffix"
+    SESSION_ID="${SESSION_ID}_$suffix"
+  fi
+else
+  if [[ "$INCREMENTAL_NAMES" == "1" ]]; then
+    mkdir -p "$MAP_ROOT" || true
+    max_index=0
+    while IFS= read -r entry; do
+      base=$(basename "$entry")
+      if [[ $base =~ ^${NAME_PREFIX}([0-9]+)$ ]]; then
+        num=${BASH_REMATCH[1]}
+        if (( num > max_index )); then max_index=$num; fi
+      fi
+    done < <(find "$MAP_ROOT" -maxdepth 1 -mindepth 1 -type d -name "${NAME_PREFIX}*" 2>/dev/null || true)
+    SESSION_INDEX=$((max_index+1))
+    SESSION_ID="${NAME_PREFIX}${SESSION_INDEX}"
+  else
+    SESSION_ID="${BAG_PREFIX}_${SESSION_TS}"
+  fi
+fi
+
 SESSION_DIR="$MAP_ROOT/$SESSION_ID"
 BAG_DIR="$SESSION_DIR/bag"
 REPLAY_DIR="$SESSION_DIR/replay"
@@ -121,7 +164,7 @@ else
   TOPICS="/tf /tf_static /odom /scan /imu /robot_description /clock"
 fi
 info "Topics: $TOPICS"
-log "Root: $MAP_ROOT"
+log "Root: $MAP_ROOT | session=$SESSION_ID (incremental=$INCREMENTAL_NAMES prefix=$NAME_PREFIX index=${SESSION_INDEX:-N/A})"
 
 # Detect existing slam_toolbox instance (avoid parallel)
 EXISTING_SLAM_PID=""
@@ -495,7 +538,7 @@ PYEOF
   fi
   if [[ -f "$YAML_FILE" ]]; then
   info "Computing YAML sha256 hash and inserting map into database (robot_data.maps) with fallback hosts: ${DB_HOST_CANDIDATES} (primary=${DB_HOST})"
-    export YAML_FILE="$YAML_FILE" MAP_NAME="${BAG_PREFIX}_${SESSION_TS}" DB_HOST_PRIMARY="$DB_HOST" DB_FULL_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASS="$DB_PASS" DB_HOST_CANDIDATES="$DB_HOST_CANDIDATES" DB_MAX_RETRIES="$DB_MAX_RETRIES" DB_RETRY_DELAY="$DB_RETRY_DELAY"
+    export YAML_FILE="$YAML_FILE" MAP_NAME="${SESSION_ID}" DB_HOST_PRIMARY="$DB_HOST" DB_FULL_NAME="$DB_NAME" DB_USER="$DB_USER" DB_PASS="$DB_PASS" DB_HOST_CANDIDATES="$DB_HOST_CANDIDATES" DB_MAX_RETRIES="$DB_MAX_RETRIES" DB_RETRY_DELAY="$DB_RETRY_DELAY"
   python3 - <<'PYEOF'
 import psycopg2, yaml, json, hashlib, os, re, sys, time
 
@@ -602,6 +645,27 @@ if not success:
 PYEOF
   else
   warn "Final YAML map not found: $YAML_FILE"
+  fi
+
+  # Metadata file (created once)
+  if [[ ! -f "$SESSION_DIR/meta.json" ]]; then
+    CREATED_LOCAL=$(date +%Y-%m-%dT%H:%M:%S%z)
+    CREATED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+    EPOCH=$(date +%s)
+    cat >"$SESSION_DIR/meta.json" <<METAJSON
+{
+  "id": "${SESSION_ID}",
+  "index": ${SESSION_INDEX:-null},
+  "incremental": ${INCREMENTAL_NAMES},
+  "prefix": "${NAME_PREFIX}",
+  "created_local": "${CREATED_LOCAL}",
+  "created_utc": "${CREATED_UTC}",
+  "epoch": ${EPOCH},
+  "legacy_bag_prefix": "${BAG_PREFIX}",
+  "legacy_timestamp_local": "${SESSION_TS}",
+  "legacy_timestamp_utc": "${SESSION_TS_UTC}"
+}
+METAJSON
   fi
 
   info "Artifacts:"

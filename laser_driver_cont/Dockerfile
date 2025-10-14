@@ -19,6 +19,9 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
             echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
         fi
 
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Europe/Zagreb
+
 # Set variables for ROS 2
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 

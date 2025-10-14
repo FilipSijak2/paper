@@ -22,6 +22,9 @@ ENV POSTGRES_DB=robot_data
 ENV POSTGRES_USER=robot_user
 ENV POSTGRES_PASSWORD=robot_pass
 
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Europe/Zagreb
+
 # Copy initialization scripts
 COPY init-db.sql /docker-entrypoint-initdb.d/
 

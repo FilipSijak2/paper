@@ -22,6 +22,9 @@ RUN echo "export AMENT_TRACE_SETUP_FILES=\${AMENT_TRACE_SETUP_FILES:-}" >> /root
     echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
     echo "export PS1='\[\033[1;34m\]bridge_cont: \[\033[0m\]'" >> /root/.bashrc
 
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Europe/Zagreb
+
 WORKDIR /app
 
 # Copy bridge script (local copy placed in this directory)

@@ -32,6 +32,9 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
 # Python dependencies (colcon via apt now)
 RUN pip3 install --no-cache-dir pyserial numpy
 
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Europe/Zagreb
+
 # Postavi ROS okruženje
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 RUN echo "export PS1='\[\033[1;34m\]sensor_fusion: \[\033[0m\]'" >> /root/.bashrc
