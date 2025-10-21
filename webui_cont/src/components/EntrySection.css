@@ -1,0 +1,21 @@
+/* Migrated styling from original project */
+.entry-section-container { display:flex; justify-content:center; align-items:center; min-height:100vh; padding:20px; box-sizing:border-box; }
+.entry-section { max-width:500px; width:90%; box-sizing:border-box; display:flex; flex-direction:column; align-items:center; padding:30px; opacity:0; transform:translateY(20px); }
+.logo-container { text-align:center; margin-bottom:30px; opacity:0; }
+.app-title { font-size:2.4em; font-weight:bold; color:var(--text-color); text-align:center; margin:0 0 20px; display:flex; justify-content:center; align-items:baseline; }
+.title-dash { display:inline-flex; color:var(--primary-color); font-weight:bold; font-size:1.5em; margin:0 5px; width:24px; height:24px; filter:drop-shadow(0 0 4px var(--primary-color)); }
+.connection-options { width:100%; display:flex; flex-direction:column; align-items:center; gap:15px; }
+.quick-connect-btn { width:70%; padding:12px; font-size:1rem; background:var(--primary-color); color:var(--button-text-color); border:none; border-radius:8px; cursor:pointer; display:flex; flex-direction:column; align-items:center; transition:all .3s ease; box-shadow:0 4px 6px rgba(0,0,0,0.1); }
+.quick-connect-btn:hover { background:var(--primary-hover-color); transform:translateY(-2px); box-shadow:0 6px 8px rgba(0,0,0,0.15); }
+.quick-connect-ip { font-size:.8em; margin-top:5px; opacity:.9; }
+.advanced-toggle { background:transparent; color:var(--text-color); border:1px solid var(--border-color); padding:8px 15px; font-size:.9rem; cursor:pointer; transition:all .2s ease; }
+.advanced-toggle:hover { background:var(--background-secondary); }
+.advanced-form { width:100%; overflow:hidden; max-height:0; transition:max-height .5s ease-in-out; opacity:0; }
+.advanced-form.visible { max-height:300px; opacity:1; }
+.form-group { margin-bottom:15px; text-align:center; }
+.radio-group { text-align:center; margin:10px 0; }
+.radio-group label { margin:0 15px; display:inline-flex; align-items:center; cursor:pointer; }
+.radio-group input[type=radio] { margin-right:5px; accent-color:var(--primary-color); }
+.connect-btn { width:100%; padding:12px; font-size:1rem; background:var(--primary-color); color:var(--button-text-color); border:none; border-radius:8px; cursor:pointer; transition:all .3s ease; }
+.connect-btn:hover { background:var(--primary-hover-color); }
+@media (max-width:480px){ .app-title{font-size:2.0em;} .entry-section{padding:20px;} .title-dash{font-size:1.2em;width:18px;height:18px;} }

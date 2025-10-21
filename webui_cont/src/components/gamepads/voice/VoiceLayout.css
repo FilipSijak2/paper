@@ -1,0 +1,62 @@
+.voice-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  gap: 1rem;
+  width: 100%;
+  height: 100%;
+}
+
+.record-button {
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background-color: var(--primary-color);
+  color: var(--button-text-color);
+  transition: background-color 0.2s ease, transform 0.1s ease;
+}
+
+.record-button.recording {
+  background-color: var(--error-color);
+}
+
+.record-button:active {
+  transform: scale(0.97);
+}
+
+.status-message {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.recording-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.sound-wave-container {
+  display: flex;
+  gap: 4px;
+}
+
+.sound-bar {
+  width: 6px;
+  height: 24px;
+  background-color: var(--primary-color);
+  animation: soundWave 1s infinite ease-in-out;
+}
+
+.sound-bar:nth-child(odd) {
+  animation-delay: 0.3s;
+}
+
+@keyframes soundWave {
+  0% { height: 8px; }
+  50% { height: 32px; }
+  100% { height: 8px; }
+}

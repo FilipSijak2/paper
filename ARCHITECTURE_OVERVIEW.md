@@ -273,5 +273,34 @@ Online alternativa: upload Markdown u npr. GitHub i koristi export (ili VS Code 
 ## 17. Kontakt / održavanje
 Trenutno nema formalnog ownership metadata; preporuka dodati MAINTAINERS.md s ulogama (npr. “SLAM”, “DB”, “CI”).
 
----
 *Kraj dokumenta.*
+
+---
+## 18. Web UI (Robot Web UI)
+
+Dodana je integrirana web aplikacija (React + Vite) pod `webui_cont/` koja se builda u zasebnu Docker sliku za vizualizaciju podataka (teme, connection parametri) i osnovno upravljanje. Slika se pokreće kroz `stack/docker-compose.yaml` servis `webui` (port 8080:80). 
+
+### Komunikacijski tok
+Browser -> WebSocket (`VITE_ROSBRIDGE_URL`) -> rosbridge (port 9090 na hostu) -> ROS 2 graf.
+
+`VITE_ROSBRIDGE_URL` se injektira kao env var (compose) i može pokazivati na lokalni host ili Tailscale IP: `ws://tailscale_ip:9090`. Fallback ako nije postavljeno: `ws://<browser-hostname>:9090`.
+
+### Build
+```
+cd diplomski_rad/webui_cont
+docker build -t robot-web-ui:local .
+```
+
+Za razvoj bez containera:
+```
+npm ci
+npm run dev
+```
+
+### Širenje funkcionalnosti
+Minimalni set komponenti migriran (EntrySection, MainControlView, konekcijski hook). Dodatne vizualizacije (point cloud, TF, gamepad layouti) mogu se naknadno prenijeti iz originalnog izvora prije brisanja starog direktorija.
+
+### Sigurnost i mreža
+Servis `webui` ne koristi `network_mode: host` jer web klijent direktno komunicira s rosbridge na hostu. Za Tailscale pristup dovoljno je izložiti port 8080 na hostu i koristiti Tailscale IP u URL-u.
+
+---

@@ -1,0 +1,57 @@
+.control-panel-tabs-container {
+  width: 100%;
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+  padding: 4px 6px;
+}
+
+.control-panel-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tab-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background-color: var(--background-secondary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.tab-button.active, .tab-button:hover {
+  background-color: var(--primary-color);
+  color: #fff;
+}
+
+.tab-name { flex: 1; }
+
+.tab-remove-button {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.tab-add-button {
+  background-color: transparent;
+  color: var(--primary-color);
+  border: 1px solid var(--primary-color);
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.tab-add-button:hover {
+  background-color: var(--primary-color);
+  color: #fff;
+}

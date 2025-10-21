@@ -1,0 +1,6 @@
+interface VisualizationConfig { id: string; type: string; topic: string; options?: any; }
+interface VisualizationPanelState { visualizations: VisualizationConfig[]; fixedFrame: string; displayedTfFrames: string[]; }
+let savedState: VisualizationPanelState = { visualizations: [], fixedFrame: 'odom', displayedTfFrames: [] };
+export const saveVisualizationState = (state: VisualizationPanelState): void => { savedState = { ...state }; try { localStorage.setItem('roboboy_3d_visualization_state', JSON.stringify(state)); } catch (e) { console.error('Save viz state error', e);} };
+export const getVisualizationState = (): VisualizationPanelState => { if (savedState.visualizations.length>0) return { ...savedState }; try { const str = localStorage.getItem('roboboy_3d_visualization_state'); if (str) { const parsed = JSON.parse(str); savedState = parsed; return parsed; } } catch(e){ console.error('Load viz state error', e);} return { visualizations: [], fixedFrame:'odom', displayedTfFrames: [] }; };
+export const clearVisualizationState = (): void => { savedState = { visualizations: [], fixedFrame:'odom', displayedTfFrames: [] }; try { localStorage.removeItem('roboboy_3d_visualization_state'); } catch(e){ console.error('Clear viz state error', e);} };

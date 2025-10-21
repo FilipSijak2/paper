@@ -1,0 +1,172 @@
+/* Shared settings popup styles for visualization settings */
+.visualization-settings-popup {
+  position: absolute;
+  top: 60px;
+  right: 20px;
+  width: 320px;
+  max-height: 70vh;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  z-index: 1000;
+  overflow-y: auto;
+}
+
+.visualization-settings-popup h3 {
+  margin: 0 0 4px 0;
+  font-size: 1.05rem;
+  color: var(--text-color);
+}
+
+.visualization-settings-popup .close-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.visualization-settings-popup .close-button:hover {
+  background-color: var(--background-secondary);
+  color: var(--text-color);
+}
+
+.viz-setting-group {
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background-color: var(--background-secondary);
+}
+
+.viz-setting-group.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.viz-setting-group h4 {
+  margin: 0 0 4px 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.viz-inline-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.viz-inline-controls label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.viz-setting-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.viz-setting-row label {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.viz-setting-row input[type="range"],
+.viz-setting-row input[type="number"],
+.viz-setting-row select,
+.viz-setting-row input[type="color"] {
+  width: 100%;
+  background-color: var(--input-background-color);
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 0.75rem;
+  box-sizing: border-box;
+}
+
+.range-input-container {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.range-input-container .range-value {
+  font-size: 0.7rem;
+  min-width: 32px;
+  text-align: right;
+  color: var(--text-secondary);
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.settings-actions button {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border-color);
+  background-color: var(--background-secondary);
+  color: var(--text-color);
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.settings-actions button:hover {
+  background-color: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle-row input[type="checkbox"] {
+  transform: scale(0.9);
+}
+
+.divider {
+  height: 1px;
+  width: 100%;
+  background-color: var(--border-color);
+  margin: 4px 0;
+}
+
+.empty-hint {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 4px 0;
+}
+
+@media (max-width: 600px) {
+  .visualization-settings-popup {
+    width: 95vw;
+    right: 2.5vw;
+    top: 10px;
+    max-height: 80vh;
+  }
+}

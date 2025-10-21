@@ -1,0 +1,1 @@
+Ovo je minimalni skup komponenti za inicijalnu integraciju. Daljnje kompleksne komponente (vizualizacija, gamepad layouti) treba migrirati po potrebi iz originalnog projekta.

@@ -1,0 +1,18 @@
+/* Panel add menu styling migrated & simplified */
+.add-panel-menu { background: var(--background-secondary, #222); color: var(--text-color, #eee); border: 1px solid var(--border-color, #444); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,.35); padding: 10px; font-size: 0.9rem; backdrop-filter: blur(4px); }
+.add-panel-menu-content { display: flex; flex-direction: column; gap: 14px; }
+.menu-section h4 { margin: 4px 0 6px; font-size: 0.85rem; letter-spacing: .5px; text-transform: uppercase; opacity: .8; }
+.menu-section ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.menu-section li button { width: 100%; background: var(--background-tertiary, #333); border: 1px solid var(--border-color, #555); color: var(--text-color, #ddd); padding: 6px 8px; border-radius: 5px; cursor: pointer; text-align: left; transition: background .15s, border .15s; }
+.menu-section li button:hover { background: var(--primary-color, #3a6bd8); border-color: var(--primary-color); color: #fff; }
+.custom-gamepad-item { display: flex; align-items: center; gap: 4px; }
+.custom-gamepad-button { flex: 1; background: var(--background-tertiary, #333); border: 1px solid var(--border-color, #555); color: var(--text-color, #ccc); padding: 6px 8px; border-radius: 5px; cursor: pointer; text-align: left; transition: background .15s; }
+.custom-gamepad-button:hover { background: var(--primary-color, #3a6bd8); color: #fff; }
+.edit-gamepad-button, .delete-gamepad-button { background: var(--background-tertiary, #333); border: 1px solid var(--border-color, #555); color: var(--text-color, #bbb); padding: 4px 6px; border-radius: 5px; cursor: pointer; font-size: .75rem; line-height: 1; transition: background .15s, color .15s; }
+.edit-gamepad-button:hover { background: var(--primary-color, #3a6bd8); color: #fff; }
+.delete-gamepad-button { color: var(--error-color, #e04141); }
+.delete-gamepad-button:hover { background: var(--error-color, #e04141); color: #fff; }
+.create-custom-button { width: 100%; background: var(--primary-color, #3a6bd8); border: 1px solid var(--primary-color, #3a6bd8); color: #fff; padding: 8px 10px; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: 500; transition: filter .15s, transform .15s; }
+.create-custom-button:hover { filter: brightness(1.1); transform: translateY(-2px); }
+.create-custom-button .icon { font-size: .9rem; }
+@media (max-width: 480px){ .add-panel-menu { width: 92vw !important; left: 4vw !important; } }

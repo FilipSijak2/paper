@@ -1,0 +1,28 @@
+.navbar {
+  width: 100%;
+  background-color: var(--card-bg);
+  border-bottom: 1px solid var(--border-color);
+  padding: 4px 8px;
+}
+
+.navbar-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  gap: 12px;
+}
+
+.navbar-item {
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  color: var(--text-secondary);
+}
+
+.navbar-item.active, .navbar-item:hover {
+  background-color: var(--primary-color);
+  color: #fff;
+}

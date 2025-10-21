@@ -1,0 +1,29 @@
+/* PoseStamped settings specific styles */
+.pose-settings-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pose-settings-inline .number-input-group {
+  flex: 1 1 110px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pose-settings-inline input[type="number"] {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.trail-toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.trail-toggle-row input[type="checkbox"] {
+  transform: scale(0.9);
+}
