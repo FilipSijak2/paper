@@ -17,7 +17,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # RUN apt-get update && apt-get install -y vim curl && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /ws/src
-RUN git clone --depth 1 https://github.com/raspberrypi/rpicam-ros.git
+# Robust fetch: try shallow git clone (5 retries), fallback to tarball
+RUN set -e; \
+        for i in 1 2 3 4 5; do \
+            echo "[rpicam-ros] Attempt $i git clone"; \
+            git clone --depth 1 https://github.com/raspberrypi/rpicam-ros.git && break || sleep 3; \
+            if [ $i -eq 5 ]; then \
+                echo "[rpicam-ros] Git clone failed after retries, falling back to tarball"; \
+                curl -L -o rpicam-ros.tar.gz https://github.com/raspberrypi/rpicam-ros/archive/refs/heads/main.tar.gz; \
+                tar -xzf rpicam-ros.tar.gz; \
+                mv rpicam-ros-main rpicam-ros; \
+            fi; \
+        done
 
 WORKDIR /ws
 RUN bash -c "source /opt/ros/humble/setup.sh && colcon build --symlink-install"
