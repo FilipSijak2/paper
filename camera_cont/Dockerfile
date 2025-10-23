@@ -1,4 +1,4 @@
-FROM ubuntu:24.03
+FROM ubuntu:24.04
 
 # Install dependencies
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
