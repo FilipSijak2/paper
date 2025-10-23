@@ -1,101 +1,102 @@
 ############################################################
-# Multi-stage build: libcamera + rpicam-ros + minimal runtime
+# RPi Camera ROS2 Plug & Play Docker
 ############################################################
 
-# ---------- Stage 1: Build latest libcamera (pinned) ----------
+# ---------- Stage 1: Build libcamera ----------
 FROM ubuntu:24.04 AS libcamera_build
 ENV DEBIAN_FRONTEND=noninteractive
-# Pin to commit that includes PiSP (from user example v0.4.0+50-83cb8101)
 ARG LIBCAMERA_REF=83cb8101
-# Allow disabling pisp if building on older hardware
 ARG ENABLE_PISP=true
-RUN apt-get update && apt-get install -y --no-install-recommends \
-                build-essential meson ninja-build pkg-config cmake git \
-                python3-ply python3-yaml python3-jinja2 \
-                libboost-dev libgnutls28-dev libssl-dev libtiff-dev pybind11-dev \
-                libjpeg-dev libepoxy-dev libdrm-dev libudev-dev libglib2.0-dev \
-                curl ca-certificates && \
-                rm -rf /var/lib/apt/lists/*
-WORKDIR /src
-RUN set -e; \
-        echo "[libcamera] Attempt shallow clone ref ${LIBCAMERA_REF}"; \
-        if git clone --depth 1 --branch ${LIBCAMERA_REF} https://github.com/raspberrypi/libcamera.git; then \
-                echo "[libcamera] Shallow clone succeeded"; \
-        else \
-                echo "[libcamera] Shallow clone failed (maybe ref is a commit). Trying full clone..."; \
-                if git clone https://github.com/raspberrypi/libcamera.git libcamera_full; then \
-                        cd libcamera_full; \
-                        if git checkout ${LIBCAMERA_REF}; then \
-                           mv ..//libcamera_full libcamera; \
-                        else \
-                           echo "[libcamera] Ref ${LIBCAMERA_REF} not found even in full clone. Fallback to tarball"; \
-                           cd /src; rm -rf libcamera_full; \
-                           curl -fsSL -o libcamera.tar.gz https://codeload.github.com/raspberrypi/libcamera/tar.gz/${LIBCAMERA_REF} || (echo "[libcamera] Tarball download failed" && exit 1); \
-                           tar -xzf libcamera.tar.gz; mv libcamera-* libcamera; rm libcamera.tar.gz; \
-                        fi; \
-                else \
-                        echo "[libcamera] Full clone failed. Aborting."; exit 1; \
-                fi; \
-        fi
-WORKDIR /src/libcamera
-# Compose pipeline / ipa lists dynamically
-RUN set -e; \
-                if [ "${ENABLE_PISP}" = "true" ]; then \
-                        PIPELINES="rpi/vc4,rpi/pisp"; IPAS="rpi/vc4,rpi/pisp"; \
-                else \
-                        PIPELINES="rpi/vc4"; IPAS="rpi/vc4"; \
-                fi; \
-                echo "[libcamera] Building with PIPELINES=$PIPELINES IPAS=$IPAS"; \
-                meson setup build --buildtype=release \
-                        -Dpipelines=$PIPELINES \
-                        -Dipas=$IPAS \
-                        -Dv4l2=true \
-                        -Dgstreamer=disabled \
-                        -Dtest=false \
-                        -Dlc-compliance=disabled \
-                        -Dcam=enabled \
-                        -Dqcam=disabled \
-                        -Ddocumentation=disabled \
-                        -Dpycamera=enabled; \
-                ninja -C build; \
-                ninja -C build install; \
-                ldconfig; \
-                mkdir -p /artifact/usr_local && cp -R /usr/local/* /artifact/usr_local/
 
-# ---------- Stage 2: Build rpicam-ros against libcamera ----------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential meson ninja-build pkg-config cmake git \
+    python3-ply python3-yaml python3-jinja2 \
+    libboost-dev libgnutls28-dev libssl-dev libtiff-dev pybind11-dev \
+    libjpeg-dev libepoxy-dev libdrm-dev libudev-dev libglib2.0-dev \
+    curl ca-certificates && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /src
+RUN git clone https://github.com/raspberrypi/libcamera.git libcamera && \
+    cd libcamera && git checkout ${LIBCAMERA_REF}
+
+WORKDIR /src/libcamera
+RUN set -e; \
+    if [ "${ENABLE_PISP}" = "true" ]; then \
+        PIPELINES="rpi/vc4,rpi/pisp"; IPAS="rpi/vc4,rpi/pisp"; \
+    else \
+        PIPELINES="rpi/vc4"; IPAS="rpi/vc4"; \
+    fi; \
+    meson setup build --buildtype=release \
+        -Dpipelines=$PIPELINES \
+        -Dipas=$IPAS \
+        -Dv4l2=true \
+        -Dgstreamer=disabled \
+        -Dtest=false \
+        -Dlc-compliance=disabled \
+        -Dcam=enabled \
+        -Dqcam=disabled \
+        -Ddocumentation=disabled \
+        -Dpycamera=enabled; \
+    ninja -C build; \
+    ninja -C build install; \
+    ldconfig; \
+    mkdir -p /artifact/usr_local && cp -R /usr/local/* /artifact/usr_local/
+
+# ---------- Stage 2: Build rpicam-ros ----------
 FROM ros:humble-ros-base AS rpicam_ros_build
 ENV DEBIAN_FRONTEND=noninteractive
 ARG RPICAM_ROS_REF=main
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git build-essential python3-colcon-common-extensions \
-        ros-humble-image-transport-plugins curl ca-certificates && \
-        rm -rf /var/lib/apt/lists/*
+    git build-essential python3-colcon-common-extensions \
+    ros-humble-image-transport-plugins curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
+
 WORKDIR /ws/src
-RUN set -e; \
-        echo "[rpicam-ros] Fetching ref ${RPICAM_ROS_REF}"; \
-        if git clone --depth 1 --branch ${RPICAM_ROS_REF} https://github.com/raspberrypi/rpicam-ros.git; then \
-          echo "[rpicam-ros] Clone OK"; \
-        else \
-          echo "[rpicam-ros] Clone failed, fallback tarball"; \
-          curl -fsSL -o rpicam-ros.tar.gz https://codeload.github.com/raspberrypi/rpicam-ros/tar.gz/refs/heads/${RPICAM_ROS_REF}; \
-          tar -xzf rpicam-ros.tar.gz; mv rpicam-ros-* rpicam-ros; rm rpicam-ros.tar.gz; \
-        fi
+RUN git clone --depth 1 --branch ${RPICAM_ROS_REF} https://github.com/raspberrypi/rpicam-ros.git
+
 WORKDIR /ws
-RUN bash -c "set -e; source /opt/ros/humble/setup.sh && colcon build --symlink-install"
+RUN bash -c "source /opt/ros/humble/setup.sh && colcon build --symlink-install"
 
 # ---------- Stage 3: Runtime image ----------
 FROM ros:humble-ros-base AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ros-humble-image-transport-plugins curl ca-certificates && \
-        rm -rf /var/lib/apt/lists/*
+    ros-humble-image-transport-plugins curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
 COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
 COPY --from=rpicam_ros_build /ws/install /ws/install
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib
 RUN groupadd -f video && usermod -aG video root
+
 WORKDIR /app
-COPY camera_launch.py /app/camera_launch.py
+
+# ----- Integrirani launch file direktno u container -----
+RUN mkdir -p /app/launch
+RUN echo "\
+from launch import LaunchDescription\n\
+from launch_ros.actions import Node\n\
+\ndef generate_launch_description():\n\
+    return LaunchDescription([\n\
+        Node(\n\
+            package='rpicam_ros',\n\
+            executable='rpicam_node',\n\
+            name='rpicam',\n\
+            output='screen',\n\
+            parameters=[{\n\
+                'width': 1280,\n\
+                'height': 720,\n\
+                'fps': 30\n\
+            }]\n\
+        )\n\
+    ])\n" > /app/launch/camera_launch.py
+
 ENV CAMERA_WIDTH=1280 CAMERA_HEIGHT=720 CAMERA_FPS=30
-ENTRYPOINT ["bash","-c","source /opt/ros/humble/setup.sh && source /ws/install/setup.sh && ros2 launch /app/camera_launch.py width:=${CAMERA_WIDTH} height:=${CAMERA_HEIGHT} fps:=${CAMERA_FPS}"]
+
+ENTRYPOINT ["bash","-c","source /opt/ros/humble/setup.sh && source /ws/install/setup.sh && ros2 launch /app/launch/camera_launch.py"]
+
