@@ -40,6 +40,5 @@ declare module 'animejs' {
   namespace anime {
     function timeline(params?: Omit<AnimeParams, 'targets'>): AnimeTimelineInstance;
   }
-
-  export default anime;
+  export = anime;
 }
