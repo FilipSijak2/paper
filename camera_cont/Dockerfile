@@ -1,13 +1,41 @@
 FROM ros:humble-ros-base
-RUN apt-get update && apt-get install -y \
-    ros-humble-rpicam-ros \
+
+############################################################
+# Stage: Install dependencies & build rpicam-ros from source
+############################################################
+# The binary package ros-humble-rpicam-ros is not available, so we build it.
+# This Dockerfile assumes ARM64 build on Raspberry Pi host. Cross-building on x86
+# will not work unless you enable qemu / multi-arch emulation.
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git build-essential python3-colcon-common-extensions \
+    libcamera-dev libepoxy-dev libjpeg-dev libdrm-dev pkg-config \
     ros-humble-image-transport-plugins \
     && rm -rf /var/lib/apt/lists/*
-# Add video group just in case we later drop root (kept root for simplicity now)
+
+# Optional: tools for debugging (comment out if image size critical)
+# RUN apt-get update && apt-get install -y vim curl && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /ws/src
+RUN git clone --depth 1 https://github.com/raspberrypi/rpicam-ros.git
+
+WORKDIR /ws
+RUN bash -c "source /opt/ros/humble/setup.sh && colcon build --symlink-install"
+
+# Add video group (future non-root usage) - currently run as root
 RUN groupadd -f video && usermod -aG video root
+
+#############################################
+# Runtime setup
+#############################################
+ENV ROS_WS=/ws
 WORKDIR /app
 COPY camera_launch.py /app/camera_launch.py
 
-# Default launch; can override params at runtime via:
-#   docker run ... camera_cont ros2 launch /app/camera_launch.py width:=1920 height:=1080 fps:=15
-ENTRYPOINT ["ros2", "launch", "/app/camera_launch.py"]
+# Environment variables for dynamic resolution/FPS (can be overridden in compose)
+ENV CAMERA_WIDTH=1280 \
+    CAMERA_HEIGHT=720 \
+    CAMERA_FPS=30
+
+# Entry script: source both ROS and workspace overlays then launch
+ENTRYPOINT ["bash","-c","source /opt/ros/humble/setup.sh && source /ws/install/setup.sh && ros2 launch /app/camera_launch.py width:=${CAMERA_WIDTH} height:=${CAMERA_HEIGHT} fps:=${CAMERA_FPS}"]
