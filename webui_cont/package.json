@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host",
-    "build": "tsc && vite build",
+  "build": "tsc --emitDeclarationOnly false && vite build",
     "lint": "eslint src --ext .ts,.tsx --max-warnings 0",
     "preview": "vite preview --host",
     "smoke": "node scripts/smoke-test.mjs"

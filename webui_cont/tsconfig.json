@@ -20,5 +20,6 @@
     "jsxImportSource": "react"
   },
   "include": ["src"],
+  "exclude": ["src/types/**/*.d.ts"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
