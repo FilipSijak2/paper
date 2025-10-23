@@ -17,7 +17,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
                 curl ca-certificates && \
                 rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-RUN git clone --depth 1 --branch ${LIBCAMERA_REF} https://github.com/raspberrypi/libcamera.git || (echo "[libcamera] Failed to clone" && exit 1)
+RUN set -e; \
+        echo "[libcamera] Attempt shallow clone ref ${LIBCAMERA_REF}"; \
+        if git clone --depth 1 --branch ${LIBCAMERA_REF} https://github.com/raspberrypi/libcamera.git; then \
+                echo "[libcamera] Shallow clone succeeded"; \
+        else \
+                echo "[libcamera] Shallow clone failed (maybe ref is a commit). Trying full clone..."; \
+                if git clone https://github.com/raspberrypi/libcamera.git libcamera_full; then \
+                        cd libcamera_full; \
+                        if git checkout ${LIBCAMERA_REF}; then \
+                           mv ..//libcamera_full libcamera; \
+                        else \
+                           echo "[libcamera] Ref ${LIBCAMERA_REF} not found even in full clone. Fallback to tarball"; \
+                           cd /src; rm -rf libcamera_full; \
+                           curl -fsSL -o libcamera.tar.gz https://codeload.github.com/raspberrypi/libcamera/tar.gz/${LIBCAMERA_REF} || (echo "[libcamera] Tarball download failed" && exit 1); \
+                           tar -xzf libcamera.tar.gz; mv libcamera-* libcamera; rm libcamera.tar.gz; \
+                        fi; \
+                else \
+                        echo "[libcamera] Full clone failed. Aborting."; exit 1; \
+                fi; \
+        fi
 WORKDIR /src/libcamera
 # Compose pipeline / ipa lists dynamically
 RUN set -e; \
