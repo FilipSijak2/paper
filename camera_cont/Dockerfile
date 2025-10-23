@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git build-essential python3-colcon-common-extensions \
     libcamera-dev libepoxy-dev libjpeg-dev libdrm-dev pkg-config \
     ros-humble-image-transport-plugins \
+    curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: tools for debugging (comment out if image size critical)
@@ -18,17 +19,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /ws/src
 # Robust fetch: try shallow git clone (5 retries), fallback to tarball
+ARG RPICAM_ROS_REF=main
+ARG RPICAM_ROS_TARBALL_URL=https://codeload.github.com/raspberrypi/rpicam-ros/tar.gz/refs/heads/${RPICAM_ROS_REF}
 RUN set -e; \
-        for i in 1 2 3 4 5; do \
-            echo "[rpicam-ros] Attempt $i git clone"; \
-            git clone --depth 1 https://github.com/raspberrypi/rpicam-ros.git && break || sleep 3; \
-            if [ $i -eq 5 ]; then \
-                echo "[rpicam-ros] Git clone failed after retries, falling back to tarball"; \
-                curl -L -o rpicam-ros.tar.gz https://github.com/raspberrypi/rpicam-ros/archive/refs/heads/main.tar.gz; \
+        echo "[rpicam-ros] Trying shallow git clone for ref ${RPICAM_ROS_REF}"; \
+        if git clone --depth 1 --branch ${RPICAM_ROS_REF} https://github.com/raspberrypi/rpicam-ros.git; then \
+                echo "[rpicam-ros] Git clone succeeded."; \
+        else \
+                echo "[rpicam-ros] Git clone failed. Falling back to tarball: ${RPICAM_ROS_TARBALL_URL}"; \
+                curl -fsSL -o rpicam-ros.tar.gz ${RPICAM_ROS_TARBALL_URL}; \
                 tar -xzf rpicam-ros.tar.gz; \
-                mv rpicam-ros-main rpicam-ros; \
-            fi; \
-        done
+                mv rpicam-ros-${RPICAM_ROS_REF} rpicam-ros || mv rpicam-ros-* rpicam-ros; \
+                rm rpicam-ros.tar.gz; \
+        fi
 
 WORKDIR /ws
 RUN bash -c "source /opt/ros/humble/setup.sh && colcon build --symlink-install"
