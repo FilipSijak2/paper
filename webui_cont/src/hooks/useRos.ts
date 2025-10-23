@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import ROSLIB from 'roslib';
+import * as ROSLIB from 'roslib';
 import type { Ros } from 'roslib';
 import type { ConnectionParams } from '../types/connection';
 

@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Topic } from 'roslib';
-import ROSLIB from 'roslib';
+import * as ROSLIB from 'roslib';
 import './VoiceLayout.css'; // Renamed CSS import
 import { GamepadProps } from '../GamepadInterface';
 

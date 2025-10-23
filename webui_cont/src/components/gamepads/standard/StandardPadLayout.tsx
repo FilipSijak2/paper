@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Topic } from 'roslib';
-import ROSLIB from 'roslib';
+import * as ROSLIB from 'roslib';
 import { Joystick } from 'react-joystick-component';
 // Library does not export a named IJoystickUpdateEvent type in its typings; define minimal local shape
 interface JoystickUpdateEvent { x: number | null; y: number | null; direction?: string | null; }

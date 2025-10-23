@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import type { Topic } from 'roslib';
-import ROSLIB from 'roslib';
+import * as ROSLIB from 'roslib';
 import { throttle } from 'lodash-es';
 import './GameBoyLayout.css';
 import { GamepadProps } from '../GamepadInterface';
