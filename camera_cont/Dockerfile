@@ -1,17 +1,22 @@
-FROM ubuntu:24.04
+FROM python:3.11-slim
 
-# Install dependencies
+# --- System dependencies ---
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    libcamera-apps \
-    python3 \
-    python3-pip \
-    python3-opencv \
+    libjpeg-dev \
+    libatlas-base-dev \
+    v4l-utils \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ROS 2 Python packages
-RUN pip3 install rclpy sensor-msgs cv_bridge
+# --- Python dependencies ---
+RUN pip install --no-cache-dir \
+    rclpy \
+    sensor-msgs \
+    opencv-python-headless \
+    numpy \
+    picamera2 \
+    opencv-contrib-python-headless
 
-# Set working directory
+# --- Create app directory ---
 WORKDIR /app
 COPY camera_node.py .
 
