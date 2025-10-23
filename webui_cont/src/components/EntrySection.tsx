@@ -16,6 +16,23 @@ const GearIcon = () => (
   </svg>
 );
 
+// Dropdown caret icon component
+const CaretIcon = ({ isOpen }: { isOpen: boolean }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width="12" 
+    height="12" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+    style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.3s ease' }}
+  >
+    <polyline points="6 9 12 15 18 9"></polyline>
+  </svg>
+);
 
 const EntrySection: React.FC<EntrySectionProps> = ({ onConnect }) => {
   const [ros2Option, setRos2Option] = useState<'domain' | 'ip'>('ip');
@@ -76,7 +93,7 @@ const EntrySection: React.FC<EntrySectionProps> = ({ onConnect }) => {
     animateAdvancedForm(formRef.current, showAdvanced);
     
     // Animate gear icon rotation
-    const gearIcon = document.querySelector('.advanced-toggle-content svg') as HTMLElement | null;
+    const gearIcon = document.querySelector('.advanced-toggle-content svg');
     if (gearIcon) {
       anime({
         targets: gearIcon,
@@ -87,12 +104,32 @@ const EntrySection: React.FC<EntrySectionProps> = ({ onConnect }) => {
     }
   }, [showAdvanced]);
 
+  // Helper function to convert hex to rgb
+  const hexToRgb = (hex: string): string => {
+    // Default fallback in case of parsing issues
+    if (!hex || !hex.startsWith('#')) return '50, 205, 50';
+
+    const shorthandRegex = /^#?([a-f\d])([a-f\d])([a-f\d])$/i;
+    const fullHex = hex.replace(shorthandRegex, (m, r, g, b) => r + r + g + g + b + b);
+    
+    const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(fullHex);
+    if (!result) return '50, 205, 50';
+    
+    const r = parseInt(result[1], 16);
+    const g = parseInt(result[2], 16);
+    const b = parseInt(result[3], 16);
+    
+    return `${r}, ${g}, ${b}`;
+  };
 
   // Animate the dash character - re-run animation when theme changes
   useEffect(() => {
     if (!dashRef.current) return;
 
-  // Theme colors accessible via CSS variables if needed; currently not directly used here.
+    // Get theme colors for animation
+    const style = getComputedStyle(document.documentElement);
+    const primaryColor = style.getPropertyValue('--primary-color').trim();
+    const hoverColor = style.getPropertyValue('--primary-hover-color').trim();
 
     // Clear any inline styles
     dashRef.current.style.removeProperty('color');
@@ -228,9 +265,9 @@ const EntrySection: React.FC<EntrySectionProps> = ({ onConnect }) => {
       <div className="entry-section card" data-testid="entry-section">
         <div className="logo-container" ref={logoRef}>
           <h1 className="app-title">
-            <span className="title-robo">Dev</span>
+            <span className="title-robo">Robo</span>
             <span className="title-dash" ref={dashRef}>-</span>
-            <span className="title-boy">astor</span>
+            <span className="title-boy">Boy</span>
           </h1>
         </div>
 

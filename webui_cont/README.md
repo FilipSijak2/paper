@@ -1,4 +1,4 @@
-# 🤖 Devastor Control UI
+# 🤖 Robo-Boy
 
 [![Docker CI](https://github.com/tessel-la/robo-boy/actions/workflows/docker-ci.yml/badge.svg)](https://github.com/tessel-la/robo-boy/actions/workflows/docker-ci.yml)
 
@@ -6,7 +6,7 @@
   <img src="images/logo.png" alt="Robo-Boy Logo" width="200">
 </p>
 
-A web application for controlling the ROS 2 robot Devastor, featuring a React + Vite frontend, ROS 2 integration via rosbridge, and secure local deployment. Inspired by retro handheld consoles.
+A web application for controlling ROS 2 robots, featuring a React frontend, ROS 2 integration via rosbridge, and secure local development setup with Caddy and HTTPS. Inspired by retro handheld consoles.
 
 ## ✨ Features
 
@@ -25,7 +25,7 @@ A web application for controlling the ROS 2 robot Devastor, featuring a React + 
   <video src="https://github.com/user-attachments/assets/36b90514-79a6-42c4-9a92-b5231c9d16f3" width="50%" controls></video>
 </div>
 
-## 🚀 Getting Started (Local & Robot via Tailscale)
+## 🚀 Getting Started
 
 <details>
 <summary><strong>📋 Prerequisites</strong></summary>
@@ -64,11 +64,8 @@ A web application for controlling the ROS 2 robot Devastor, featuring a React + 
     ```
 
 4.  **Access the Application:**
-    *   Local dev: `https://localhost`
-    *   Same LAN device: `https://YOUR_HOST_IP`
-    *   Robot deployment (Tailscale): `http://<TAILSCALE_ROBOT_IP>:8080` (served by container `webui_cont`)
-      - Ensure `VITE_ROSBRIDGE_URL` resolves correctly (defaults to `ws://<tailscale_ip>:9090` if `PUBLIC_HOST` is set in `.env`)
-      - Robot display name comes from `VITE_ROBOT_NAME=Devastor`
+    *   On your development machine: `https://localhost`
+    *   From another device on the same network (e.g., mobile): `https://YOUR_HOST_IP` (using the same IP you used for `mkcert`)
 </details>
 
 <details>
