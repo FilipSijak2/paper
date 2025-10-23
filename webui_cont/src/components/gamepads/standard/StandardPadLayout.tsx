@@ -1,10 +1,8 @@
-import type { FC } from 'react';
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import type { Topic } from 'roslib';
-import * as ROSLIB from 'roslib';
+import ROSLIB from 'roslib';
 import { Joystick } from 'react-joystick-component';
-// Library does not export a named IJoystickUpdateEvent type in its typings; define minimal local shape
-interface JoystickUpdateEvent { x: number | null; y: number | null; direction?: string | null; }
+import type { IJoystickUpdateEvent } from 'react-joystick-component'; // Use the correct type import
 import { throttle } from 'lodash-es'; // Import throttle
 import './StandardPadLayout.css'; // Renamed CSS import
 import { GamepadProps } from '../GamepadInterface';
@@ -16,13 +14,7 @@ const THROTTLE_INTERVAL = 100; // Milliseconds
 const JOYSTICK_MAX_VALUE = 1.0; // Max absolute value for axes
 const NUM_AXES = 4; // Define the number of axes we are using (adjust if needed)
 
-interface JoyMessage {
-  header: { stamp: { secs: number; nsecs: number }; frame_id: string };
-  axes: number[];
-  buttons: number[];
-}
-
-const StandardPadLayout: FC<GamepadProps> = ({ ros }) => { // Using GamepadProps
+const StandardPadLayout: React.FC<GamepadProps> = ({ ros }) => { // Now using GamepadProps
   const joyTopic = useRef<Topic | null>(null); // Renamed ref
   // State to hold axes values - Initialize with zeros
   const [axes, setAxes] = useState<number[]>(Array(NUM_AXES).fill(0.0));
@@ -72,14 +64,19 @@ const StandardPadLayout: FC<GamepadProps> = ({ ros }) => { // Using GamepadProps
   // Function to publish Joy message (define first)
   const publishJoy = useCallback((currentAxes: number[]) => {
     if (!joyTopic.current) return;
-    const joyMsg: JoyMessage = {
-      header: { stamp: { secs: 0, nsecs: 0 }, frame_id: '' },
+
+    const joyMsg = new ROSLIB.Message({
+      header: { // Add a basic header (optional but good practice)
+        stamp: { secs: 0, nsecs: 0 }, // Can be populated with current time if needed
+        frame_id: ''
+      },
       axes: currentAxes,
-      buttons: []
-    };
-    joyTopic.current.publish(new ROSLIB.Message(joyMsg));
-    lastSentAxes.current = [...currentAxes];
-  }, []);
+      buttons: [] // No buttons implemented for now
+    });
+    // console.log('Publishing Joy:', joyMsg);
+    joyTopic.current.publish(joyMsg);
+    lastSentAxes.current = [...currentAxes]; // Update last sent state
+  }, []); // No dependencies needed
 
   // Throttled version of the publish function (define second)
   const publishJoyThrottled = useCallback(
@@ -89,7 +86,11 @@ const StandardPadLayout: FC<GamepadProps> = ({ ros }) => { // Using GamepadProps
 
   // Initialize the topic publisher (define last)
   useEffect(() => {
-    joyTopic.current = new ROSLIB.Topic({ ros, name: JOY_TOPIC, messageType: JOY_MSG_TYPE });
+    joyTopic.current = new ROSLIB.Topic({
+      ros: ros,
+      name: JOY_TOPIC,
+      messageType: JOY_MSG_TYPE,
+    });
     joyTopic.current.advertise();
     console.log(`Advertised ${JOY_TOPIC} for StandardPadLayout`); // Updated log
 
@@ -108,7 +109,7 @@ const StandardPadLayout: FC<GamepadProps> = ({ ros }) => { // Using GamepadProps
 
 
   // --- Left Joystick Handlers (Axes 0 & 1) ---
-  const handleMoveLeft = useCallback((event: JoystickUpdateEvent) => {
+  const handleMoveLeft = useCallback((event: IJoystickUpdateEvent) => { // Use imported type
     if (event.x === null || event.y === null) return;
     const size = 100; // Assuming joystick component size is 100
     const halfSize = size / 2;
@@ -134,7 +135,7 @@ const StandardPadLayout: FC<GamepadProps> = ({ ros }) => { // Using GamepadProps
   }, [publishJoy, publishJoyThrottled]); // Added dependencies
 
   // --- Right Joystick Handlers (Axes 2 & 3) ---
-  const handleMoveRight = useCallback((event: JoystickUpdateEvent) => {
+  const handleMoveRight = useCallback((event: IJoystickUpdateEvent) => { // Use imported type
     if (event.x === null || event.y === null) return;
     const size = 100; // Assuming joystick component size is 100
     const halfSize = size / 2;
@@ -195,4 +196,4 @@ const StandardPadLayout: FC<GamepadProps> = ({ ros }) => { // Using GamepadProps
   );
 };
 
-export default StandardPadLayout; // Renamed export
+export default StandardPadLayout; // Renamed export 

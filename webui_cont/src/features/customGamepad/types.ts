@@ -106,4 +106,4 @@ export interface EditorState {
   cellSize: number;
   showGrid: boolean;
   snapToGrid: boolean;
-}
+} 

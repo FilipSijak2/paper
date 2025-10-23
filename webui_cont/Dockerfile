@@ -1,25 +1,27 @@
-# Web UI build (Robo-boy integrated)
-# Stage 1: Build React application
-FROM node:20-alpine AS builder
+# Stage 1: Build the React application
+FROM node:20-alpine as builder
 WORKDIR /app
 
-# Install dependencies
+# Copy package files and install dependencies
 COPY package*.json ./
-# Prefer npm ci for reproducible builds; fall back to install if lock is absent
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+# Use npm ci for clean installs in CI/CD environments
+RUN npm ci
 
-# Copy source
+# Copy the rest of the application code
 COPY . .
 
-# Build with build args (ROSBRIDGE URL)
-ARG VITE_ROSBRIDGE_URL=ws://localhost:9090
-ENV VITE_ROSBRIDGE_URL=$VITE_ROSBRIDGE_URL
+# Build the application
+# This runs 'tsc && vite build' as defined in package.json
 RUN npm run build
 
-# Stage 2: Serve with nginx
+# Stage 2: Serve the application using Nginx
 FROM nginx:stable-alpine
+
+# Copy built assets from the builder stage to Nginx's web root
 COPY --from=builder /app/dist /usr/share/nginx/html
-# Provide explicit root + index; add small /healthz endpoint; enable caching for static assets
-RUN printf 'server {\n  listen 80;\n  server_name _;\n  root /usr/share/nginx/html;\n  index index.html;\n  add_header Cache-Control "public,max-age=604800";\n  location /healthz { return 200 "ok"; add_header Content-Type text/plain; }\n  location / { try_files $uri $uri/ /index.html; }\n  error_page 500 502 503 504 /50x.html;\n  location = /50x.html { return 500 "internal error"; }\n}\n' > /etc/nginx/conf.d/default.conf
+
+# Expose port 80 for Nginx
 EXPOSE 80
-CMD ["nginx", "-g", "daemon off;"]
+
+# Start Nginx and keep it in the foreground
+CMD ["nginx", "-g", "daemon off;"] 

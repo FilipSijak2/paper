@@ -1,11 +1,14 @@
-import { useState, useEffect, useRef } from 'react';
-import { ConnectionParams } from '../types/connection';
+import React, { useState, useEffect, useRef } from 'react';
+import { ConnectionParams } from '../App'; // Adjust if ConnectionParams definition changes
 import './EntrySection.css';
 import anime from 'animejs';
 import { animateLandingPage, animateAdvancedForm, animateButtonPress } from '../utils/animations';
 
-interface EntrySectionProps { onConnect: (params: ConnectionParams) => void; }
+interface EntrySectionProps {
+  onConnect: (params: ConnectionParams) => void;
+}
 
+// Simple gear icon component for the advanced options
 const GearIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="3"></circle>
@@ -13,7 +16,8 @@ const GearIcon = () => (
   </svg>
 );
 
-const EntrySection = ({ onConnect }: EntrySectionProps) => {
+
+const EntrySection: React.FC<EntrySectionProps> = ({ onConnect }) => {
   const [ros2Option, setRos2Option] = useState<'domain' | 'ip'>('ip');
   const [ros2Value, setRos2Value] = useState<string>('');
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -24,88 +28,304 @@ const EntrySection = ({ onConnect }: EntrySectionProps) => {
   const quickConnectRef = useRef<HTMLButtonElement>(null);
   const dashRef = useRef<HTMLSpanElement>(null);
   const transitionOverlayRef = useRef<HTMLDivElement>(null);
-  const [themeColors, setThemeColors] = useState({ primary: '', hover: '' });
+  // Track theme changes
+  const [themeColors, setThemeColors] = useState({
+    primary: '',
+    hover: ''
+  });
+
+  // Get current hostname for quick connect
   const currentHostname = window.location.hostname;
 
+  // Watch for theme changes
   useEffect(() => {
     const checkTheme = () => {
       const style = getComputedStyle(document.documentElement);
       const primary = style.getPropertyValue('--primary-color').trim();
       const hover = style.getPropertyValue('--primary-hover-color').trim();
+      
       if (primary !== themeColors.primary || hover !== themeColors.hover) {
-        setThemeColors({ primary, hover });
+        setThemeColors({
+          primary,
+          hover
+        });
       }
     };
+
+    // Initial check
     checkTheme();
+
+    // Set up observer to watch for theme changes (attribute changes)
     const observer = new MutationObserver(checkTheme);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    observer.observe(document.documentElement, { 
+      attributes: true,
+      attributeFilter: ['data-theme'] 
+    });
+
     return () => observer.disconnect();
   }, [themeColors.primary, themeColors.hover]);
 
-  useEffect(() => { animateLandingPage(containerRef.current, logoRef.current); }, []);
+  // Initialize anime.js animation when component mounts
+  useEffect(() => {
+    // Animate the entry elements when component mounts
+    animateLandingPage(containerRef.current, logoRef.current);
+  }, []);
+
+  // Handle advanced form animation when its visibility changes
   useEffect(() => {
     animateAdvancedForm(formRef.current, showAdvanced);
-    const gearIcon = document.querySelector('.advanced-toggle-content svg');
+    
+    // Animate gear icon rotation
+    const gearIcon = document.querySelector('.advanced-toggle-content svg') as HTMLElement | null;
     if (gearIcon) {
-      anime({ targets: gearIcon, rotate: showAdvanced ? 180 : 0, duration: 500, easing: 'easeInOutQuad' });
+      anime({
+        targets: gearIcon,
+        rotate: showAdvanced ? 180 : 0,
+        duration: 500,
+        easing: 'easeInOutQuad'
+      });
     }
   }, [showAdvanced]);
 
+
+  // Animate the dash character - re-run animation when theme changes
   useEffect(() => {
     if (!dashRef.current) return;
-    // Timeline for dash animation
-    const dashTimeline = anime.timeline({ loop: true, direction: 'alternate', easing: 'easeInOutSine' });
+
+  // Theme colors accessible via CSS variables if needed; currently not directly used here.
+
+    // Clear any inline styles
+    dashRef.current.style.removeProperty('color');
+
+    // Timeline for sequenced animations
+    const dashTimeline = anime.timeline({
+      loop: true,
+      direction: 'alternate',
+      easing: 'easeInOutSine',
+    });
+
+    // Add wiggle/rotation animation
     dashTimeline
-      .add({ targets: dashRef.current, rotate: [ { value: -15, duration: 400, easing: 'easeInOutBack' }, { value: 15, duration: 600, easing: 'easeInOutBack' }, { value: -8, duration: 300, easing: 'easeInOutBack' }, { value: 8, duration: 400, easing: 'easeInOutBack' }, { value: 0, duration: 500, easing: 'easeInOutBack' } ], duration: 2200 })
-      .add({ targets: dashRef.current, translateY: [ { value: -4, duration: 300, easing: 'easeOutExpo' }, { value: 0, duration: 600, easing: 'easeInElastic' } ], scale: [ { value: 1.2, duration: 300, easing: 'easeOutExpo' }, { value: 1, duration: 600, easing: 'easeInElastic' } ], duration: 900, offset: '-=1000' });
-    return () => { dashTimeline.pause(); };
-  }, [themeColors]);
+      .add({
+        targets: dashRef.current,
+        rotate: [
+          { value: -15, duration: 400, easing: 'easeInOutBack' },
+          { value: 15, duration: 600, easing: 'easeInOutBack' },
+          { value: -8, duration: 300, easing: 'easeInOutBack' },
+          { value: 8, duration: 400, easing: 'easeInOutBack' },
+          { value: 0, duration: 500, easing: 'easeInOutBack' }
+        ] as any,
+        duration: 2200
+      })
+      .add({
+        targets: dashRef.current,
+        translateY: [
+          { value: -4, duration: 300, easing: 'easeOutExpo' },
+          { value: 0, duration: 600, easing: 'easeInElastic' }
+        ] as any,
+        scale: [
+          { value: 1.2, duration: 300, easing: 'easeOutExpo' },
+          { value: 1, duration: 600, easing: 'easeInElastic' }
+        ] as any,
+        duration: 900,
+        offset: '-=1000', // Start before previous animation ends
+      });
+
+    return () => {
+      dashTimeline.pause();
+    };
+  }, [themeColors]); // Re-run when theme colors change
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const params: ConnectionParams = { ros2Option, ros2Value: ros2Option === 'domain' ? parseInt(ros2Value, 10) || 0 : ros2Value };
-    const submitBtn = (e.currentTarget as HTMLFormElement).querySelector('button[type="submit"]');
-    if (submitBtn) animateButtonPress(submitBtn as HTMLElement);
+    
+    // Animate the submit button on press
+    if (e.currentTarget && e.currentTarget instanceof HTMLFormElement) {
+      const submitButton = e.currentTarget.querySelector('button[type="submit"]');
+      if (submitButton) {
+        animateButtonPress(submitButton as HTMLElement);
+      }
+    }
+
+    const params: ConnectionParams = {
+      ros2Option,
+      ros2Value: ros2Option === 'domain' ? parseInt(ros2Value, 10) || 0 : ros2Value,
+    };
     onConnect(params);
   };
 
   const handleQuickConnect = () => {
     if (isTransitioning) return;
+    
     setIsTransitioning(true);
-    const button = quickConnectRef.current; const overlay = transitionOverlayRef.current; if (!button || !overlay) return;
+    const button = quickConnectRef.current;
+    if (!button) return;
+
     const buttonRect = button.getBoundingClientRect();
-    const buttonCenterX = buttonRect.left + buttonRect.width / 2; const buttonCenterY = buttonRect.top + buttonRect.height / 2;
-    button.style.opacity = '0'; button.style.pointerEvents = 'none';
-    overlay.style.left = `${buttonCenterX}px`; overlay.style.top = `${buttonCenterY}px`; overlay.style.width = `${buttonRect.width}px`; overlay.style.height = `${buttonRect.height}px`; overlay.style.borderRadius = '4px'; overlay.style.display = 'block';
-    const timeline = anime.timeline({ easing: 'easeInOutQuad', complete: () => { onConnect({ ros2Option: 'ip', ros2Value: currentHostname }); } });
-    timeline
-      .add({ targets: overlay, width: 20, height: 20, borderRadius: 50, duration: 300 })
-      .add({ targets: overlay, translateY: [ { value: window.innerHeight - 10 - buttonCenterY, duration: 500, easing: 'easeInQuad' } ] })
-      .add({ targets: overlay, width: '200vmax', height: '200vmax', duration: 600, easing: 'easeOutQuad' });
+    const overlay = transitionOverlayRef.current;
+    if (!overlay) return;
+
+    // Get the button's position relative to the viewport
+    const buttonCenterX = buttonRect.left + buttonRect.width / 2;
+    const buttonCenterY = buttonRect.top + buttonRect.height / 2;
+
+    // Hide button immediately
+    button.style.opacity = '0';
+    button.style.pointerEvents = 'none';
+
+    // Set initial position of the overlay
+    overlay.style.left = `${buttonCenterX}px`;
+    overlay.style.top = `${buttonCenterY}px`;
+    overlay.style.width = `${buttonRect.width}px`;
+    overlay.style.height = `${buttonRect.height}px`;
+    overlay.style.borderRadius = '4px';
+    overlay.style.display = 'block';
+
+    // Create a timeline for the animation sequence
+    const timeline = anime.timeline({
+      easing: 'easeInOutQuad',
+      complete: () => {
+        // Call onConnect after animation completes
+        const params: ConnectionParams = {
+          ros2Option: 'ip',
+          ros2Value: currentHostname,
+        };
+        onConnect(params);
+      }
+    });
+
+    // First shrink to a dot
+    timeline.add({
+      targets: overlay,
+      width: '20px',
+      height: '20px',
+      borderRadius: '50%',
+      duration: 300
+    })
+    // Then drop to bottom of screen
+    .add({
+      targets: overlay,
+      top: `${window.innerHeight - 10}px`,
+      duration: 500,
+      easing: 'easeInQuad'
+    })
+    // Finally expand to fill screen
+    .add({
+      targets: overlay,
+      width: '200vmax',
+      height: '200vmax',
+      duration: 600,
+      easing: 'easeOutQuad'
+    });
+  };
+
+  const toggleAdvanced = () => {
+    setShowAdvanced(!showAdvanced);
   };
 
   return (
     <div className="entry-section-container" ref={containerRef}>
       <div className="entry-section card" data-testid="entry-section">
         <div className="logo-container" ref={logoRef}>
-          <h1 className="app-title"><span className="title-robo">Robo</span><span className="title-dash" ref={dashRef}>-</span><span className="title-boy">Boy</span></h1>
+          <h1 className="app-title">
+            <span className="title-robo">Dev</span>
+            <span className="title-dash" ref={dashRef}>-</span>
+            <span className="title-boy">astor</span>
+          </h1>
         </div>
+
         <div className="connection-options">
-          <button className="quick-connect-btn" onClick={handleQuickConnect} title={`Connect to ${currentHostname}`} ref={quickConnectRef} style={{ position: 'relative', transition: 'opacity 0.1s ease' }} disabled={isTransitioning}>Quick Connect<span className="quick-connect-ip">{currentHostname}</span></button>
-          <button type="button" className="advanced-toggle" onClick={() => setShowAdvanced(!showAdvanced)} title="Advanced Options" style={{ padding: '12px 16px', minWidth: '48px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}><span className="advanced-toggle-content"><GearIcon /></span></button>
-          <form onSubmit={handleSubmit} ref={formRef} className={`advanced-form ${showAdvanced ? 'visible' : ''}`}>
-            <div className="form-group"><label>Connection Method:</label><div className="radio-group">
-              <label><input type="radio" value="domain" checked={ros2Option === 'domain'} onChange={() => setRos2Option('domain')} />Domain ID</label>
-              <label><input type="radio" value="ip" checked={ros2Option === 'ip'} onChange={() => setRos2Option('ip')} />IP Address</label>
-            </div></div>
-            <div className="form-group"><label htmlFor="ros2Value">{ros2Option === 'domain' ? 'Domain ID:' : 'IP Address:'}</label><input type={ros2Option === 'domain' ? 'number' : 'text'} id="ros2Value" value={ros2Value} onChange={(e) => setRos2Value(e.target.value)} placeholder={ros2Option === 'domain' ? 'e.g., 0' : 'e.g., 192.168.1.100'} required /></div>
+          <button 
+            className="quick-connect-btn" 
+            onClick={handleQuickConnect}
+            title={`Connect to ${currentHostname}`}
+            ref={quickConnectRef}
+            style={{ 
+              position: 'relative',
+              transition: 'opacity 0.1s ease'
+            }}
+            disabled={isTransitioning}
+          >
+            Quick Connect
+            <span className="quick-connect-ip">{currentHostname}</span>
+          </button>
+
+          <button 
+            type="button" 
+            className="advanced-toggle" 
+            onClick={toggleAdvanced}
+            title="Advanced Options"
+            style={{ 
+              padding: '12px 16px',
+              minWidth: '48px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center'
+            }}
+          >
+            <span className="advanced-toggle-content">
+              <GearIcon />
+            </span>
+          </button>
+          
+          <form 
+            onSubmit={handleSubmit} 
+            ref={formRef} 
+            className={`advanced-form ${showAdvanced ? 'visible' : ''}`}
+          >
+            <div className="form-group">
+              <label>Connection Method:</label>
+              <div className="radio-group">
+                <label>
+                  <input
+                    type="radio"
+                    value="domain"
+                    checked={ros2Option === 'domain'}
+                    onChange={() => setRos2Option('domain')}
+                  />
+                  Domain ID
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    value="ip"
+                    checked={ros2Option === 'ip'}
+                    onChange={() => setRos2Option('ip')}
+                  />
+                  IP Address
+                </label>
+              </div>
+            </div>
+            <div className="form-group">
+              <label htmlFor="ros2Value">
+                {ros2Option === 'domain' ? 'Domain ID:' : 'IP Address:'}
+              </label>
+              <input
+                type={ros2Option === 'domain' ? 'number' : 'text'}
+                id="ros2Value"
+                value={ros2Value}
+                onChange={(e) => setRos2Value(e.target.value)}
+                placeholder={ros2Option === 'domain' ? 'e.g., 0' : 'e.g., 192.168.1.100'}
+                required
+              />
+            </div>
             <button type="submit" className="connect-btn">Connect</button>
           </form>
         </div>
       </div>
-      <div ref={transitionOverlayRef} style={{ position: 'fixed', backgroundColor: themeColors.primary, transform: 'translate(-50%, -50%)', zIndex: 1000, display: 'none', pointerEvents: 'none' }} />
+      <div 
+        ref={transitionOverlayRef}
+        style={{
+          position: 'fixed',
+          backgroundColor: themeColors.primary,
+          transform: 'translate(-50%, -50%)',
+          zIndex: 1000,
+          display: 'none',
+          pointerEvents: 'none'
+        }}
+      />
     </div>
   );
 };
 
-export default EntrySection;
+export default EntrySection; 

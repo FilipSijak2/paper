@@ -1,33 +1,22 @@
-import { useRef, useCallback, type FC, type RefObject } from 'react';
-import { Color } from 'three';
-import { usePointCloudClient } from '../../hooks/usePointCloudClient';
+import React, { useEffect, useRef } from 'react';
 import { Ros } from 'roslib';
 import * as ROS3D from '../../utils/ros3d';
-import PointCloudSettings from './PointCloudSettings';
+import * as THREE from 'three';
+import { usePointCloudClient } from '../../hooks/usePointCloudClient';
+import { CustomTFProvider } from '../../utils/tfUtils';
+import { PointCloudOptions } from '../VisualizationPanel'; // Import the options type
 
-export interface PointCloudVizOptions {
-  pointSize?: number;
-  scaleX?: number; scaleY?: number; scaleZ?: number;
-  originX?: number; originY?: number; originZ?: number;
-  colorMode?: 'x'|'y'|'z'|'';
-  minColor?: string; maxColor?: string;
-  minAxisValue?: number; maxAxisValue?: number;
-}
-
-export interface PointCloudVizProps {
+interface PointCloudVizProps {
   ros: Ros | null;
   isRosConnected: boolean;
-  ros3dViewer: RefObject<ROS3D.Viewer | null>;
-  customTFProvider: RefObject<any>;
+  ros3dViewer: React.RefObject<ROS3D.Viewer | null>;
+  customTFProvider: React.RefObject<CustomTFProvider | null>;
   topic: string;
   fixedFrame: string;
-  options: PointCloudVizOptions;
-  onUpdateOptions: (patch: Partial<PointCloudVizOptions>) => void;
-  showSettings: boolean;
-  onCloseSettings: () => void;
+  options?: PointCloudOptions;
 }
 
-const PointCloudViz: FC<PointCloudVizProps> = ({
+const PointCloudViz: React.FC<PointCloudVizProps> = ({
   ros,
   isRosConnected,
   ros3dViewer,
@@ -35,60 +24,97 @@ const PointCloudViz: FC<PointCloudVizProps> = ({
   topic,
   fixedFrame,
   options,
-  onUpdateOptions,
-  showSettings,
-  onCloseSettings
 }) => {
+  // Keep a reference to the current client
   const clientRef = useRef<ROS3D.PointCloud2 | null>(null);
+  const previousFixedFrameRef = useRef<string>(fixedFrame);
 
-  const pointCloudClient = usePointCloudClient({
+  // Prepare material options based on settings
+  const materialOptions = {
+    size: options?.pointSize ?? 0.05,
+    colorMode: options?.colorAxis && options.colorAxis !== 'none' ? options.colorAxis : undefined,
+    minAxisValue: options?.minAxisValue,
+    maxAxisValue: options?.maxAxisValue,
+    minColor: options?.minColor ? new THREE.Color(options.minColor) : undefined,
+    maxColor: options?.maxColor ? new THREE.Color(options.maxColor) : undefined,
+    // Convert hex color to THREE.Color if provided, otherwise use green
+    color: options?.color ? new THREE.Color(options.color) : new THREE.Color(0x00ff00),
+  };
+
+  // Prepare other options
+  const clientOptions = {
+    maxPoints: options?.maxPoints ?? 200000,
+  };
+
+  // Use the hook and capture the client reference
+  const { pointCloudClient } = usePointCloudClient({
     ros,
     isRosConnected,
     ros3dViewer,
     customTFProvider,
-    selectedPointCloudTopic: topic,
     fixedFrame,
-    material: {
-      size: options.pointSize,
-  colorMode: options.colorMode === '' ? undefined : options.colorMode,
-  minColor: options.minColor ? new Color(options.minColor) : undefined,
-  maxColor: options.maxColor ? new Color(options.maxColor) : undefined,
-      minAxisValue: options.minAxisValue,
-      maxAxisValue: options.maxAxisValue,
-    },
-    options: { throttleRate: 100 },
-    clientRef,
+    selectedPointCloudTopic: topic,
+    material: materialOptions,
+    options: clientOptions,
+    clientRef,  // Pass the ref to store the client
   });
 
-  const handleSettingsChange = useCallback((patch: Partial<PointCloudVizOptions>) => {
-    onUpdateOptions(patch);
-    if (clientRef.current && patch.pointSize) {
-      clientRef.current.updateSettings({ pointSize: patch.pointSize });
+  // Effect to update settings when options change
+  useEffect(() => {
+    if (clientRef.current && isRosConnected && options) {
+      console.log('[PointCloudViz] Updating settings for point cloud:', topic);
+      
+      // Only apply settings that are enabled in the UI
+      const updateOptions: any = {};
+      
+      // Update point size if enabled
+      if (options.pointSizeEnabled && options.pointSize !== undefined) {
+        updateOptions.pointSize = options.pointSize;
+      }
+      
+      // Update color if enabled
+      if (options.colorEnabled && options.color) {
+        updateOptions.color = options.color;
+      }
+      
+      // Apply the settings to the client
+      clientRef.current.updateSettings(updateOptions);
     }
-    if (clientRef.current) {
-      clientRef.current.updateSettings({
-        scaleX: patch.scaleX,
-        scaleY: patch.scaleY,
-        scaleZ: patch.scaleZ,
-        originX: patch.originX,
-        originY: patch.originY,
-        originZ: patch.originZ,
-      });
-    }
-  }, [onUpdateOptions]);
+  }, [options, isRosConnected, topic]);
 
-  return (
-    <>
-      {showSettings && (
-        <PointCloudSettings
-          options={options}
-          onChange={handleSettingsChange}
-          onClose={onCloseSettings}
-          axisRanges={(pointCloudClient as any).axisRanges}
-        />
-      )}
-    </>
-  );
+  // Effect to handle fixed frame changes
+  useEffect(() => {
+    if (!clientRef.current || !isRosConnected) return;
+    
+    // Check if the fixed frame has changed
+    if (previousFixedFrameRef.current !== fixedFrame) {
+      console.log(`[PointCloudViz] Fixed frame changed from ${previousFixedFrameRef.current} to ${fixedFrame}`);
+      
+      // Update the client's fixed frame
+      if (clientRef.current) {
+        try {
+          // Directly set the fixedFrame on the client
+          (clientRef.current as any).fixedFrame = fixedFrame;
+          
+          // Force an immediate transform update if possible
+          if (typeof (clientRef.current as any).forceTransformUpdate === 'function') {
+            (clientRef.current as any).forceTransformUpdate();
+          }
+          
+          console.log(`[PointCloudViz] Updated point cloud fixed frame to ${fixedFrame}`);
+        } catch (e) {
+          console.error(`[PointCloudViz] Error updating point cloud fixed frame:`, e);
+        }
+      }
+      
+      // Store the new frame
+      previousFixedFrameRef.current = fixedFrame;
+    }
+  }, [fixedFrame, isRosConnected]);
+
+  // This component manages the hook lifecycle but renders nothing itself
+  return null;
 };
 
-export default PointCloudViz;
+// Memoize to prevent unnecessary hook re-runs if props haven't changed
+export default React.memo(PointCloudViz); 

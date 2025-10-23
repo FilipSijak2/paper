@@ -213,4 +213,4 @@ export function clearCustomGamepads(): boolean {
     console.error('Failed to clear custom gamepads:', error);
     return false;
   }
-}
+} 

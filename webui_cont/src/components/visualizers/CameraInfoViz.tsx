@@ -1,37 +1,40 @@
-import type { FC, RefObject } from 'react';
-import { useCameraInfoVisualizer } from '../../hooks/useCameraInfoVisualizer';
+import React from 'react';
 import { Ros } from 'roslib';
 import * as ROS3D from '../../utils/ros3d';
+import * as THREE from 'three';
+import { useCameraInfoVisualizer } from '../../hooks/useCameraInfoVisualizer';
+import { CustomTFProvider } from '../../utils/tfUtils';
 
 interface CameraInfoVizProps {
   ros: Ros | null;
   isRosConnected: boolean;
-  ros3dViewer: RefObject<ROS3D.Viewer | null>;
-  customTFProvider: RefObject<any>;
+  ros3dViewer: React.RefObject<ROS3D.Viewer | null>;
+  customTFProvider: React.RefObject<CustomTFProvider | null>;
   topic: string;
-  lineColor?: string;
-  lineScale?: number;
+  options?: { lineColor?: THREE.Color | number | string; lineScale?: number };
 }
 
-const CameraInfoViz: FC<CameraInfoVizProps> = ({
+const CameraInfoViz: React.FC<CameraInfoVizProps> = ({
   ros,
   isRosConnected,
   ros3dViewer,
   customTFProvider,
   topic,
-  lineColor = '#00ff00',
-  lineScale = 1.0,
+  options,
 }) => {
   useCameraInfoVisualizer({
     ros,
     isRosConnected,
     ros3dViewer,
     customTFProvider,
-    selectedCameraInfoTopic: topic,
-    lineColor,
-    lineScale,
+    selectedCameraInfoTopic: topic, // Pass the specific topic for this instance
+    lineColor: options?.lineColor,
+    lineScale: options?.lineScale,
   });
+
+  // This component manages the hook lifecycle but renders nothing itself
   return null;
 };
 
-export default CameraInfoViz;
+// Memoize to prevent unnecessary hook re-runs if props haven't changed
+export default React.memo(CameraInfoViz); 

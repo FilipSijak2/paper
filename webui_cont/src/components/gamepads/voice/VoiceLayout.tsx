@@ -1,7 +1,6 @@
-import type { FC } from 'react';
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { Topic } from 'roslib';
-import * as ROSLIB from 'roslib';
+import ROSLIB from 'roslib';
 import './VoiceLayout.css'; // Renamed CSS import
 import { GamepadProps } from '../GamepadInterface';
 
@@ -10,12 +9,7 @@ import { GamepadProps } from '../GamepadInterface';
 const VOICE_CMD_TOPIC = '/voice_cmd'; // Example topic
 const VOICE_CMD_MSG_TYPE = 'std_msgs/Float32MultiArray'; // Example message type
 
-interface Float32MultiArrayMessage {
-  layout: { dim: { label: string; size: number; stride: number }[]; data_offset: number };
-  data: number[];
-}
-
-const VoiceLayout: FC<GamepadProps> = ({ ros }) => {
+const VoiceLayout: React.FC<GamepadProps> = ({ ros }) => { // Now using GamepadProps
   const [isRecording, setIsRecording] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Click Record to start');
   const voiceCmdTopic = useRef<Topic | null>(null);
@@ -44,7 +38,7 @@ const VoiceLayout: FC<GamepadProps> = ({ ros }) => {
   }, [ros]);
 
   // Function to publish voice data (as Float32MultiArray placeholder)
-  const publishVoiceData = () => {
+  const publishVoiceData = (/* audioBlob: Blob */) => {
     if (!voiceCmdTopic.current) {
       console.warn('Voice command topic not initialized');
       return;
@@ -58,14 +52,16 @@ const VoiceLayout: FC<GamepadProps> = ({ ros }) => {
     console.warn('Audio processing not implemented. Sending dummy data.');
     // --- End Placeholder ---
 
-    const message: Float32MultiArrayMessage = {
-      layout: { dim: [{ label: 'samples', size: dummyData.length, stride: 1 }], data_offset: 0 },
+    const message = new ROSLIB.Message({
+      layout: {
+        dim: [{ label: 'samples', size: dummyData.length, stride: 1 }],
+        data_offset: 0
+      },
       data: dummyData
-    };
-    const rosMsg = new ROSLIB.Message(message);
+    });
 
-    console.log('Publishing Voice Data (dummy):', rosMsg);
-    voiceCmdTopic.current.publish(rosMsg);
+    console.log('Publishing Voice Data (dummy):', message);
+    voiceCmdTopic.current.publish(message);
     setStatusMessage('Voice command sent (dummy)');
   };
 
@@ -80,8 +76,9 @@ const VoiceLayout: FC<GamepadProps> = ({ ros }) => {
       };
 
       mediaRecorderRef.current.onstop = () => {
-  // const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' }); // Reserved for future processing
-  publishVoiceData();
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+        // Process and publish the audio data
+        publishVoiceData(/* audioBlob */);
         // Clean up stream tracks
         stream.getTracks().forEach(track => track.stop());
       };
@@ -131,4 +128,4 @@ const VoiceLayout: FC<GamepadProps> = ({ ros }) => {
   );
 };
 
-export default VoiceLayout; // Renamed export
+export default VoiceLayout; // Renamed export 

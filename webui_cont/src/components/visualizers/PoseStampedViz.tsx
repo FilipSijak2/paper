@@ -1,28 +1,20 @@
-import type { FC, RefObject } from 'react';
-import PoseStampedSettings from './PoseStampedSettings';
-import { usePoseStampedClient } from '../../hooks/usePoseStampedClient';
+import React from 'react';
 import { Ros } from 'roslib';
 import * as ROS3D from '../../utils/ros3d';
+import { usePoseStampedClient, PoseStampedOptions } from '../../hooks/usePoseStampedClient';
+import { CustomTFProvider } from '../../utils/tfUtils';
 
-export interface PoseStampedVizOptions {
-  visualizationType?: 'arrow'|'axes';
-  scale?: number; arrowLength?: number; arrowWidth?: number; axesSize?: number;
-  color?: string; trailEnabled?: boolean; maxTrailLength?: number;
-}
-export interface PoseStampedVizProps {
+interface PoseStampedVizProps {
   ros: Ros | null;
   isRosConnected: boolean;
-  ros3dViewer: RefObject<ROS3D.Viewer | null>;
-  customTFProvider: RefObject<any>;
+  ros3dViewer: React.RefObject<ROS3D.Viewer | null>;
+  customTFProvider: React.RefObject<CustomTFProvider | null>;
   topic: string;
   fixedFrame: string;
-  options: PoseStampedVizOptions;
-  onUpdateOptions: (patch: Partial<PoseStampedVizOptions>) => void;
-  showSettings: boolean;
-  onCloseSettings: () => void;
+  options?: PoseStampedOptions;
 }
 
-const PoseStampedViz: FC<PoseStampedVizProps> = ({
+const PoseStampedViz: React.FC<PoseStampedVizProps> = ({
   ros,
   isRosConnected,
   ros3dViewer,
@@ -30,11 +22,9 @@ const PoseStampedViz: FC<PoseStampedVizProps> = ({
   topic,
   fixedFrame,
   options,
-  onUpdateOptions,
-  showSettings,
-  onCloseSettings,
 }) => {
-  usePoseStampedClient({
+  // Use the PoseStamped client hook
+  const { isSubscribed } = usePoseStampedClient({
     ros,
     isRosConnected,
     ros3dViewer,
@@ -44,21 +34,15 @@ const PoseStampedViz: FC<PoseStampedVizProps> = ({
     options,
   });
 
-  const handleSettingsChange = (patch: Partial<PoseStampedVizOptions>) => {
-    onUpdateOptions(patch);
-  };
+  // This component doesn't render any direct DOM elements,
+  // as the hook adds objects to the ROS3D.Viewer scene.
+  React.useEffect(() => {
+    if (isSubscribed) {
+      console.log(`[PoseStampedViz] Subscribed to topic: ${topic}`);
+    }
+  }, [isSubscribed, topic]);
 
-  return (
-    <>
-      {showSettings && (
-        <PoseStampedSettings
-          options={options}
-          onChange={handleSettingsChange}
-          onClose={onCloseSettings}
-        />
-      )}
-    </>
-  );
+  return null;
 };
 
 export default PoseStampedViz;

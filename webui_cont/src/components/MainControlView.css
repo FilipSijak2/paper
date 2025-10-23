@@ -1,22 +1,350 @@
-/* Migrated MainControlView layout */
-.main-control-view { display:flex; flex-direction:column; height:100vh; padding:0; gap:0; position:relative; box-sizing:border-box; overflow:hidden; }
-.top-bar { display:flex; justify-content:space-between; align-items:center; padding:5px 10px; background:var(--navbar-bg,#333); color:var(--navbar-text,#fff); position:fixed; top:0; left:0; width:100%; z-index:1000; box-sizing:border-box; height:40px; box-shadow:0 1px 3px rgba(0,0,0,.15); border-bottom-left-radius:10px; border-bottom-right-radius:10px; }
-.main-content-area { padding:10px; padding-top:50px; display:flex; flex-direction:column; align-items:stretch; gap:10px; overflow:hidden; height:100vh; box-sizing:border-box; }
-.view-panel-container { flex:1 1 auto; display:flex; flex-direction:column; min-height:0; width:100%; box-sizing:border-box; overflow:hidden; position:relative; }
-.control-panel-container { height:35vh; flex-shrink:0; display:flex; flex-direction:column; width:100%; box-sizing:border-box; margin-bottom:10px; }
-.view-panel, .control-panel { flex-grow:1; display:flex; flex-direction:column; overflow-y:auto; width:100%; box-sizing:border-box; }
-.view-panel { padding:0 !important; }
-.view-panel .placeholder { display:flex; align-items:center; justify-content:center; height:100%; width:100%; text-align:center; color:var(--text-color,#666); font-size:1.1em; margin:0; padding:0; }
-.view-toggle { display:flex; gap:8px; }
-.view-toggle button { background:transparent; border:1px solid var(--navbar-text,#fff); color:var(--navbar-text,#fff); padding:5px; border-radius:5px; cursor:pointer; line-height:1; display:inline-flex; align-items:center; justify-content:center; opacity:.8; }
-.view-toggle button.active { background:var(--primary-color); border-color:var(--primary-color); opacity:1; }
-.connection-status-icon { display:inline-flex; align-items:center; justify-content:center; }
-.connection-status-icon.connected { color:#4caf50; }
-.connection-status-icon.disconnected { color:#ffc107; }
-.disconnect-button-icon { background:none; border:none; color:var(--error-color,#dc3545); cursor:pointer; display:inline-flex; align-items:center; justify-content:center; }
-.disconnect-button-icon:hover { color:var(--error-hover-color,#a71d2a); }
-.add-panel-menu { background:var(--background-secondary,#222); box-shadow:0 2px 6px rgba(0,0,0,.3); border-radius:8px; padding:10px; }
-.add-panel-menu-content h4 { margin:8px 0; }
-.custom-gamepad-item { display:flex; gap:4px; align-items:center; }
-.custom-gamepad-button { flex:1; }
-@media (max-width:768px){ .main-content-area { padding:5px; padding-top:45px; gap:5px; } }
+.main-control-view {
+    display: flex;
+    flex-direction: column;
+    height: 100vh; /* Ensure it tries to fill the viewport height */
+    /* Remove padding-top, handled by content area now */
+    padding: 0; 
+    gap: 0; /* Remove gap, handled by content area padding */
+    position: relative; 
+    box-sizing: border-box; 
+    overflow: hidden; /* Prevent scrolling on the main view */
+}
+
+/* Unified Top Bar Styles */
+.top-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 10px; /* Reduced padding */
+    background-color: var(--navbar-bg, #333);
+    color: var(--navbar-text, white);
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 1000;
+    box-sizing: border-box;
+    height: 40px; /* Reduced height */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); /* Adjusted shadow */
+    border-bottom-left-radius: 10px; /* Round bottom-left corner */
+    border-bottom-right-radius: 10px; /* Round bottom-right corner */
+}
+
+/* Main Content Area Styles */
+.main-content-area {
+    padding: 10px; /* Reduced from 15px */
+    padding-top: calc(40px + 10px); /* Reduced from 15px */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch; 
+    gap: 10px; /* Reduced from 15px */
+    overflow: hidden;
+    height: calc(100vh - 10px); 
+    box-sizing: border-box;
+}
+
+/* Remove styles for the old .view-header */
+/* .view-header {
+    display: flex;
+    justify-content: space-between; 
+    align-items: center;
+    margin-bottom: 15px;
+    position: relative; 
+    z-index: 20; 
+    background-color: var(--background-color); 
+    padding: 10px; 
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow-elevation-medium);
+} */
+
+/* Adjustments for elements within the top bar */
+.top-bar .view-toggle {
+    display: flex;
+    gap: 8px;
+    margin: 0; /* Remove default margin */
+}
+
+.top-bar .view-toggle button {
+    background-color: transparent;
+    border: 1px solid var(--navbar-text, white);
+    color: var(--navbar-text, white);
+    padding: 5px; /* Adjust padding for icons */
+    border-radius: 5px;
+    cursor: pointer;
+    /* font-size: 1.2em; /* Remove font-size */
+    line-height: 1;
+    opacity: 0.8;
+    /* Add flex centering for SVG */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.top-bar .view-toggle button svg {
+    width: 1.2em; /* Reduced icon size */
+    height: 1.2em;
+}
+
+.top-bar .view-toggle button.active {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    opacity: 1;
+}
+
+.top-bar .view-toggle button:hover {
+    opacity: 1;
+}
+
+.top-bar .status-controls {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+/* Use icon class names from TSX */
+.top-bar .connection-status-icon {
+    /* font-size: 1.4em; Remove font-size */
+    line-height: 1;
+    /* Add flex centering for SVG */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.top-bar .connection-status-icon svg {
+    width: 1.4em; /* Reduced icon size */
+    height: 1.4em;
+}
+
+.top-bar .connection-status-icon.connected {
+    color: #4caf50; /* Green for connected */
+}
+
+.top-bar .connection-status-icon.disconnected {
+    color: #ffc107; /* Yellow/Amber for disconnected */
+}
+
+.top-bar .disconnect-button-icon {
+    background: none;
+    border: none;
+    color: var(--error-color, #dc3545); /* Use error color or default red */
+    /* font-size: 1.4em; Remove font-size */
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    /* Add flex centering for SVG */
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.top-bar .disconnect-button-icon svg {
+    width: 1.4em; /* Reduced icon size */
+    height: 1.4em;
+}
+
+.top-bar .disconnect-button-icon:hover {
+    color: var(--error-hover-color, #a71d2a); /* Darker red on hover */
+}
+
+
+/* Adjust containers to fit within the new main-content-area */
+.view-panel-container {
+    /* flex: 3 1 auto; */
+    flex: 1 1 auto; /* Let it grow and shrink to fill remaining space */
+    display: flex;
+    flex-direction: column;
+    min-height: 0; 
+    width: 100%; 
+    box-sizing: border-box;
+    overflow: hidden; /* Hide overflow for the view panel */
+}
+
+.control-panel-container {
+    /* flex: 1 1 auto; /* Removed flex sizing */
+    height: 35vh; /* Assign fixed viewport height (adjust as needed) */
+    flex-shrink: 0; /* Prevent shrinking below this height */
+    display: flex;
+    flex-direction: column;
+    /* min-height: 0; /* Not needed with fixed height */
+    width: 100%; 
+    box-sizing: border-box;
+    margin-bottom: 10px; 
+}
+
+/* Ensure panels fill their containers */
+.view-panel,
+.control-panel {
+    flex-grow: 1; 
+    display: flex;
+    flex-direction: column; 
+    overflow-y: auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.view-panel {
+    padding: 0 !important; /* Force remove all padding */
+}
+
+.view-panel .card {
+    padding: 0 !important; /* Force remove padding from card class */
+    margin: 0 !important; /* Remove any margin */
+}
+
+.control-panel {
+    padding: 2px; /* Keep padding for control panel */
+}
+
+/* Center placeholder message */
+.view-panel .placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    text-align: center;
+    color: var(--text-color, #666);
+    font-size: 1.1em;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Prevent scrolling on body if main-control-view is active */
+body.no-scroll {
+    overflow: hidden;
+}
+
+/* Remove Camera Topic Selector styles if it's fully moved */
+/* .camera-topic-selector { ... } */
+/* .camera-topic-selector label { ... } */
+/* .camera-topic-selector select { ... } */
+
+/* Remove old connection/disconnect button styles if not used */
+/* .disconnect-button { ... } */
+/* .connection-status { ... } */
+
+/* --- Game Boy Style Adjustments --- */
+
+/* Remove the flex-shrink override here as it's handled above now */
+/* .control-panel-container {
+    flex-shrink: 0; 
+} */
+
+/* Remove text below D-Pad if it exists (assuming it's in PadControl) */
+/* Need to target the specific element in PadControl.css or PadControl.tsx */
+.pad-control .direction-label { /* Example selector, adjust as needed */
+    display: none;
+    height: 100%;
+}
+
+
+/* Responsive Adjustments for new layout */
+@media (max-width: 768px) { 
+    .main-content-area {
+        padding: 5px; /* Reduced from 10px */
+        padding-top: calc(40px + 5px); /* Reduced from 10px */
+        gap: 5px; /* Reduced from 10px */
+    }
+
+    /* Adjust top bar height/padding on mobile if needed */
+    /* .top-bar {
+        height: 35px; 
+        padding: 3px 8px;
+    } */
+    /* .main-content-area {
+      height: calc(100vh - 35px);
+      padding-top: calc(35px + 10px);
+    } */
+
+    .top-bar .view-toggle button svg,
+    .top-bar .connection-status-icon svg,
+    .top-bar .disconnect-button-icon svg {
+        /* Adjust icon sizes for mobile if needed */
+        /* width: 1.1em; height: 1.1em; */
+    }
+}
+
+/* View Panel Animation Styles */
+.view-panel {
+    transform-origin: center center;
+    will-change: transform, opacity;
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    backface-visibility: hidden;
+    z-index: 1;
+}
+
+.view-panel-container {
+    position: relative;
+    overflow: visible;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+}
+
+/* Delete all transition-rope and rope-dot styles from here */
+
+/* Center placeholder message */
+.view-panel .placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    width: 100%;
+    text-align: center;
+    color: var(--text-color, #666);
+    font-size: 1.1em;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+/* Remove the previous loading animation styles */
+.loading-animation-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    border-radius: var(--border-radius, 8px);
+}
+
+.loading-dots {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+}
+
+.loading-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--primary-color, #4285f4);
+    opacity: 0.7;
+}
+
+.loading-dot:nth-child(2) {
+    background-color: var(--secondary-color, #34a853);
+}
+
+.loading-dot:nth-child(3) {
+    background-color: var(--accent-color, #fbbc05);
+}
+
+.loading-dot:nth-child(4) {
+    background-color: var(--primary-color-light, #ea4335);
+}
+
+.loading-dot:nth-child(5) {
+    background-color: var(--secondary-color-light, #4285f4);
+}

@@ -1,6 +1,6 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import type { Topic } from 'roslib';
-import * as ROSLIB from 'roslib';
+import ROSLIB from 'roslib';
 import { throttle } from 'lodash-es';
 import './GameBoyLayout.css';
 import { GamepadProps } from '../GamepadInterface';
@@ -38,22 +38,21 @@ const GameBoyLayout: React.FC<GamepadProps> = ({ ros }) => {
   const lastSentState = useRef<number[]>([...buttonStates]);
 
   // Function to publish Joy message
-  interface JoyMessage {
-    header: { stamp: { secs: number; nsecs: number }; frame_id: string };
-    axes: number[];
-    buttons: number[];
-  }
-
   const publishJoy = useCallback((buttons: number[]) => {
     if (!joyTopic.current) return;
 
-    const joyMsg: JoyMessage = {
-      header: { stamp: { secs: 0, nsecs: 0 }, frame_id: '' },
-      axes: Array(NUM_AXES).fill(0.0),
-      buttons
-    };
-    joyTopic.current.publish(new ROSLIB.Message(joyMsg));
-    lastSentState.current = [...buttons];
+    const joyMsg = new ROSLIB.Message({
+      header: {
+        stamp: { secs: 0, nsecs: 0 },
+        frame_id: ''
+      },
+      axes: Array(NUM_AXES).fill(0.0), // No axes used
+      buttons: buttons
+    });
+    
+    // console.log('Publishing GameBoy Joy:', joyMsg);
+    joyTopic.current.publish(joyMsg);
+    lastSentState.current = [...buttons]; // Update last sent state
   }, []);
 
   // Throttled version of the publish function
@@ -64,8 +63,13 @@ const GameBoyLayout: React.FC<GamepadProps> = ({ ros }) => {
 
   // Initialize the topic publisher
   useEffect(() => {
-    joyTopic.current = new ROSLIB.Topic({ ros, name: JOY_TOPIC, messageType: JOY_MSG_TYPE });
-    console.log(`Initialized ${JOY_TOPIC} for GameBoyLayout`);
+    joyTopic.current = new ROSLIB.Topic({
+      ros: ros,
+      name: JOY_TOPIC,
+      messageType: JOY_MSG_TYPE,
+    });
+    joyTopic.current.advertise();
+    console.log(`Advertised ${JOY_TOPIC} for GameBoyLayout`);
 
     return () => {
       // If any buttons are pressed, send a message with all released
@@ -74,10 +78,9 @@ const GameBoyLayout: React.FC<GamepadProps> = ({ ros }) => {
         publishJoy(Array(NUM_BUTTONS).fill(0)); // Send immediate "all released" message
       }
       
-      if (joyTopic.current) {
-        joyTopic.current.unadvertise();
-      }
-      console.log(`Cleanup ${JOY_TOPIC} for GameBoyLayout`);
+      joyTopic.current?.unadvertise();
+      console.log(`Unadvertised ${JOY_TOPIC} for GameBoyLayout`);
+      joyTopic.current = null;
     };
   }, [ros, publishJoy, publishJoyThrottled]);
 
@@ -103,7 +106,8 @@ const GameBoyLayout: React.FC<GamepadProps> = ({ ros }) => {
   const handleB = (isPressed: boolean) => handleButtonAction(BUTTON_MAP.B, isPressed);
 
   // Add handlers for START and SELECT
-  // Future: expose SELECT / START buttons; handlers removed to silence unused warnings
+  const handleSelect = (isPressed: boolean) => handleButtonAction(BUTTON_MAP.SELECT, isPressed);
+  const handleStart = (isPressed: boolean) => handleButtonAction(BUTTON_MAP.START, isPressed);
 
   return (
     <div className="gameboy-layout">
@@ -163,4 +167,4 @@ const GameBoyLayout: React.FC<GamepadProps> = ({ ros }) => {
   );
 };
 
-export default GameBoyLayout;
+export default GameBoyLayout; 

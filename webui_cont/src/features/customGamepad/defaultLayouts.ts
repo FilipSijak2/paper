@@ -493,4 +493,4 @@ export const componentLibrary = [
     defaultSize: { width: 3, height: 1 },
     icon: '🎚️'
   }
-];
+]; 
