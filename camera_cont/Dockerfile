@@ -1,55 +1,70 @@
-FROM ros:humble-ros-base
-
 ############################################################
-# Stage: Install dependencies & build rpicam-ros from source
+# Multi-stage build: libcamera + rpicam-ros + minimal runtime
 ############################################################
-# The binary package ros-humble-rpicam-ros is not available, so we build it.
-# This Dockerfile assumes ARM64 build on Raspberry Pi host. Cross-building on x86
-# will not work unless you enable qemu / multi-arch emulation.
 
+# ---------- Stage 1: Build latest libcamera (pinned) ----------
+FROM ubuntu:24.04 AS libcamera_build
+ENV DEBIAN_FRONTEND=noninteractive
+ARG LIBCAMERA_REF=v0.4.0
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git build-essential python3-colcon-common-extensions \
-    libcamera-dev libepoxy-dev libjpeg-dev libdrm-dev pkg-config \
-    ros-humble-image-transport-plugins \
-    curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+        build-essential meson ninja-build pkg-config cmake git \
+        python3-ply python3-yaml \
+        libboost-dev libgnutls28-dev libssl-dev libtiff-dev pybind11-dev \
+        libjpeg-dev libepoxy-dev libdrm-dev curl ca-certificates && \
+        rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch ${LIBCAMERA_REF} https://github.com/raspberrypi/libcamera.git
+WORKDIR /src/libcamera
+RUN meson setup build --buildtype=release \
+        -Dpipelines=rpi/vc4,rpi/pisp \
+        -Dipas=rpi/vc4,rpi/pisp \
+        -Dv4l2=true \
+        -Dgstreamer=disabled \
+        -Dtest=false \
+        -Dlc-compliance=disabled \
+        -Dcam=enabled \
+        -Dqcam=disabled \
+        -Ddocumentation=disabled \
+        -Dpycamera=enabled
+RUN ninja -C build
+RUN ninja -C build install
+# Export artifacts (avoid copying build tree)
+RUN mkdir -p /artifact/usr_local && cp -R /usr/local/* /artifact/usr_local/
 
-# Optional: tools for debugging (comment out if image size critical)
-# RUN apt-get update && apt-get install -y vim curl && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /ws/src
-# Robust fetch: try shallow git clone (5 retries), fallback to tarball
+# ---------- Stage 2: Build rpicam-ros against libcamera ----------
+FROM ros:humble-ros-base AS rpicam_ros_build
+ENV DEBIAN_FRONTEND=noninteractive
 ARG RPICAM_ROS_REF=main
-ARG RPICAM_ROS_TARBALL_URL=https://codeload.github.com/raspberrypi/rpicam-ros/tar.gz/refs/heads/${RPICAM_ROS_REF}
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git build-essential python3-colcon-common-extensions \
+        ros-humble-image-transport-plugins curl ca-certificates && \
+        rm -rf /var/lib/apt/lists/*
+COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:${LD_LIBRARY_PATH}
+WORKDIR /ws/src
 RUN set -e; \
-        echo "[rpicam-ros] Trying shallow git clone for ref ${RPICAM_ROS_REF}"; \
+        echo "[rpicam-ros] Fetching ref ${RPICAM_ROS_REF}"; \
         if git clone --depth 1 --branch ${RPICAM_ROS_REF} https://github.com/raspberrypi/rpicam-ros.git; then \
-                echo "[rpicam-ros] Git clone succeeded."; \
+          echo "[rpicam-ros] Clone OK"; \
         else \
-                echo "[rpicam-ros] Git clone failed. Falling back to tarball: ${RPICAM_ROS_TARBALL_URL}"; \
-                curl -fsSL -o rpicam-ros.tar.gz ${RPICAM_ROS_TARBALL_URL}; \
-                tar -xzf rpicam-ros.tar.gz; \
-                mv rpicam-ros-${RPICAM_ROS_REF} rpicam-ros || mv rpicam-ros-* rpicam-ros; \
-                rm rpicam-ros.tar.gz; \
+          echo "[rpicam-ros] Clone failed, fallback tarball"; \
+          curl -fsSL -o rpicam-ros.tar.gz https://codeload.github.com/raspberrypi/rpicam-ros/tar.gz/refs/heads/${RPICAM_ROS_REF}; \
+          tar -xzf rpicam-ros.tar.gz; mv rpicam-ros-* rpicam-ros; rm rpicam-ros.tar.gz; \
         fi
-
 WORKDIR /ws
-RUN bash -c "source /opt/ros/humble/setup.sh && colcon build --symlink-install"
+RUN bash -c "set -e; source /opt/ros/humble/setup.sh && colcon build --symlink-install"
 
-# Add video group (future non-root usage) - currently run as root
+# ---------- Stage 3: Runtime image ----------
+FROM ros:humble-ros-base AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ros-humble-image-transport-plugins curl ca-certificates && \
+        rm -rf /var/lib/apt/lists/*
+COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
+COPY --from=rpicam_ros_build /ws/install /ws/install
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:${LD_LIBRARY_PATH}
 RUN groupadd -f video && usermod -aG video root
-
-#############################################
-# Runtime setup
-#############################################
-ENV ROS_WS=/ws
 WORKDIR /app
 COPY camera_launch.py /app/camera_launch.py
-
-# Environment variables for dynamic resolution/FPS (can be overridden in compose)
-ENV CAMERA_WIDTH=1280 \
-    CAMERA_HEIGHT=720 \
-    CAMERA_FPS=30
-
-# Entry script: source both ROS and workspace overlays then launch
+ENV CAMERA_WIDTH=1280 CAMERA_HEIGHT=720 CAMERA_FPS=30
 ENTRYPOINT ["bash","-c","source /opt/ros/humble/setup.sh && source /ws/install/setup.sh && ros2 launch /app/camera_launch.py width:=${CAMERA_WIDTH} height:=${CAMERA_HEIGHT} fps:=${CAMERA_FPS}"]
