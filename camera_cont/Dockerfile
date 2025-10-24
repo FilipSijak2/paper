@@ -1,48 +1,102 @@
-# -------- Base with ROS Humble support --------
-FROM ubuntu:22.04
-
+# ========= Stage 1: Build libcamera (RPi fork + PiSP for Pi 5) =========
+FROM ubuntu:24.04 AS libcamera_build
 ENV DEBIAN_FRONTEND=noninteractive
-ENV LANG=C.UTF-8 LC_ALL=C.UTF-8
-ENV ROS_DISTRO=humble
 
-# --- OS deps ---
-RUN apt-get update && apt-get install -y \
-    curl gnupg2 lsb-release ca-certificates locales \
-    python3 python3-pip python3-opencv python3-yaml v4l-utils \
-    && locale-gen en_US en_US.UTF-8 && update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 \
-    && rm -rf /var/lib/apt/lists/*
+# Commit koji ti je radio (PiSP OK)
+ARG LIBCAMERA_REF=83cb8101
 
-# --- ROS 2 Humble apt repo + install ---
-RUN apt-get update && apt-get install -y curl gnupg2 lsb-release && \
-    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-      | tee /usr/share/keyrings/ros-archive-keyring.gpg > /dev/null && \
-    echo "deb [arch=arm64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" \
-      > /etc/apt/sources.list.d/ros2.list && \
-    apt-get update && apt-get install -y \
-      ros-humble-ros-base \
-      ros-humble-cv-bridge \
-      ros-humble-image-transport \
-      ros-humble-rmw-cyclonedds-cpp \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential meson ninja-build cmake git pkg-config \
+    python3 python3-pip python3-ply python3-yaml python3-jinja2 \
+    pybind11-dev libevent-dev \
+    libboost-dev libgnutls28-dev libssl-dev libtiff-dev \
+    libjpeg-dev libepoxy-dev libdrm-dev libudev-dev libglib2.0-dev \
+    curl ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
 
-# --- env for ROS runtime ---
-ENV ROS_ROOT=/opt/ros/${ROS_DISTRO}
-ENV PATH=${ROS_ROOT}/bin:${PATH}
-ENV LD_LIBRARY_PATH=${ROS_ROOT}/lib:${LD_LIBRARY_PATH}
-ENV PYTHONPATH=${ROS_ROOT}/lib/python3.10/site-packages:${PYTHONPATH}
+WORKDIR /src
+# pokušaj tarball (brže), fallback na git
+RUN set -e; \
+  if curl -fsSL -o libcamera.tar.gz https://codeload.github.com/raspberrypi/libcamera/tar.gz/${LIBCAMERA_REF}; then \
+    tar -xzf libcamera.tar.gz; mv libcamera-* libcamera; rm libcamera.tar.gz; \
+  else \
+    git clone https://github.com/raspberrypi/libcamera.git libcamera; \
+    cd libcamera; git checkout ${LIBCAMERA_REF}; cd ..; \
+  fi
 
-WORKDIR /app
+WORKDIR /src/libcamera
+# Pi5 treba vc4 + pisp; v4l2=enabled; pycamera=enabled
+RUN meson setup build --buildtype=release \
+    -Dpipelines=rpi/vc4,rpi/pisp \
+    -Dipas=rpi/vc4,rpi/pisp \
+    -Dv4l2=enabled \
+    -Dgstreamer=disabled \
+    -Dtest=false \
+    -Dlc-compliance=disabled \
+    -Dcam=enabled \
+    -Dqcam=disabled \
+    -Ddocumentation=disabled \
+    -Dpycamera=enabled && \
+    ninja -C build && ninja -C build install && ldconfig
 
-# --- Camera node ---
-COPY camera_node.py /app/camera_node.py
+# Spremi instalirane artefakte (u /usr/local) za runtime stage
+RUN mkdir -p /artifact/usr_local && cp -R /usr/local/* /artifact/usr_local/
 
-# Defaults (override via compose ENV)
-ENV CAMERA_DEVICE=/dev/video0 \
-    CAMERA_WIDTH=1280 \
+# ========= Stage 2: Build rpicam-ros na ROS Humble =========
+FROM ros:humble-ros-base AS rpicam_ros_build
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git python3-colcon-common-extensions \
+    ros-humble-image-transport-plugins && \
+    rm -rf /var/lib/apt/lists/*
+
+# Uvezi libcamera iz Stage 1
+COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:$LD_LIBRARY_PATH
+
+# rpicam-ros source i build
+WORKDIR /ws/src
+RUN git clone --depth 1 https://github.com/raspberrypi/rpicam-ros.git
+WORKDIR /ws
+RUN bash -lc "set -e; source /opt/ros/humble/setup.sh && colcon build --symlink-install"
+
+# ========= Stage 3: Runtime slika =========
+FROM ros:humble-ros-base AS runtime
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    v4l-utils ros-humble-image-transport-plugins && \
+    rm -rf /var/lib/apt/lists/*
+
+# Libcamera (iz Stage 1) + rpicam-ros (iz Stage 2)
+COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
+COPY --from=rpicam_ros_build /ws/install /ws/install
+
+ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:$LD_LIBRARY_PATH
+RUN groupadd -f video && usermod -aG video root
+
+# Default parametri (mijenjaj kroz compose ENV)
+ENV CAMERA_WIDTH=1280 \
     CAMERA_HEIGHT=720 \
     CAMERA_FPS=30 \
-    CAMERA_INFO_YAML=/app/camera_info.yaml
+    CAMERA_FRAME_ID=camera_optical_frame \
+    CAMERA_NAME=camera \
+    CAMERA_INFO_URL=file:///data/camera_info.yaml \
+    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
+    ROS_DOMAIN_ID=0
 
-# --- Entrypoint: source ROS + run node ---
-ENTRYPOINT ["/bin/bash","-lc","source /opt/ros/${ROS_DISTRO}/setup.bash && python3 /app/camera_node.py"]
+# Pokreni rpicam node (publisha /camera/image_raw i /camera/camera_info)
+ENTRYPOINT ["/bin/bash","-lc", "\
+  source /opt/ros/humble/setup.sh && \
+  source /ws/install/setup.sh && \
+  ros2 run rpicam_compat rpicam_node \
+    --ros-args \
+    -p camera_name:=${CAMERA_NAME} \
+    -p frame_id:=${CAMERA_FRAME_ID} \
+    -p width:=${CAMERA_WIDTH} \
+    -p height:=${CAMERA_HEIGHT} \
+    -p framerate:=${CAMERA_FPS} \
+    -p camera_info_url:=${CAMERA_INFO_URL} \
+"]
 
