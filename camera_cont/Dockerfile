@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y curl gnupg2 lsb-release && \
       ros-humble-ros-base \
       ros-humble-cv-bridge \
       ros-humble-image-transport \
+      ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # --- env for ROS runtime ---
