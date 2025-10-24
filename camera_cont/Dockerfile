@@ -30,8 +30,8 @@ RUN apt-get update && apt-get install -y \
 # Mount host ROS2 at runtime (avoids building ROS2 in container)
 ENV ROS2_INSTALL=/opt/ros/humble
 ENV PATH=$ROS2_INSTALL/bin:$PATH
-ENV LD_LIBRARY_PATH=$ROS2_INSTALL/lib:$LD_LIBRARY_PATH
-ENV PYTHONPATH=$ROS2_INSTALL/lib/python3.11/site-packages:$PYTHONPATH
+ENV LD_LIBRARY_PATH=$ROS2_INSTALL/lib
+ENV PYTHONPATH=$ROS2_INSTALL/lib/python3.11/site-packages
 ENV ROS_DOMAIN_ID=0
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
@@ -41,6 +41,7 @@ WORKDIR /app
 # --------- Copy camera ROS2 node ---------
 # Pretpostavimo da imaš node u ./src/camera_node/
 COPY ./src/camera_node /app/camera_node
+COPY camera_node.py /app/camera_node.py
 
 # Install Python dependencies for ROS2 node
 RUN pip3 install --no-cache-dir \
@@ -51,5 +52,5 @@ RUN pip3 install --no-cache-dir \
 
 # --------- Entrypoint ---------
 # Node starta RAW feed s CSI kamere
-ENTRYPOINT ["python3", "/app/camera_node/camera_node.py"]
+ENTRYPOINT ["python3", "/app/camera_node.py"]
 
