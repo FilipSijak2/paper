@@ -28,9 +28,8 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 # --------- Workdir ---------
 WORKDIR /app
 
-# --------- Copy camera node ---------
+# --------- Copy only the Python ROS2 node ---------
 COPY camera_node.py /app/camera_node.py
-COPY camera_info.yaml /app/camera_info.yaml
 
 # --------- Python dependencies ---------
 RUN python3 -m pip install --no-cache-dir --break-system-packages \
