@@ -13,43 +13,31 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-opencv \
     python3-yaml \
-    python3-rosdep \
     libopencv-dev \
-    libboost-dev \
-    libgnutls28-dev \
-    libtiff-dev \
-    pybind11-dev \
-    cmake \
-    meson \
-    ninja-build \
     v4l-utils \
-    libcamera-apps \
     && rm -rf /var/lib/apt/lists/*
 
-# --------- ROS 2 Humble setup ---------
-# Mount host ROS2 at runtime (avoids building ROS2 in container)
+# --------- ROS2 environment (mounted from host in docker-compose) ---------
 ENV ROS2_INSTALL=/opt/ros/humble
 ENV PATH=$ROS2_INSTALL/bin:$PATH
-ENV LD_LIBRARY_PATH=$ROS2_INSTALL/lib
-ENV PYTHONPATH=$ROS2_INSTALL/lib/python3.11/site-packages
+ENV LD_LIBRARY_PATH=$ROS2_INSTALL/lib:$LD_LIBRARY_PATH
+ENV PYTHONPATH=$ROS2_INSTALL/lib/python3.11/site-packages:$PYTHONPATH
 ENV ROS_DOMAIN_ID=0
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 # --------- Workdir ---------
 WORKDIR /app
 
-# --------- Copy camera ROS2 node ---------
-## Only copy camera_node.py, not a subfolder
+# --------- Copy camera node ---------
 COPY camera_node.py /app/camera_node.py
+COPY camera_info.yaml /app/camera_info.yaml
 
-# Install Python dependencies for ROS2 node
-RUN pip3 install --no-cache-dir \
+# --------- Python dependencies ---------
+RUN python3 -m pip install --no-cache-dir --break-system-packages \
     rclpy \
     sensor-msgs \
     cv-bridge \
     numpy
 
 # --------- Entrypoint ---------
-# Node starta RAW feed s CSI kamere
 ENTRYPOINT ["python3", "/app/camera_node.py"]
-
