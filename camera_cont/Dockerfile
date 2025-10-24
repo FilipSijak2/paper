@@ -2,7 +2,7 @@
 FROM ubuntu:22.04 AS libcamera_build
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Commit koji si naveo da radi (PiSP OK)
+# Provjereni commit (PiSP OK)
 ARG LIBCAMERA_REF=83cb8101
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -14,8 +14,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
+# Meson iz apt-a je prestar na Jammy -> nadogradi preko pip-a
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install --no-cache-dir --upgrade meson ninja
+
 WORKDIR /src
-# brži tarball + fallback git
+# Brži tarball, fallback git
 RUN set -e; \
   if curl -fsSL -o libcamera.tar.gz https://codeload.github.com/raspberrypi/libcamera/tar.gz/${LIBCAMERA_REF}; then \
     tar -xzf libcamera.tar.gz; mv libcamera-* libcamera; rm libcamera.tar.gz; \
@@ -38,7 +42,7 @@ RUN meson setup build --buildtype=release \
     -Dpycamera=enabled && \
     ninja -C build && ninja -C build install && ldconfig
 
-# spremi /usr/local artefakte
+# Sačuvaj instalirano (kopiramo u runtime)
 RUN mkdir -p /artifact/usr_local && cp -R /usr/local/* /artifact/usr_local/
 
 # ========= Stage 2: Build rpicam-ros na ROS Humble =========
@@ -47,32 +51,37 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git python3-colcon-common-extensions \
-    ros-humble-image-transport-plugins && \
+    ros-humble-image-transport-plugins \
+    ros-humble-compressed-image-transport \
+    ros-humble-theora-image-transport && \
     rm -rf /var/lib/apt/lists/*
 
-# libcamera iz stage1
+# Uvezi libcamera iz Stage 1
 COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:$LD_LIBRARY_PATH
 
-# rpicam-ros source + build
+# rpicam-ros source i build
 WORKDIR /ws/src
 RUN git clone --depth 1 https://github.com/raspberrypi/rpicam-ros.git
 WORKDIR /ws
-RUN bash -lc "set -e; source /opt/ros/humble/setup.sh && colcon build --symlink-install"
+RUN bash -lc "set -e; source /opt/ros/humble/setup.bash && colcon build --symlink-install"
 
-# ========= Stage 3: Runtime (minimal) =========
+# ========= Stage 3: Runtime =========
 FROM ros:humble-ros-base AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    v4l-utils ros-humble-image-transport-plugins && \
+    v4l-utils \
+    ros-humble-image-transport-plugins \
+    ros-humble-compressed-image-transport \
+    ros-humble-theora-image-transport && \
     rm -rf /var/lib/apt/lists/*
 
-# libcamera + rpicam-ros
+# Libcamera + rpicam-ros iz build stageova
 COPY --from=libcamera_build /artifact/usr_local/ /usr/local/
 COPY --from=rpicam_ros_build /ws/install /ws/install
 
-# start skripta
+# Start skripta
 WORKDIR /app
 COPY start_camera.sh /app/start_camera.sh
 RUN chmod +x /app/start_camera.sh
@@ -80,7 +89,7 @@ RUN chmod +x /app/start_camera.sh
 ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:/usr/local/lib:$LD_LIBRARY_PATH
 RUN groupadd -f video && usermod -aG video root
 
-# Default ENV (možeš prebrisati kroz compose)
+# Default ENV (možeš override-ati u compose)
 ENV CAMERA_WIDTH=1280 \
     CAMERA_HEIGHT=720 \
     CAMERA_FPS=30 \
@@ -91,4 +100,3 @@ ENV CAMERA_WIDTH=1280 \
     ROS_DOMAIN_ID=0
 
 ENTRYPOINT ["/bin/bash","-lc","source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && /app/start_camera.sh"]
-
