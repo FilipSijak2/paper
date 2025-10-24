@@ -1,99 +1,98 @@
 #!/usr/bin/env python3
+import os
+import yaml
+import cv2
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge
-import cv2
-import yaml
-import os
+
+def getenv_int(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except Exception:
+        return default
 
 class CameraNode(Node):
     def __init__(self):
         super().__init__('camera_node')
 
-        # Parameters (can be overridden via Docker compose env vars)
-        self.declare_parameter('camera_device', '/dev/video0')
-        self.declare_parameter('camera_width', 640)
-        self.declare_parameter('camera_height', 480)
-        self.declare_parameter('camera_fps', 30)
-        self.declare_parameter('camera_info_yaml', '/app/camera_info.yaml')
+        # Params via ENV (fallback to defaults)
+        self.device = os.environ.get('CAMERA_DEVICE', '/dev/video0')
+        self.width = getenv_int('CAMERA_WIDTH', 1280)
+        self.height = getenv_int('CAMERA_HEIGHT', 720)
+        self.fps = getenv_int('CAMERA_FPS', 30)
+        self.info_yaml = os.environ.get('CAMERA_INFO_YAML', '/app/camera_info.yaml')
 
-        self.camera_device = self.get_parameter('camera_device').value
-        self.width = int(self.get_parameter('camera_width').value)
-        self.height = int(self.get_parameter('camera_height').value)
-        self.fps = int(self.get_parameter('camera_fps').value)
-        self.camera_info_yaml = self.get_parameter('camera_info_yaml').value
+        self.get_logger().info(f"Opening {self.device} {self.width}x{self.height}@{self.fps}")
 
-        self.get_logger().info(f"Starting camera on {self.camera_device} at {self.width}x{self.height} @ {self.fps} FPS")
+        # Publishers
+        self.pub_color = self.create_publisher(Image, '/camera/image_raw', 10)
+        self.pub_mono  = self.create_publisher(Image, '/camera/image_mono', 10)
+        self.pub_info  = self.create_publisher(CameraInfo, '/camera/camera_info', 10)
+        self.bridge = CvBridge()
+        self.cam_info = self.load_camera_info(self.info_yaml)
 
-        # Load camera info
-        self.camera_info_msg = self.load_camera_info(self.camera_info_yaml)
-
-        # OpenCV VideoCapture
-        self.cap = cv2.VideoCapture(self.camera_device, cv2.CAP_V4L2)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        # OpenCV capture
+        self.cap = cv2.VideoCapture(self.device, cv2.CAP_V4L2)
+        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH,  self.width)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-        self.cap.set(cv2.CAP_PROP_FPS, self.fps)
+        self.cap.set(cv2.CAP_PROP_FPS,          float(self.fps))
 
         if not self.cap.isOpened():
-            self.get_logger().error(f"Failed to open camera {self.camera_device}")
-            raise SystemExit
+            self.get_logger().error(f"Cannot open camera device {self.device}")
+            raise SystemExit(1)
 
-        # ROS publishers
-        self.image_pub = self.create_publisher(Image, '/image_raw', 10)
-        self.cam_info_pub = self.create_publisher(CameraInfo, '/camera_info', 10)
-        self.bridge = CvBridge()
+        self.timer = self.create_timer(1.0 / max(1, self.fps), self.tick)
 
-        # Timer callback at desired FPS
-        self.timer = self.create_timer(1.0 / self.fps, self.publish_frame)
-
-    def load_camera_info(self, yaml_file):
-        """Load camera calibration from YAML file"""
-        cam_info = CameraInfo()
-        if not os.path.exists(yaml_file):
-            self.get_logger().warn(f"Camera calibration file not found: {yaml_file}, using defaults.")
-            cam_info.width = self.width
-            cam_info.height = self.height
-            cam_info.distortion_model = "plumb_bob"
-            return cam_info
-
+    def load_camera_info(self, path):
+        msg = CameraInfo()
+        msg.width = self.width
+        msg.height = self.height
+        msg.distortion_model = 'plumb_bob'
+        if not os.path.exists(path):
+            self.get_logger().warn(f"CameraInfo YAML not found: {path} (using defaults)")
+            return msg
         try:
-            with open(yaml_file, 'r') as f:
-                data = yaml.safe_load(f)
-
-            cam_info.width = data.get('image_width', self.width)
-            cam_info.height = data.get('image_height', self.height)
-            cam_info.distortion_model = data.get('distortion_model', 'plumb_bob')
-            cam_info.d = data.get('distortion_coefficients', {}).get('data', [])
-            cam_info.k = data.get('camera_matrix', {}).get('data', [0.0] * 9)
-            cam_info.r = data.get('rectification_matrix', {}).get('data', [0.0] * 9)
-            cam_info.p = data.get('projection_matrix', {}).get('data', [0.0] * 12)
-            self.get_logger().info(f"Loaded camera calibration from {yaml_file}")
+            with open(path, 'r') as f:
+                data = yaml.safe_load(f) or {}
+            msg.width  = data.get('image_width',  self.width)
+            msg.height = data.get('image_height', self.height)
+            msg.distortion_model = data.get('distortion_model', 'plumb_bob')
+            msg.d = data.get('distortion_coefficients', {}).get('data', [])
+            msg.k = data.get('camera_matrix', {}).get('data', [0.0]*9)
+            msg.r = data.get('rectification_matrix', {}).get('data', [0.0]*9)
+            msg.p = data.get('projection_matrix', {}).get('data', [0.0]*12)
+            self.get_logger().info(f"Loaded CameraInfo from {path}")
         except Exception as e:
-            self.get_logger().error(f"Error loading camera info: {str(e)}")
+            self.get_logger().error(f"Failed to parse CameraInfo: {e}")
+        return msg
 
-        return cam_info
-
-    def publish_frame(self):
-        ret, frame = self.cap.read()
-        if not ret:
-            self.get_logger().warning("Failed to capture frame")
+    def tick(self):
+        ok, frame = self.cap.read()
+        if not ok:
+            self.get_logger().warn("Failed to read frame")
             return
 
-        # Convert frame to ROS2 Image message
-        image_msg = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
-        self.image_pub.publish(image_msg)
+        # Color (BGR8)
+        img_color = self.bridge.cv2_to_imgmsg(frame, encoding='bgr8')
+        self.pub_color.publish(img_color)
 
-        # Publish camera info
-        self.cam_info_pub.publish(self.camera_info_msg)
+        # Mono (mono8)
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        img_mono = self.bridge.cv2_to_imgmsg(gray, encoding='mono8')
+        self.pub_mono.publish(img_mono)
+
+        # CameraInfo
+        self.pub_info.publish(self.cam_info)
 
     def destroy_node(self):
-        if self.cap.isOpened():
+        if hasattr(self, 'cap') and self.cap.isOpened():
             self.cap.release()
         super().destroy_node()
 
-def main(args=None):
-    rclpy.init(args=args)
+def main():
+    rclpy.init()
     node = CameraNode()
     try:
         rclpy.spin(node)
