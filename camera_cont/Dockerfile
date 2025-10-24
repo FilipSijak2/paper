@@ -39,8 +39,7 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 WORKDIR /app
 
 # --------- Copy camera ROS2 node ---------
-# Pretpostavimo da imaš node u ./src/camera_node/
-COPY ./src/camera_node /app/camera_node
+## Only copy camera_node.py, not a subfolder
 COPY camera_node.py /app/camera_node.py
 
 # Install Python dependencies for ROS2 node
