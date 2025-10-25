@@ -50,7 +50,7 @@ ENV TZ=Europe/Zagreb
 # Copy only manifest files first (better caching) then the rest of the source code
 COPY ./src /ros_ws/src
 
-# Build workspace
+# Build workspace with colcon
 RUN bash -c "set -e; source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build --symlink-install"
 
 # Start rosbridge automatically using XML launch file
