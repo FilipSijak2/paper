@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-v4l2-camera \
     ros-humble-image-transport \
     ros-humble-camera-info-manager \
+    ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # Set CycloneDDS (compatible with rest of stack)
