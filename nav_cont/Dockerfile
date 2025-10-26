@@ -1,33 +1,59 @@
 FROM ros:humble
 
-# Install dependencies
-RUN apt-get update && apt-get install -y \
-    git \
-    build-essential \
-    cmake \
-    python3-colcon-common-extensions \
-    python3-opencv \
-    ros-humble-cv-bridge \
-    ros-humble-image-transport \
-    ros-humble-camera-info-manager \
+# Install Nav2 and supporting dependencies
+RUN set -e; apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
     ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-navigation2 \
+    ros-humble-nav2-bringup \
+    ros-humble-nav2-map-server \
+    ros-humble-nav2-amcl \
+    ros-humble-nav2-lifecycle-manager \
+    ros-humble-tf2-tools \
+    ros-humble-xacro \
+    ros-humble-diagnostic-updater \
     && rm -rf /var/lib/apt/lists/*
 
-# Create workspace
-WORKDIR /ros2_ws/src
+# Optional: install editors (nano) only when explicitly requested.
+# Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
+ARG INSTALL_EDITORS=true
+RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
+            echo "Installing editors (nano) for debugging..." && \
+            apt-get update && apt-get install -y --no-install-recommends nano && \
+            rm -rf /var/lib/apt/lists/*; \
+        else \
+            echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
+        fi
 
-# Clone Rolling libcamera ROS driver
-RUN git clone https://github.com/raspberrypi/libcamera_ros.git -b rolling
+# Copy project into Docker container
+WORKDIR /app
+COPY . /app
 
-# Go to workspace and build
-WORKDIR /ros2_ws
-RUN . /opt/ros/humble/setup.sh && colcon build --merge-install
+# Add start script & goal forwarder (copied below by patch if not present)
 
-# Auto source environment
-RUN echo "source /ros2_ws/install/setup.bash" >> /root/.bashrc
+# Install Python dependencies
+RUN pip3 install --no-cache-dir -r requirements.txt
 
-# ROS middleware
-ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
+ENV TZ=Europe/Zagreb
 
-# Set default launch (with resolution parameter)
-CMD ["bash", "-c", "source /ros2_ws/install/setup.bash && ros2 launch libcamera_ros libcamera.launch.py camera_info_url:=file:///camera_info.yaml --ros-args -p image_width:=1280 -p image_height:=720 -p framerate:=30"]
+# Set custom prompt (just 'nav_cont:' in blue)
+RUN echo "export PS1='\[\033[1;34m\]nav_cont: \[\033[0m\]'" >> /root/.bashrc
+
+# Provide convenience for interactive shells
+RUN echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc && \
+    echo 'alias rl="ros2 lifecycle"' >> /root/.bashrc && \
+    echo 'alias rtopics="ros2 topic list"' >> /root/.bashrc
+
+# Default map file path can be overridden at runtime (must be mounted via compose)
+ENV MAP_FILE=/srv/maps/active/map.yaml
+ENV NAV2_PARAMS_FILE=/app/nav2_params.yaml
+ENV GOAL_TOPIC=/move_base_simple/goal
+ENV FORCE_MAP_WAIT=1
+
+# Copy start script (added via patch) and make executable
+COPY start_nav.sh /app/start_nav.sh
+RUN chmod +x /app/start_nav.sh
+
+# Entry: start nav2 bringup + goal forwarder + optional move script
+CMD ["/app/start_nav.sh"]
