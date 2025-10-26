@@ -28,10 +28,7 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 CMD source /opt/ros/${ROS_DISTRO}/setup.bash && \
     if [ ! -d /ros2_ws/install ]; then colcon build --merge-install; fi && \
     source /ros2_ws/install/setup.bash && \
-    ros2 launch camera_ros camera.launch.py \
-      camera_info_url:=file:///camera_info.yaml \
-      --ros-args \
-      -p camera_type:=libcamera \
-      -p camera_config:=/camera_info.yaml
+    ros2 run camera_ros camera_node --ros-args --params-file /camera_params.yaml
+
 
 
