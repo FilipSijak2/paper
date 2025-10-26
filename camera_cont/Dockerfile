@@ -30,10 +30,11 @@ ENV PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
 WORKDIR /ros2_ws/src
 
 # Preuzmi libcamera_ros (snapshot bez git-a)
-RUN wget https://github.com/raspberrypi/libcamera_ros/archive/refs/heads/main.tar.gz -O libcamera_ros.tar.gz \
+# Preuzmi libcamera_ros (Humble branch)
+RUN wget https://github.com/raspberrypi/libcamera_ros/archive/refs/heads/humble.tar.gz -O libcamera_ros.tar.gz \
  && tar -xzf libcamera_ros.tar.gz \
  && rm libcamera_ros.tar.gz \
- && mv libcamera_ros-main libcamera_ros
+ && mv libcamera_ros-humble libcamera_ros
 
 # (Opcionalno: pin na commit)
 # RUN wget https://github.com/raspberrypi/libcamera_ros/archive/<COMMIT>.tar.gz -O libcamera_ros.tar.gz && ...
