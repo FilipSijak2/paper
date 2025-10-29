@@ -4,6 +4,7 @@ FROM ros:humble
 RUN apt-get update && apt-get install -y \
     python3-colcon-common-extensions \
     python3-pip \
+    ros-humble-rmw-cyclonedds-cpp \
     libopencv-dev python3-opencv \
     && rm -rf /var/lib/apt/lists/*
 
