@@ -1,37 +1,30 @@
-# ROS 2 Humble base (Ubuntu 22.04)
 FROM ros:humble
 
-ENV DEBIAN_FRONTEND=noninteractive
+# Install required dependencies
 RUN apt-get update && apt-get install -y \
-    python3-pip python3-opencv python3-numpy \
-    gstreamer1.0-tools \
-    gstreamer1.0-plugins-base \
-    gstreamer1.0-plugins-good \
-    gstreamer1.0-plugins-bad \
-    gstreamer1.0-libav \
-    ros-humble-cv-bridge \
-    ros-humble-camera-info-manager \
+    python3-colcon-common-extensions \
+    python3-pip \
+    libopencv-dev python3-opencv \
     && rm -rf /var/lib/apt/lists/*
 
-# App
-WORKDIR /app
+# Create workspace
+WORKDIR /ros_ws
+RUN mkdir -p src
+
+# Copy source code (Python node & launch file)
 COPY src/ src/
 COPY launch/ launch/
-COPY config/ config/
 
-# Default envs (mogu se pregaziti iz compose/.env)
-ENV CAMERA_PORT=5000
-ENV FRAME_ID=camera_optical_frame
-ENV WIDTH=1280
-ENV HEIGHT=720
-ENV FPS=30
-ENV CAMERA_INFO_PATH=/app/config/camera_info.yaml
+# Build (catkin not needed, pure Python)
+RUN . /opt/ros/humble/setup.sh && colcon build --symlink-install
+
+# Environment setup
 ENV ROS_DOMAIN_ID=0
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
-ENV ROS_NAMESPACE=camera
 
-# Autostart
-CMD ["bash", "-lc", "source /opt/ros/humble/setup.bash && ros2 launch /app/launch/camera_launch.py"]
+# Source ROS2 and run your launch file
+CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.sh && source install/setup.sh && ros2 launch camera_stream camera.launch.py"]
+
 
 
 

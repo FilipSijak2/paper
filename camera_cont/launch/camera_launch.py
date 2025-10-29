@@ -1,12 +1,12 @@
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, SetEnvironmentVariable
+from launch_ros.actions import Node
 
 def generate_launch_description():
-    # Run the Python node directly (no ROS package install needed)
     return LaunchDescription([
-        SetEnvironmentVariable(name='PYTHONUNBUFFERED', value='1'),
-        ExecuteProcess(
-            cmd=['python3', '/app/src/camera_node.py'],
-            output='screen'
-        ),
+        Node(
+            package='camera_stream',
+            executable='camera_node',
+            name='camera_stream_node',
+            parameters=[{'udp_port': 5000}]
+        )
     ])
