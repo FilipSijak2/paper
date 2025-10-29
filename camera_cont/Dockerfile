@@ -1,41 +1,37 @@
-FROM ros:rolling-ros-base-noble
+# ROS 2 Humble base (Ubuntu 22.04)
+FROM ros:humble
 
 ENV DEBIAN_FRONTEND=noninteractive
-SHELL ["/bin/bash", "-lc"]
-
-# 1) Build alati + ROS ovisnosti (Rolling)
 RUN apt-get update && apt-get install -y \
-    git build-essential cmake pkg-config \
-    python3-colcon-common-extensions \
-    ros-rolling-cv-bridge \
-    ros-rolling-image-transport \
-    ros-rolling-camera-info-manager \
-    ros-rolling-rmw-cyclonedds-cpp \
-    # runtime tracing lib (česti rclcpp dependency)
-    liblttng-ust1 liblttng-ust-dev \
-    # korisne image libovi za camera_ros
-    libjpeg-dev libpng-dev libtiff-dev \
+    python3-pip python3-opencv python3-numpy \
+    gstreamer1.0-tools \
+    gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-libav \
+    ros-humble-cv-bridge \
+    ros-humble-camera-info-manager \
     && rm -rf /var/lib/apt/lists/*
 
-ENV ROS_DISTRO=rolling
+# App
+WORKDIR /app
+COPY src/ src/
+COPY launch/ launch/
+COPY config/ config/
 
-# 2) Workspace i source
-WORKDIR /ros2_ws/src
-RUN git clone --depth 1 https://github.com/christianrauch/camera_ros.git
-
-# 3) Natrag u ws root
-WORKDIR /ros2_ws
-
-# 4) Libcamera iz hosta: pkg-config + linker putanje (bit će bind-mountano)
-ENV PKG_CONFIG_PATH=/usr/local/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
-ENV LD_LIBRARY_PATH=/usr/local/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+# Default envs (mogu se pregaziti iz compose/.env)
+ENV CAMERA_PORT=5000
+ENV FRAME_ID=camera_optical_frame
+ENV WIDTH=1280
+ENV HEIGHT=720
+ENV FPS=30
+ENV CAMERA_INFO_PATH=/app/config/camera_info.yaml
+ENV ROS_DOMAIN_ID=0
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+ENV ROS_NAMESPACE=camera
 
-# 5) Build na runtime (kad je host libcamera već montan), pa launch
-CMD source /opt/ros/${ROS_DISTRO}/setup.bash && \
-    if [ ! -d /ros2_ws/install ]; then colcon build --merge-install; fi && \
-    source /ros2_ws/install/setup.bash && \
-    ros2 run camera_ros camera_node --ros-args --params-file /camera_params.yaml
+# Autostart
+CMD ["bash", "-lc", "source /opt/ros/humble/setup.bash && ros2 launch /app/launch/camera_launch.py"]
 
 
 
