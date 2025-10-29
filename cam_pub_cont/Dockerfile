@@ -1,29 +1,44 @@
+# =========================================================
+# 1. BASE IMAGE (ROS Humble with tools)
+# =========================================================
 FROM ros:humble-ros-base
 
-# Instaliraj osnovne pakete i libcamera ovisnosti
+# =========================================================
+# 2. Install dependencies
+# =========================================================
 RUN apt-get update && apt-get install -y \
-    git \
-    python3-pip \
-    python3-colcon-common-extensions \
-    build-essential \
-    libcamera-dev \
-    libcamera-apps \
-    cmake \
+    git cmake python3-colcon-common-extensions \
+    libcamera-dev libcamera-apps libjpeg-dev libpng-dev libtiff-dev \
+    libavcodec-dev libavformat-dev libswscale-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Postavi radni prostor
+# =========================================================
+# 3. Create workspace
+# =========================================================
 WORKDIR /ros2_ws
 RUN mkdir -p src
 
-# ✅ U ovom trenutku GitHub Actions workflow treba napraviti:
-# actions/checkout@v4 za tvoj repo
-# i actions/checkout za libcamera_ros u libcamera_ros/
+# =========================================================
+# 4. Clone libcamera_ros (specific branch for ROS2 + IMX708)
+# =========================================================
+RUN git clone --depth 1 --branch humble https://github.com/raspberrypi/libcamera_ros.git src/libcamera_ros || \
+    git clone --depth 1 https://github.com/raspberrypi/libcamera_ros.git src/libcamera_ros
 
-# Kopiraj lokalno kloniran libcamera_ros u src
-COPY libcamera_ros src/libcamera_ros
+# =========================================================
+# 5. Build
+# =========================================================
+RUN . /opt/ros/humble/setup.sh && \
+    colcon build --symlink-install
 
-# Source ROS environment
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --symlink-install"
+# =========================================================
+# 6. Setup runtime environment
+# =========================================================
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
+RUN echo "source /ros2_ws/install/setup.bash" >> /root/.bashrc
 
-# Source pri pokretanju containera
-CMD ["/bin/bash", "-c", "source /ros2_ws/install/setup.bash && ros2 run libcamera_ros libcamera_ros_node"]
+# =========================================================
+# 7. Default command
+# =========================================================
+CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && \
+                   source /ros2_ws/install/setup.bash && \
+                   ros2 run libcamera_ros libcamera_ros_node"]
