@@ -1,36 +1,29 @@
-# ===== Dockerfile =====
 FROM ros:humble-ros-base
 
-# Osnovne alatke i libcamera ovisnosti
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential cmake git pkg-config \
-    python3-colcon-common-extensions python3-vcstool \
-    libcamera-dev libevent-dev libdrm-dev libjpeg-dev libtiff5-dev \
-    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev \
-    libepoxy-dev libyaml-cpp-dev \
+# Instaliraj osnovne pakete i libcamera ovisnosti
+RUN apt-get update && apt-get install -y \
+    git \
+    python3-pip \
+    python3-colcon-common-extensions \
+    build-essential \
+    libcamera-dev \
+    libcamera-apps \
+    cmake \
     && rm -rf /var/lib/apt/lists/*
 
-# Radni prostor
-ENV ROS_WS=/opt/ros_ws
-RUN mkdir -p $ROS_WS/src
-WORKDIR $ROS_WS
+# Postavi radni prostor
+WORKDIR /ros2_ws
+RUN mkdir -p src
 
-# (1) Libcamera ROS node (izvor) – provjereni community node
-# Ako već imaš svoj repo, ovdje promijeni URL i folder naziv
-RUN git clone https://github.com/raspberrypi/libcamera_ros.git src/libcamera_ros
+# ✅ U ovom trenutku GitHub Actions workflow treba napraviti:
+# actions/checkout@v4 za tvoj repo
+# i actions/checkout za libcamera_ros u libcamera_ros/
 
-# Build
-RUN . /opt/ros/humble/setup.sh && colcon build --packages-select libcamera_ros
+# Kopiraj lokalno kloniran libcamera_ros u src
+COPY libcamera_ros src/libcamera_ros
 
-# Runtime env
-ENV ROS_DOMAIN_ID=0
-ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+# Source ROS environment
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --symlink-install"
 
-# Učitavanje ROS env-a pri startu
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-# Libcamera treba pristup uređajima
-# (vidjet ćeš ih kroz docker-compose "devices")
-ENTRYPOINT ["/entrypoint.sh"]
-CMD ["bash"]
+# Source pri pokretanju containera
+CMD ["/bin/bash", "-c", "source /ros2_ws/install/setup.bash && ros2 run libcamera_ros libcamera_ros_node"]
