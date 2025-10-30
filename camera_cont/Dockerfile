@@ -18,6 +18,9 @@ RUN pip3 install numpy
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ENV ROS_DOMAIN_ID=0
 
+SHELL ["/bin/bash", "-c"]
+RUN echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+
 WORKDIR /app
 COPY camera_node.py /app/camera_node.py
 
