@@ -20,8 +20,7 @@ ENV ROS_DOMAIN_ID=0
 WORKDIR /app
 COPY camera_node.py /app/camera_node.py
 
-CMD ["ros2", "run", "camera_stream", "camera_node"]
-
+CMD ["python3", "/app/camera_node.py"]
 
 
 
