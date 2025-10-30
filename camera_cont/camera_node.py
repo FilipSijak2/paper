@@ -11,11 +11,18 @@ from rclpy.time import Time
 import yaml
 import os
 
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+
 class CameraStreamNode(Node):
     def __init__(self):
         super().__init__('camera_stream_node')
-        self.publisher_ = self.create_publisher(Image, '/camera/image_raw', 10)
-        self.info_pub = self.create_publisher(CameraInfo, '/camera/camera_info', 10)
+        qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        self.publisher_ = self.create_publisher(Image, '/camera/image_raw', qos_profile)
+        self.info_pub = self.create_publisher(CameraInfo, '/camera/camera_info', qos_profile)
         self.bridge = CvBridge()
 
         # Load camera_info.yaml only once
