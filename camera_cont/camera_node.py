@@ -1,16 +1,11 @@
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import CompressedImage
-import socket
-import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image, CameraInfo, CompressedImage
+from sensor_msgs.msg import CameraInfo, CompressedImage
 from cv_bridge import CvBridge
 import cv2
 from rclpy.time import Time
 import yaml
 import os
-
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 
 class CameraStreamNode(Node):
@@ -21,7 +16,6 @@ class CameraStreamNode(Node):
             history=HistoryPolicy.KEEP_LAST,
             depth=1
         )
-        self.publisher_ = self.create_publisher(Image, '/camera/image_raw', qos_profile)
         self.compressed_pub = self.create_publisher(CompressedImage, '/camera/image_raw/compressed', qos_profile)
         self.info_pub = self.create_publisher(CameraInfo, '/camera/camera_info', qos_profile)
         self.bridge = CvBridge()
@@ -65,13 +59,7 @@ class CameraStreamNode(Node):
         ret, frame = self.cap.read()
         if ret:
             now = self.get_clock().now().to_msg()
-            # Publish raw image
-            msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
-            msg.header.stamp = now
-            msg.header.frame_id = "camera_frame"
-            self.publisher_.publish(msg)
-
-            # Publish compressed image
+            # Publish only compressed image
             try:
                 ret2, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
                 if ret2:
