@@ -16,9 +16,7 @@ class CameraStreamNode(Node):
 
         # GStreamer pipeline for receiving H264 over UDP
         pipeline = (
-            "udpsrc port=5000 ! "
-            "application/x-rtp, encoding-name=H264 ! "
-            "rtph264depay ! avdec_h264 ! videoconvert ! appsink"
+            "udpsrc port=5000 ! queue ! h264parse ! avdec_h264 ! videoconvert ! appsink"
         )
 
         self.cap = cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
