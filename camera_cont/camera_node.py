@@ -4,7 +4,7 @@ from sensor_msgs.msg import CompressedImage
 import socket
 import rclpy
 from rclpy.node import Node
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CameraInfo, CompressedImage
 from cv_bridge import CvBridge
 import cv2
 from rclpy.time import Time
@@ -22,6 +22,7 @@ class CameraStreamNode(Node):
             depth=1
         )
         self.publisher_ = self.create_publisher(Image, '/camera/image_raw', qos_profile)
+        self.compressed_pub = self.create_publisher(CompressedImage, '/camera/image_raw/compressed', qos_profile)
         self.info_pub = self.create_publisher(CameraInfo, '/camera/camera_info', qos_profile)
         self.bridge = CvBridge()
 
@@ -63,11 +64,27 @@ class CameraStreamNode(Node):
     def timer_callback(self):
         ret, frame = self.cap.read()
         if ret:
-            msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
             now = self.get_clock().now().to_msg()
+            # Publish raw image
+            msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
             msg.header.stamp = now
             msg.header.frame_id = "camera_frame"
             self.publisher_.publish(msg)
+
+            # Publish compressed image
+            try:
+                ret2, jpeg = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+                if ret2:
+                    comp_msg = CompressedImage()
+                    comp_msg.header.stamp = now
+                    comp_msg.header.frame_id = "camera_frame"
+                    comp_msg.format = "jpeg"
+                    comp_msg.data = jpeg.tobytes()
+                    self.compressed_pub.publish(comp_msg)
+                else:
+                    self.get_logger().warn("Failed to encode frame as JPEG for CompressedImage.")
+            except Exception as e:
+                self.get_logger().warn(f"Exception during JPEG encoding: {e}")
 
             # Publish camera_info only if loaded
             if self.camera_info_loaded:
