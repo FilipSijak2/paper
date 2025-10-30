@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad \
     gstreamer1.0-libav \
+    ros-humble-cv-bridge \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip3 install numpy
