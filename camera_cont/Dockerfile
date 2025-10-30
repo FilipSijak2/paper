@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-rmw-cyclonedds-cpp \
     gstreamer1.0-plugins-good \
     gstreamer1.0-plugins-bad \
+    ros-humble-rqt-image-view \
     gstreamer1.0-libav \
     ros-humble-cv-bridge \
     && rm -rf /var/lib/apt/lists/*
