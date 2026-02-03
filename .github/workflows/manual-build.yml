@@ -33,6 +33,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.repository }}-container-build
+  cancel-in-progress: false
+
 jobs:
   prepare:
     name: Validate requested containers

@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.repository }}-container-build
+  cancel-in-progress: false
+
 env:
   REPO_OWNER_LC: ${{ github.repository_owner }}
 
