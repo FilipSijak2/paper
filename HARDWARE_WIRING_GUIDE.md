@@ -13,18 +13,16 @@ The robot system consists of three main units:
 - **IMU**: LSM6DSO32 breakout board (I2C)
 - **Encoders**: 2x AS5600 magnetic rotary encoder breakouts
 - **I2C Multiplexer**: TCA9548A breakout board
-- **Level Shifter**: Bi-directional 3.3V ↔ 5V logic level converter (if needed)
 - **Connectors**: Dupont wires, breadboard or custom PCB
 
 ### Arduino UNO R4 WiFi Unit
 - **Main Board**: Arduino UNO R4 WiFi (with built-in LED matrix)
-- **Motor Drivers**: 2x IBT-2 (BTS7960) high-current motor driver modules
-- **Motors**: 2x DC geared motors (12V recommended)
-- **Power Supply**: 12V DC power supply (min 3A capacity)
+- **Motor Drivers**: 1x DRV8833 DC/stepper motor driver
+- **Motors**: 2x DC geared motors (6V recommended) - N20 motor 1:100 with encoders
+- **Power Supply**: 6 x NiMH batteries
 - **Connectors**: Screw terminals, Dupont wires
 
 ### Mechanical Components
-- **Magnets**: 2x diametrically magnetized magnets for AS5600 (6mm diameter recommended)
 - **Wheels**: 2x wheels compatible with motor shafts
 - **Chassis**: Robot platform (aluminum, 3D printed, or acrylic)
 - **Mounting**: Standoffs, screws, brackets for component mounting
@@ -86,15 +84,6 @@ Nano ESP32 GND        → UNO R4 GND (signal ground)
 - UNO R4 RX pin typically accepts 3.3V as HIGH (check datasheet)
 - For UNO TX → Nano RX, use voltage divider (5V → 3.3V) or bi-directional level shifter
 
-#### AS5600 Encoder Mounting
-```
-AS5600 #1 (LEFT):
-  VCC → 3V3
-  GND → GND  
-  SDA → TCA9548A Channel 0 SD0
-  SCL → TCA9548A Channel 0 SC0
-  DIR → Leave floating (default direction)
-  Magnet: 6mm diametrically magnetized, 1-3mm above sensor
 
 AS5600 #2 (RIGHT):
   VCC → 3V3
