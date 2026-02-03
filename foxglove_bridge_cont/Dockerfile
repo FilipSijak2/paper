@@ -40,4 +40,3 @@ ENV FOXGLOVE_PORT=8765 \
     FOXGLOVE_TLS_KEY=/etc/ssl/private/foxglove_bridge.key
 
 CMD ["/foxglove_bridge/start_bridge.sh"]
-# End of Dockerfile
