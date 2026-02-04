@@ -1,7 +1,7 @@
 FROM ubuntu:22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-  bash curl jq coreutils timeout \
+  bash curl jq coreutils \
   ca-certificates gnupg lsb-release locales \
   docker.io iproute2 iputils-ping netcat-openbsd procps util-linux usbutils \
   && rm -rf /var/lib/apt/lists/*
