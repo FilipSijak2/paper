@@ -1,5 +1,8 @@
 FROM ubuntu:22.04
 
+# Avoid any interactive debconf prompts during image build (e.g., locales).
+ENV DEBIAN_FRONTEND=noninteractive
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
   bash curl jq coreutils \
   ca-certificates gnupg lsb-release locales \
@@ -21,6 +24,7 @@ ENV ROS_DISTRO=humble
 ENV ROS_PYTHON_VERSION=3
 ENV ROS_VERSION=2
 ENV ROS_DOMAIN_ID=0
+ENV TZ=Europe/Zagreb
 
 COPY healthcheck.py /usr/local/bin/healthcheck.py
 RUN chmod +x /usr/local/bin/healthcheck.py
