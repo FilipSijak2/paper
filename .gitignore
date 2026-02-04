@@ -1,2 +1,4 @@
 .venv/
 *.tar
+*.zip
+*__pycache__/
