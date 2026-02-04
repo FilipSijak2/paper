@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   bash curl jq coreutils \
   ca-certificates gnupg lsb-release locales \
   docker.io iproute2 iputils-ping netcat-openbsd procps util-linux usbutils \
+  ros-humble-rmw-cyclonedds-cpp \
   && rm -rf /var/lib/apt/lists/*
 
 # ROS 2 Humble (Ubuntu 22.04) CLI for ROS graph/topic checks

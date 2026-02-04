@@ -32,7 +32,7 @@ def run_ros2(args: List[str], timeout_s: int = 6) -> Tuple[int, str, str]:
     cmd = [
         "bash",
         "-lc",
-        f"source /opt/ros/{os.environ.get('ROS_DISTRO', 'jazzy')}/setup.sh && timeout {timeout_s}s ros2 "
+        f"source /opt/ros/{os.environ.get('ROS_DISTRO', 'humble')}/setup.sh && timeout {timeout_s}s ros2 "
         + " ".join(args),
     ]
     return run(cmd)
@@ -147,7 +147,7 @@ def check_arduino(path: str, fh) -> bool:
 
 
 def check_ros_topics(fh, expected_topics: List[str]) -> bool:
-    if not os.path.exists(f"/opt/ros/{os.environ.get('ROS_DISTRO', 'jazzy')}/setup.sh"):
+    if not os.path.exists(f"/opt/ros/{os.environ.get('ROS_DISTRO', 'humble')}/setup.sh"):
         log("ROS2 not installed in healthcheck image; skipping ROS graph checks.", file_handle=fh)
         return True
 
