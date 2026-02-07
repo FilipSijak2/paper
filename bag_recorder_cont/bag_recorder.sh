@@ -8,7 +8,10 @@ MAX_BAG_MB=${MAX_BAG_MB:-150}
 MAX_BAG_DURATION_S=${MAX_BAG_DURATION_S:-0}
 RESTART_DELAY_S=${RESTART_DELAY_S:-3}
 
+export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
+set +u
 source /opt/ros/${ROS_DISTRO}/setup.bash
+set -u
 
 if [[ ! -s "${TOPICS_FILE}" ]]; then
 	echo "No topics file at ${TOPICS_FILE} or it is empty." >&2
