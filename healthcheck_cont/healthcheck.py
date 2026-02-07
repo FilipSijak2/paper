@@ -199,7 +199,7 @@ def main() -> int:
         "robot_bridge_cont",
         "rosbridge_websocket_cont",
         "foxglove_bridge_cont",
-        "camera_cont",
+        "realsense_cont",
         "laser_driver_cont",
     ]
     env_override = os.environ.get("REQUIRED_CONTAINERS")
@@ -207,6 +207,7 @@ def main() -> int:
 
     lidar_dev = os.environ.get("LIDAR_DEVICE", "/dev/ttyUSB0")
     cam_dev = os.environ.get("CAMERA_DEVICE", "/dev/video0")
+    rs_usb_path = os.environ.get("REALSENSE_USB_PATH", "/dev/bus/usb")
     bridge_dev = os.environ.get("BRIDGE_SERIAL_DEVICE", "/dev/ttyACM0")
     stabilization_delay = 30  # seconds after containers become ready
     expected_topics = [
@@ -214,7 +215,7 @@ def main() -> int:
         "/odom",
         "/tf",
         "/tf_static",
-        "/camera/image_raw",
+        "/realsense/color/image_raw",
     ]
 
     with open(log_path, "w", encoding="utf-8") as fh:
@@ -271,7 +272,8 @@ def main() -> int:
 
         log("-- Hardware checks --", file_handle=fh)
         overall_ok = check_lidar(lidar_dev, fh) and overall_ok
-        overall_ok = check_camera(cam_dev, fh) and overall_ok
+        # Realsense publishes CameraInfo; device presence via USB bus.
+        overall_ok = check_device(rs_usb_path, "RealSense USB", fh) and overall_ok
         overall_ok = check_arduino(bridge_dev, fh) and overall_ok
 
         log("-- ROS graph checks --", file_handle=fh)

@@ -39,7 +39,13 @@ while [[ "${stop_requested}" == false ]]; do
 	timestamp=$(date -u +%Y%m%d-%H%M%S)
 	prefix="${BAG_OUTPUT_DIR}/recording_${timestamp}"
 
-	args=(ros2 bag record --output "${prefix}" --max-bag-size "${MAX_BAG_MB}" --compression-mode file --compression-format zstd)
+	max_bag_bytes=$((MAX_BAG_MB * 1024 * 1024))
+	if [[ ${max_bag_bytes} -lt 86016 ]]; then
+		echo "MAX_BAG_MB too small (${MAX_BAG_MB}); must be >= 1 MB" >&2
+		exit 1
+	fi
+
+	args=(ros2 bag record --output "${prefix}" --max-bag-size "${max_bag_bytes}" --compression-mode file --compression-format zstd)
 	if [[ "${MAX_BAG_DURATION_S}" != "0" ]]; then
 		args+=(--max-bag-duration "${MAX_BAG_DURATION_S}")
 	fi
