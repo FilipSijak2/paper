@@ -22,6 +22,16 @@ set -euo pipefail
 : "${NAV2_PARAMS_FILE:=/app/nav2_params.yaml}"
 : "${GOAL_TOPIC:=/simple_goal}"
 : "${FORCE_MAP_WAIT:=0}"
+: "${ENABLE_CMD_VEL_MUX:=1}"
+: "${ENABLE_JOYSTICK:=1}"
+: "${JOYSTICK_DEV:=/dev/input/js0}"
+: "${TELEOP_CONFIG:=/app/teleop_f710.yaml}"
+: "${CMD_VEL_AUTO:=/cmd_vel_auto}"
+: "${CMD_VEL_JOY:=/cmd_vel_joy}"
+: "${CMD_VEL_OUT:=/cmd_vel}"
+: "${MANUAL_DEFAULT:=false}"
+: "${MANUAL_TIMEOUT_S:=0.5}"
+: "${MUX_PUBLISH_RATE_HZ:=20.0}"
 
 # Lightweight resolution (kept, but non-blocking):
 if [ -z "${MAP_FILE}" ]; then
@@ -83,8 +93,13 @@ if [ -n "${MAP_FILE}" ] && [ -f "${MAP_FILE}" ]; then
   MAP_ARG+=("map:=${MAP_FILE}")
 fi
 
+EXTRA_REMAPS=()
+if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
+  EXTRA_REMAPS+=("cmd_vel:=${CMD_VEL_AUTO}")
+fi
+
 echo "[nav_start] Launching Nav2 params=${NAV2_PARAMS_FILE} ${MAP_ARG:+with map arg}" 
-ros2 launch nav2_bringup navigation_launch.py "${MAP_ARG[@]}" params_file:=${NAV2_PARAMS_FILE} &
+ros2 launch nav2_bringup navigation_launch.py "${MAP_ARG[@]}" params_file:=${NAV2_PARAMS_FILE} "${EXTRA_REMAPS[@]}" &
 NAV2_PID=$!
 
 sleep 5 || true
@@ -92,11 +107,38 @@ sleep 5 || true
 python3 /app/goal_forwarder.py --ros-args -p goal_topic:=${GOAL_TOPIC} &
 GOAL_FORWARDER_PID=$!
 
+EXTRA_PIDS=()
+if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
+  echo "[nav_start] Starting cmd_vel mux (manual_default=${MANUAL_DEFAULT})"
+  python3 /app/cmd_vel_mux.py --ros-args \
+    -p auto_topic:=${CMD_VEL_AUTO} \
+    -p joy_topic:=${CMD_VEL_JOY} \
+    -p out_topic:=${CMD_VEL_OUT} \
+    -p manual_default:=${MANUAL_DEFAULT} \
+    -p manual_timeout_s:=${MANUAL_TIMEOUT_S} \
+    -p publish_rate_hz:=${MUX_PUBLISH_RATE_HZ} &
+  EXTRA_PIDS+=("$!")
+fi
+
+if [ "${ENABLE_JOYSTICK}" = "1" ]; then
+  echo "[nav_start] Starting joystick input: dev=${JOYSTICK_DEV}"
+  ros2 run joy joy_node --ros-args -p dev:=${JOYSTICK_DEV} &
+  EXTRA_PIDS+=("$!")
+
+  if [ -f "${TELEOP_CONFIG}" ]; then
+    echo "[nav_start] Starting teleop_twist_joy with config ${TELEOP_CONFIG}"
+    ros2 run teleop_twist_joy teleop_node --ros-args --params-file ${TELEOP_CONFIG} -r cmd_vel:=${CMD_VEL_JOY} &
+    EXTRA_PIDS+=("$!")
+  else
+    echo "[nav_start][WARN] Teleop config not found: ${TELEOP_CONFIG}"
+  fi
+fi
+
 echo "[nav_start] Nav2 PID=${NAV2_PID}; GoalForwarder PID=${GOAL_FORWARDER_PID}"
 echo "[nav_start] Ready. If you later define a map, restart this container to apply it (or use select_map.sh if present)."
 echo "[nav_start] AMCL localization active: postavite početnu pozu preko Foxglove 2D Pose Estimate (publisha na /initialpose) ili:"
 echo "[nav_start]   python3 /app/set_initial_pose.py <x> <y> <yaw_deg> [map_frame]"
 echo "[nav_start] Primjer: python3 /app/set_initial_pose.py 0.0 0.0 90"
 
-trap 'echo "[nav_start] Stopping..."; kill ${GOAL_FORWARDER_PID} ${NAV2_PID} 2>/dev/null || true; wait ${GOAL_FORWARDER_PID} ${NAV2_PID} 2>/dev/null || true; exit 0' INT TERM
+trap 'echo "[nav_start] Stopping..."; kill ${GOAL_FORWARDER_PID} ${NAV2_PID} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; wait ${GOAL_FORWARDER_PID} ${NAV2_PID} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; exit 0' INT TERM
 while true; do sleep 60; echo "[nav_start] heartbeat $(date)"; done

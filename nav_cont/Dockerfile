@@ -12,18 +12,20 @@ RUN set -e; apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-tf2-tools \
     ros-humble-xacro \
     ros-humble-diagnostic-updater \
+    ros-humble-joy \
+    ros-humble-teleop-twist-joy \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.
 # Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
 ARG INSTALL_EDITORS=true
 RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
-            echo "Installing editors (nano) for debugging..." && \
-            apt-get update && apt-get install -y --no-install-recommends nano && \
-            rm -rf /var/lib/apt/lists/*; \
-        else \
-            echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
-        fi
+    echo "Installing editors (nano) for debugging..." && \
+    apt-get update && apt-get install -y --no-install-recommends nano && \
+    rm -rf /var/lib/apt/lists/*; \
+    else \
+    echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
+    fi
 
 # Copy project into Docker container
 WORKDIR /app
