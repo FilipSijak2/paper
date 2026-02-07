@@ -121,16 +121,20 @@ if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 fi
 
 if [ "${ENABLE_JOYSTICK}" = "1" ]; then
-  echo "[nav_start] Starting joystick input: dev=${JOYSTICK_DEV}"
-  ros2 run joy joy_node --ros-args -p dev:=${JOYSTICK_DEV} &
-  EXTRA_PIDS+=("$!")
-
-  if [ -f "${TELEOP_CONFIG}" ]; then
-    echo "[nav_start] Starting teleop_twist_joy with config ${TELEOP_CONFIG}"
-    ros2 run teleop_twist_joy teleop_node --ros-args --params-file ${TELEOP_CONFIG} -r cmd_vel:=${CMD_VEL_JOY} &
+  if [ -e "${JOYSTICK_DEV}" ]; then
+    echo "[nav_start] Starting joystick input: dev=${JOYSTICK_DEV}"
+    ros2 run joy joy_node --ros-args -p dev:=${JOYSTICK_DEV} &
     EXTRA_PIDS+=("$!")
+
+    if [ -f "${TELEOP_CONFIG}" ]; then
+      echo "[nav_start] Starting teleop_twist_joy with config ${TELEOP_CONFIG}"
+      ros2 run teleop_twist_joy teleop_node --ros-args --params-file ${TELEOP_CONFIG} -r cmd_vel:=${CMD_VEL_JOY} &
+      EXTRA_PIDS+=("$!")
+    else
+      echo "[nav_start][WARN] Teleop config not found: ${TELEOP_CONFIG}"
+    fi
   else
-    echo "[nav_start][WARN] Teleop config not found: ${TELEOP_CONFIG}"
+    echo "[nav_start][INFO] Joystick device not found (${JOYSTICK_DEV}); skipping joystick"
   fi
 fi
 
