@@ -21,6 +21,8 @@ on:
           - rosbridge_cont
           - sensor_fusion_cont
           - slam_cont
+          - bag_recorder_cont
+          - healthcheck_cont
       containers:
         description: "Manual list (space/comma separated). Used when container_choice=manual; can add extras."
         required: false
