@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+# Avoid nounset failure inside ROS setup.bash when AMENT_TRACE_SETUP_FILES is unset.
+export AMENT_TRACE_SETUP_FILES="${AMENT_TRACE_SETUP_FILES:-}"
+
 source /opt/ros/${ROS_DISTRO}/setup.bash
 
 ROS_ARGS=(
