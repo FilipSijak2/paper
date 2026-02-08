@@ -33,6 +33,12 @@ set -euo pipefail
 : "${MANUAL_TIMEOUT_S:=0.5}"
 : "${MUX_PUBLISH_RATE_HZ:=20.0}"
 
+# If MAP_FILE is set but missing, fall back to auto-resolution.
+if [ -n "${MAP_FILE}" ] && [ ! -f "${MAP_FILE}" ]; then
+  echo "[nav_start][WARN] MAP_FILE set but not found: ${MAP_FILE}. Falling back to auto-resolve."
+  MAP_FILE=""
+fi
+
 # Lightweight resolution (kept, but non-blocking):
 if [ -z "${MAP_FILE}" ]; then
   if [ -n "${MAP_SESSION}" ]; then
