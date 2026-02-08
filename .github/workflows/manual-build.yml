@@ -297,6 +297,8 @@ jobs:
               SIZE_BYTES=$TOTAL
             else
               SIZE_BYTES=$(jq '[.layers[].size] | add' manifest.cool.json 2>/dev/null || echo 0)
+            elif SIZE_MEGABYTES=$(jq '([.layers[].size] | add) / 1048576 | (. * 100 | round / 100)' manifest.cool.json 2>/dev/null || echo 0); then
+              echo "Size in megabytes: $SIZE_MEGABYTES MB"
             fi
           else
             echo "jq not found; assuming size 0"
