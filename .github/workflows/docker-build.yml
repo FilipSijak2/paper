@@ -359,13 +359,12 @@ jobs:
               SIZE_BYTES=$TOTAL
             else
               SIZE_BYTES=$(jq '[.layers[].size] | add' manifest.cool.json 2>/dev/null || echo 0)
-            elif
-              SIZE_MEGABYTES=$(jq '([.layers[].size] | add) / 1048576 | (. * 100 | round / 100)' manifest.cool.json 2>/dev/null || echo 0)
             fi
           else
             echo "jq not found; assuming size 0"
           fi
 
+          SIZE_MEGABYTES=$(jq '([.layers[].size] | add) / 1048576 | (. * 100 | round / 100)' manifest.cool.json 2>/dev/null || echo 0)
           echo "Calculated image size (megabytes): $SIZE_MEGABYTES MB"
           MB=$((200*1024*1024))
           GB=$((1024*1024*1024))
