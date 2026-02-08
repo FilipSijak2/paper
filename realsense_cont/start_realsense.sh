@@ -9,7 +9,7 @@ source /opt/ros/humble/setup.bash
 set -u
 
 : "${RS_CAMERA_NAME:=realsense}"
-: "${RS_SERIAL:=}"
+: "${RS_PORT_ID:=}"
 : "${RS_ENABLE_DEPTH:=true}"
 : "${RS_ENABLE_COLOR:=true}"
 : "${RS_ENABLE_INFRA1:=false}"
@@ -42,8 +42,8 @@ enumerate_realsense() {
 
 pick_serial_or_fail() {
   # If serial provided -> trust it (but still show what we see)
-  if [ -n "${RS_SERIAL}" ]; then
-    echo "${RS_SERIAL}"
+  if [ -n "${RS_PORT_ID}" ]; then
+    echo "${RS_PORT_ID}"
     return 0
   fi
 
