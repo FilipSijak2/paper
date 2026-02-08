@@ -1,22 +1,18 @@
-FROM ros:humble
+FROM intelrealsense/librealsense:latest
 
-RUN set -e; apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    usbutils \
     ros-humble-realsense2-camera \
     ros-humble-realsense2-description \
     ros-humble-rmw-cyclonedds-cpp \
+    usbutils \
     && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=Europe/Zagreb
-
 WORKDIR /app
 
 COPY start_realsense.sh /app/start_realsense.sh
 RUN chmod +x /app/start_realsense.sh
-
-RUN echo "export AMENT_TRACE_SETUP_FILES=\${AMENT_TRACE_SETUP_FILES:-}" >> /root/.bashrc && \
-    echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
-    echo "export PS1='\[\033[1;34m\]realsense_cont: \[\033[0m\]'" >> /root/.bashrc
 
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     RS_CAMERA_NAME=realsense \
