@@ -9,6 +9,8 @@ source /opt/ros/humble/setup.bash
 set -u
 
 : "${RS_CAMERA_NAME:=realsense}"
+: "${RS_SERIAL:=}"
+: "${RS_USB_PORT_ID:=}"
 : "${RS_PORT_ID:=}"
 : "${RS_ENABLE_DEPTH:=true}"
 : "${RS_ENABLE_COLOR:=true}"
@@ -21,6 +23,11 @@ set -u
 : "${RS_COLOR_PROFILE:=640x480x15}"
 : "${RS_ALIGN_DEPTH:=true}"
 : "${RS_ENABLE_POINTCLOUD:=false}"
+
+# Backward compatibility for older env naming.
+if [ -z "${RS_USB_PORT_ID}" ] && [ -n "${RS_PORT_ID}" ]; then
+  RS_USB_PORT_ID="${RS_PORT_ID}"
+fi
 
 # --- Helpers ---
 have_cmd() { command -v "$1" >/dev/null 2>&1; }
@@ -42,15 +49,21 @@ enumerate_realsense() {
 
 pick_serial_or_fail() {
   # If serial provided -> trust it (but still show what we see)
-  if [ -n "${RS_PORT_ID}" ]; then
-    echo "${RS_PORT_ID}"
+  if [ -n "${RS_SERIAL}" ]; then
+    echo "${RS_SERIAL}"
+    return 0
+  fi
+
+  # If USB port is explicitly selected, no serial is needed.
+  if [ -n "${RS_USB_PORT_ID}" ]; then
+    echo ""
     return 0
   fi
 
   # Try to auto-pick if exactly one device exists
   if have_cmd rs-enumerate-devices; then
     local serials
-    serials="$(rs-enumerate-devices 2>/dev/null | awk -F': ' '/Serial Number/ {print $2}' | tr -d '\r' || true)"
+    serials="$(rs-enumerate-devices 2>/dev/null | awk -F': ' '/^[[:space:]]*Serial Number[[:space:]]*:/ {print $2}' | tr -d '\r' || true)"
 
     local count
     count="$(printf "%s\n" "${serials}" | sed '/^$/d' | wc -l | tr -d ' ')"
@@ -62,8 +75,8 @@ pick_serial_or_fail() {
       printf "%s\n" "${serials}" | sed '/^$/d' | head -n1
       return 0
     else
-      echo "[realsense] ERROR: Multiple RealSense devices detected, but RS_SERIAL is not set." >&2
-      echo "[realsense]        Set REALSENSE_SERIAL in .env to choose one explicitly." >&2
+      echo "[realsense] ERROR: Multiple RealSense devices detected, but neither RS_SERIAL nor RS_USB_PORT_ID is set." >&2
+      echo "[realsense]        Set REALSENSE_SERIAL or REALSENSE_USB_PORT_ID in .env to choose one explicitly." >&2
       echo "[realsense]        Detected serials:" >&2
       printf "%s\n" "${serials}" | sed '/^$/d' | sed 's/^/  - /' >&2
       exit 2
@@ -104,13 +117,17 @@ args=(
   "pointcloud.enable:=${RS_ENABLE_POINTCLOUD}"
 )
 
+if [ -n "${RS_USB_PORT_ID}" ]; then
+  args+=("usb_port_id:=${RS_USB_PORT_ID}")
+  echo "[realsense] Using USB port id: ${RS_USB_PORT_ID}"
+fi
+
 if [ -n "${SELECTED_SERIAL}" ]; then
   args+=("serial_no:=${SELECTED_SERIAL}")
   echo "[realsense] Using serial: ${SELECTED_SERIAL}"
-else
-  echo "[realsense] RS_SERIAL not set and auto-pick unavailable; launching without serial_no (may select any device)."
+elif [ -z "${RS_USB_PORT_ID}" ]; then
+  echo "[realsense] Neither RS_SERIAL nor RS_USB_PORT_ID set; launching without device selector (may select any device)."
 fi
 
 echo "[realsense] Starting RealSense camera: ${RS_CAMERA_NAME}"
 exec ros2 launch realsense2_camera rs_launch.py "${args[@]}"
-

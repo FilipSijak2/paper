@@ -31,6 +31,7 @@ RUN chmod +x /app/start_realsense.sh
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     RS_CAMERA_NAME=realsense \
     RS_SERIAL= \
+    RS_USB_PORT_ID= \
     RS_ENABLE_DEPTH=true \
     RS_ENABLE_COLOR=true \
     RS_ENABLE_INFRA1=false \
