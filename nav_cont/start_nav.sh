@@ -92,7 +92,10 @@ if [ ! -f "${NAV2_PARAMS_FILE}" ]; then
   echo "[nav_start][WARN] Nav2 params file missing: ${NAV2_PARAMS_FILE}" >&2
 fi
 
+export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
+set +u
 source /opt/ros/humble/setup.bash
+set -u
 
 MAP_ARG=()
 if [ -n "${MAP_FILE}" ] && [ -f "${MAP_FILE}" ]; then
