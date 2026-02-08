@@ -1,11 +1,25 @@
-FROM intelrealsense/librealsense:latest
+FROM ros:humble
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN set -e; \
+    apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
+    gnupg \
+    apt-transport-https \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install librealsense from RealSense apt repo (userspace libs + tools)
+RUN set -e; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -sSf https://librealsense.realsenseai.com/Debian/librealsenseai.asc | gpg --dearmor > /etc/apt/keyrings/librealsenseai.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] https://librealsense.realsenseai.com/Debian/apt-repo $(. /etc/os-release; echo $VERSION_CODENAME) main" > /etc/apt/sources.list.d/librealsense.list; \
+    apt-get update && apt-get install -y --no-install-recommends \
+    librealsense2-utils \
+    librealsense2-dev \
     usbutils \
     ros-humble-realsense2-camera \
     ros-humble-realsense2-description \
     ros-humble-rmw-cyclonedds-cpp \
-    usbutils \
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Europe/Zagreb
