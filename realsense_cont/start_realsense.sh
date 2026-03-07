@@ -47,6 +47,39 @@ enumerate_realsense() {
   fi
 }
 
+extract_device_serials() {
+  # Match only top-level "Serial Number" fields and ignore "Asic Serial Number".
+  rs-enumerate-devices 2>/dev/null \
+    | awk -F': ' '/^[[:space:]]*Serial Number[[:space:]]*:/ {print $2}' \
+    | tr -d '\r' \
+    || true
+}
+
+extract_physical_ports() {
+  rs-enumerate-devices 2>/dev/null \
+    | awk -F': ' '/^[[:space:]]*Physical Port[[:space:]]*:/ {print $2}' \
+    | tr -d '\r' \
+    || true
+}
+
+realsense_detected() {
+  local out
+  out="$(rs-enumerate-devices 2>/dev/null || true)"
+
+  # Primary signal: at least one real device serial reported.
+  if printf "%s\n" "${out}" \
+    | awk -F': ' '/^[[:space:]]*Serial Number[[:space:]]*:/ {found=1} END{exit !found}'; then
+    return 0
+  fi
+
+  # Fallback signal: module stream profiles are present in enumerate output.
+  if printf "%s\n" "${out}" | grep -q "Stream Profiles supported by"; then
+    return 0
+  fi
+
+  return 1
+}
+
 pick_serial_or_fail() {
   # If serial provided -> trust it (but still show what we see)
   if [ -n "${RS_SERIAL}" ]; then
@@ -63,7 +96,7 @@ pick_serial_or_fail() {
   # Try to auto-pick if exactly one device exists
   if have_cmd rs-enumerate-devices; then
     local serials
-    serials="$(rs-enumerate-devices 2>/dev/null | awk -F': ' '/^[[:space:]]*Serial Number[[:space:]]*:/ {print $2}' | tr -d '\r' || true)"
+    serials="$(extract_device_serials)"
 
     local count
     count="$(printf "%s\n" "${serials}" | sed '/^$/d' | wc -l | tr -d ' ')"
@@ -95,10 +128,19 @@ SELECTED_SERIAL="$(pick_serial_or_fail)"
 
 if have_cmd rs-enumerate-devices; then
   # If we can enumerate but no device -> hard fail
-  if ! rs-enumerate-devices 2>/dev/null | grep -q "Intel RealSense"; then
+  if ! realsense_detected; then
     echo "[realsense] ERROR: No RealSense devices detected inside container." >&2
     echo "[realsense]        Check USB mapping (/dev/bus/usb), privileges, cable, and power." >&2
     exit 3
+  fi
+fi
+
+if [ -n "${RS_USB_PORT_ID}" ] && have_cmd rs-enumerate-devices; then
+  PHYSICAL_PORTS="$(extract_physical_ports | sed '/^$/d' || true)"
+  if [ -n "${PHYSICAL_PORTS}" ] && ! printf "%s\n" "${PHYSICAL_PORTS}" | grep -Fq "${RS_USB_PORT_ID}"; then
+    echo "[realsense] WARN: RS_USB_PORT_ID='${RS_USB_PORT_ID}' not found in detected Physical Port values." >&2
+    echo "[realsense]       Detected Physical Port values:" >&2
+    printf "%s\n" "${PHYSICAL_PORTS}" | sed 's/^/  - /' >&2
   fi
 fi
 
