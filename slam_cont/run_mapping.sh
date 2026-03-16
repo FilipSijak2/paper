@@ -522,7 +522,7 @@ cleanup(){
       convert "$PGM_FILE" "${FINAL_DIR}/map.png" && info "Generated PNG: ${FINAL_DIR}/map.png" || warn "PNG conversion failed"
     else
       # Fallback python conversion (grayscale)
-      python3 - <<'PYEOF'
+      python3 - "$PGM_FILE" "${FINAL_DIR}/map.png" <<'PYEOF'
 from PIL import Image
 import sys, os
 pgm=sys.argv[1]

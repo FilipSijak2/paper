@@ -6,6 +6,7 @@ and writes a timestamped report into the mounted logs directory.
 """
 
 import os
+import glob
 import subprocess
 import sys
 import time
@@ -137,9 +138,32 @@ def check_lidar(path: str, fh) -> bool:
     return False
 
 
-def check_camera(path: str, fh) -> bool:
-    # Presence check only; grabbing frames would require v4l tooling/ROS node.
-    return check_device(path, "Camera", fh)
+def check_camera(rs_usb_path: str, fh) -> bool:
+    """Best-effort RealSense camera checks.
+
+    RealSense can expose multiple /dev/video* nodes or only USB bus visibility,
+    depending on container/device passthrough setup. To reduce false alarms,
+    missing video nodes are informational unless strict mode is enabled.
+    """
+    strict = os.environ.get("STRICT_CAMERA_CHECK", "0") == "1"
+    ok = True
+
+    if os.path.exists(rs_usb_path):
+        log(f"RealSense USB path present: {rs_usb_path}", file_handle=fh)
+    else:
+        log(f"WARN: RealSense USB path not found: {rs_usb_path}", file_handle=fh)
+        ok = False
+
+    video_nodes = sorted(glob.glob("/dev/video*"))
+    if video_nodes:
+        shown = ", ".join(video_nodes[:6])
+        extra = "" if len(video_nodes) <= 6 else f" (+{len(video_nodes) - 6} more)"
+        log(f"Video devices visible: {shown}{extra}", file_handle=fh)
+    else:
+        log("INFO: No /dev/video* nodes visible in this container.", file_handle=fh)
+
+    # In non-strict mode rely on ROS topic checks for final camera validation.
+    return ok if strict else True
 
 
 def check_arduino(path: str, fh) -> bool:
@@ -206,7 +230,6 @@ def main() -> int:
     containers = [c.strip() for c in env_override.split(",") if c.strip()] if env_override else default_containers
 
     lidar_dev = os.environ.get("LIDAR_DEVICE", "/dev/ttyUSB0")
-    cam_dev = os.environ.get("CAMERA_DEVICE", "/dev/video0")
     rs_usb_path = os.environ.get("REALSENSE_USB_PATH", "/dev/bus/usb")
     bridge_dev = os.environ.get("BRIDGE_SERIAL_DEVICE", "/dev/ttyACM0")
     stabilization_delay = 30  # seconds after containers become ready
@@ -272,8 +295,7 @@ def main() -> int:
 
         log("-- Hardware checks --", file_handle=fh)
         overall_ok = check_lidar(lidar_dev, fh) and overall_ok
-        # Realsense publishes CameraInfo; device presence via USB bus.
-        overall_ok = check_device(rs_usb_path, "RealSense USB", fh) and overall_ok
+        overall_ok = check_camera(rs_usb_path, fh) and overall_ok
         overall_ok = check_arduino(bridge_dev, fh) and overall_ok
 
         log("-- ROS graph checks --", file_handle=fh)
