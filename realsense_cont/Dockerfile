@@ -42,6 +42,6 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     RS_DEPTH_PROFILE=640x480x15 \
     RS_COLOR_PROFILE=640x480x15 \
     RS_ALIGN_DEPTH=true \
-    RS_ENABLE_POINTCLOUD=false
+    RS_ENABLE_POINTCLOUD=true
 
 CMD ["/app/start_realsense.sh"]

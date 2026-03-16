@@ -13,14 +13,14 @@ set -euo pipefail
 #   MAP_SESSION      (optional session directory under MAP_ROOT)
 #   MAP_FILE         (explicit map YAML path; overrides MAP_SESSION)
 #   NAV2_PARAMS_FILE (default /app/nav2_params.yaml)
-#   GOAL_TOPIC       (default /simple_goal)
+#   GOAL_TOPIC       (default /move_base_simple/goal)
 #   FORCE_MAP_WAIT   (0/1) if 1 and MAP_FILE resolved, wait until it exists (default 0 now)
 
 : "${MAP_ROOT:=/srv/maps}"
 : "${MAP_SESSION:=}"
 : "${MAP_FILE:=}"
 : "${NAV2_PARAMS_FILE:=/app/nav2_params.yaml}"
-: "${GOAL_TOPIC:=/simple_goal}"
+: "${GOAL_TOPIC:=/move_base_simple/goal}"
 : "${FORCE_MAP_WAIT:=0}"
 : "${ENABLE_CMD_VEL_MUX:=1}"
 : "${ENABLE_JOYSTICK:=1}"
@@ -31,6 +31,7 @@ set -euo pipefail
 : "${CMD_VEL_OUT:=/cmd_vel}"
 : "${MANUAL_DEFAULT:=false}"
 : "${MANUAL_TIMEOUT_S:=0.5}"
+: "${AUTO_TIMEOUT_S:=0.7}"
 : "${MUX_PUBLISH_RATE_HZ:=20.0}"
 
 # If MAP_FILE is set but missing, fall back to auto-resolution.
@@ -125,6 +126,7 @@ if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
     -p out_topic:=${CMD_VEL_OUT} \
     -p manual_default:=${MANUAL_DEFAULT} \
     -p manual_timeout_s:=${MANUAL_TIMEOUT_S} \
+    -p auto_timeout_s:=${AUTO_TIMEOUT_S} \
     -p publish_rate_hz:=${MUX_PUBLISH_RATE_HZ} &
   EXTRA_PIDS+=("$!")
 fi

@@ -10,6 +10,7 @@ RUN set -e; apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-nav2-amcl \
     ros-humble-nav2-lifecycle-manager \
     ros-humble-tf2-tools \
+    ros-humble-tf2-geometry-msgs \
     ros-humble-xacro \
     ros-humble-diagnostic-updater \
     ros-humble-joy \

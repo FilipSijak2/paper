@@ -5,8 +5,12 @@ from geometry_msgs.msg import Twist
 class MobileRobotController(Node):
     def __init__(self):
         super().__init__('mobile_robot_controller')
-        self.publisher_ = self.create_publisher(Twist, '/cmd_vel', 10)
-        self.get_logger().info("Mobile Robot Controller Node has been started.")
+        topic = self.declare_parameter('topic', '/cmd_vel_joy').get_parameter_value().string_value
+        self.publisher_ = self.create_publisher(Twist, topic, 10)
+        self.get_logger().info(
+            f"Mobile Robot Controller test node started. Publishing on {topic} "
+            "(use /set_manual_mode=true to take control through mux)."
+        )
 
     def move(self, linear_speed, angular_speed):
         """
@@ -29,10 +33,13 @@ def main(args=None):
     controller = MobileRobotController()
 
     try:
-        # Example: Move forward for 2 seconds, then stop
-        controller.move(0.5, 0.0)  # Move forward at 0.5 m/s
-        controller.get_logger().info("Moving forward for 2 seconds...")
-        rclpy.spin_once(controller, timeout_sec=2.0)
+        # Simple smoke test: command for 2 seconds, then explicit stop.
+        controller.move(0.2, 0.0)
+        controller.get_logger().info("Publishing forward command for 2 seconds...")
+        end_time = controller.get_clock().now().nanoseconds + int(2.0 * 1e9)
+        while controller.get_clock().now().nanoseconds < end_time:
+            controller.move(0.2, 0.0)
+            rclpy.spin_once(controller, timeout_sec=0.1)
         controller.stop()
         controller.get_logger().info("Robot stopped.")
     except KeyboardInterrupt:

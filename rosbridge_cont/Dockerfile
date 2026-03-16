@@ -1,4 +1,3 @@
-# Koristi službeni ROS 2 Humble image kao osnovu
 FROM ros:humble
 
 # ---------------------------------------------------------
