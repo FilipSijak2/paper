@@ -5,14 +5,59 @@ set +u
 source /opt/ros/humble/setup.bash
 set -u
 
-# Download Hailo example model resources on first startup (not baked into the
-# image to keep CI builds fast). Uses a stamp file so it only runs once even if
-# the container is restarted. Mount /root/hailo-rpi5-examples as a volume to
-# persist downloads across container recreations.
+# ---------------------------------------------------------------------------
+# First-run: install hailo-tappas-core from RPi apt repo.
+#
+# Why deferred and not baked into the image:
+#   hailo-tappas-core requires Debian Bookworm libraries (libopencv-core406,
+#   libpython3.11, gstreamer1.0-libcamera) that are not available in the
+#   Ubuntu Jammy base image used for building. On the real Raspberry Pi running
+#   Raspberry Pi OS (Bookworm), all those libraries are present natively and
+#   apt-get install works without any conflicts.
+#
+# The stamp file prevents re-installation on every container restart.
+# Mount /var/cache/apt as a volume to speed up repeated installations.
+# ---------------------------------------------------------------------------
+HAILO_STAMP=/etc/hailo-tappas-core-installed
+: "${HAILO_TAPPAS_CORE_VERSION:=3.31.0+1-1}"
+
+if [ ! -f "${HAILO_STAMP}" ]; then
+  echo "[ai-kit] Installing hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION} (first run)..."
+  if [ "$(dpkg --print-architecture)" != "arm64" ]; then
+    echo "[ai-kit] WARN: Not running on arm64 — skipping hailo install (passthrough mode)."
+  else
+    mkdir -p /etc/apt/keyrings
+    wget --tries=5 --waitretry=15 --timeout=60 -qO- \
+      https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
+      | gpg --dearmor > /etc/apt/keyrings/raspberrypi-archive-keyring.gpg
+    echo "deb [signed-by=/etc/apt/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.com/debian/ bookworm main" \
+      > /etc/apt/sources.list.d/raspi.list
+    apt-get update -o Acquire::Retries=3
+    apt-get install -y --no-install-recommends \
+      "hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" \
+    || {
+      echo "[ai-kit][ERROR] Could not install hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" >&2
+      echo "[ai-kit]        Versions in RPi archive:" >&2
+      apt-cache policy hailo-tappas-core 2>/dev/null >&2 || true
+      rm -f /etc/apt/sources.list.d/raspi.list
+      exit 1
+    }
+    rm -f /etc/apt/sources.list.d/raspi.list
+    rm -rf /var/lib/apt/lists/*
+    touch "${HAILO_STAMP}"
+    echo "[ai-kit] hailo-tappas-core installed successfully."
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# First-run: download Hailo example model resources.
+# Models are not baked into the image to keep CI builds fast.
+# Mount /root/hailo-rpi5-examples as a volume to persist across restarts.
+# ---------------------------------------------------------------------------
 HAILO_EXAMPLES_DIR=/root/hailo-rpi5-examples
 RESOURCES_STAMP="${HAILO_EXAMPLES_DIR}/.resources_downloaded"
 if [ ! -f "${RESOURCES_STAMP}" ]; then
-  echo "[ai-kit] Downloading Hailo example resources (first run)..."
+  echo "[ai-kit] Downloading Hailo example model resources (first run)..."
   cd "${HAILO_EXAMPLES_DIR}"
   ./download_resources.sh
   touch "${RESOURCES_STAMP}"

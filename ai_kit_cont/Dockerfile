@@ -3,7 +3,9 @@ FROM ros:humble-ros-base
 WORKDIR /root
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG HAILO_TAPPAS_CORE_VERSION=3.31.0+1-1
+# HAILO_TAPPAS_CORE_VERSION is consumed by start_ai_kit.sh at runtime, not
+# during the image build (see comment below for why).
+ENV HAILO_TAPPAS_CORE_VERSION=3.31.0+1-1
 
 # Enable the Ubuntu 'universe' repository before the main install.
 # Many packages required here (ffmpeg, gstreamer codecs, OpenCV, etc.) live in
@@ -61,67 +63,16 @@ RUN apt-get update -o Acquire::Retries=3 && \
   ros-humble-compressed-image-transport && \
   rm -rf /var/lib/apt/lists/*
 
-# Install Hailo TAPPAS Core for Raspberry Pi AI Kit.
-# Package naming convention changed in 3.31+: the binary package is now just
-# 'hailo-tappas-core' (version 3.31.0+1-1 in the RPi stable/bookworm repo).
-# Older 3.28.x embeds the version in the package name — not used here.
-# python-gi-dev: obsolete Python 2-era package that hailo depends on;
-# satisfied with a dummy .deb that re-maps it to Depends: python3-gi.
-RUN set -e; \
-  if [ "$(dpkg --print-architecture)" != "arm64" ]; then \
-  echo "ERROR: Hailo packages are arm64-only. Build with --platform linux/arm64." >&2; \
-  exit 1; \
-  fi; \
-  \
-  mkdir -p /tmp/python-gi-dev-compat/DEBIAN; \
-  printf '%s\n' \
-  'Package: python-gi-dev' \
-  'Version: 99.0~dummy' \
-  'Section: misc' \
-  'Priority: optional' \
-  'Architecture: all' \
-  'Depends: python3-gi' \
-  'Maintainer: dummy' \
-  'Description: Dummy package mapping python-gi-dev to python3-gi' \
-  > /tmp/python-gi-dev-compat/DEBIAN/control; \
-  dpkg-deb --build /tmp/python-gi-dev-compat /tmp/python-gi-dev-compat.deb; \
-  dpkg -i /tmp/python-gi-dev-compat.deb; \
-  rm -rf /tmp/python-gi-dev-compat /tmp/python-gi-dev-compat.deb; \
-  \
-  mkdir -p /etc/apt/keyrings; \
-  wget --tries=5 --waitretry=15 --timeout=60 -qO- \
-  https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
-  | gpg --dearmor > /etc/apt/keyrings/raspberrypi-archive-keyring.gpg; \
-  echo "deb [signed-by=/etc/apt/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.com/debian/ bookworm main" \
-  > /etc/apt/sources.list.d/raspi.list; \
-  printf '%s\n' \
-  'Package: *' \
-  'Pin: origin "archive.raspberrypi.com"' \
-  'Pin-Priority: 100' \
-  '' \
-  'Package: hailo-*' \
-  'Pin: origin "archive.raspberrypi.com"' \
-  'Pin-Priority: 1001' \
-  > /etc/apt/preferences.d/raspi-hailo.pref; \
-  apt-get update -o Acquire::Retries=3; \
-  \
-  echo "[hailo] Installing hailo-tappas-core (=${HAILO_TAPPAS_CORE_VERSION}) from RPi archive"; \
-  apt-get install -y --no-install-recommends \
-  "hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" \
-  || { \
-  echo "[hailo][ERROR] Could not install hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" >&2; \
-  echo "[hailo]        Versions available in RPi archive:" >&2; \
-  apt-cache policy hailo-tappas-core 2>/dev/null >&2 || true; \
-  apt-cache search hailo 2>/dev/null >&2 || true; \
-  exit 1; \
-  }; \
-  \
-  rm -f /etc/apt/sources.list.d/raspi.list \
-  /etc/apt/preferences.d/raspi-hailo.pref; \
-  rm -rf /var/lib/apt/lists/*
-# hailort daemon/kernel module is not available during build; it is provided
-# by the host RPi OS at runtime. gst-inspect-1.0 hailonet is therefore NOT
-# validated here — hailonet will be functional at container runtime on the Pi.
+# NOTE: hailo-tappas-core is NOT installed during image build.
+# The RPi binary packages (3.31.0+1-1) depend on Debian Bookworm libraries
+# (libopencv-core406, libpython3.11, gstreamer1.0-libcamera) that are not
+# available in Ubuntu Jammy (this base image). Building from GitHub source
+# has the same problem since it links against hailort dev headers which
+# themselves ship as Bookworm-only .debs.
+#
+# Solution: install hailo-tappas-core at first container startup on the real
+# Raspberry Pi (which runs Raspberry Pi OS Bookworm and has all deps natively).
+# start_ai_kit.sh handles this automatically.
 
 # Clone Hailo examples (shallow). Models are downloaded at container first startup
 # via start_ai_kit.sh to avoid bloating the image and slowing CI builds.
