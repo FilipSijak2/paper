@@ -78,6 +78,7 @@ jobs:
     needs: prepare
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         include:
           - image: ros:humble
@@ -87,20 +88,30 @@ jobs:
           - image: ros:jazzy-ros-base
             scope: ros-jazzy-ros-base
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare warm-cache Dockerfile
+        run: |
+          mkdir -p ".gha-base-cache/${{ matrix.scope }}"
+          cat > ".gha-base-cache/${{ matrix.scope }}/Dockerfile" <<EOF
+          FROM ${{ matrix.image }}
+          EOF
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Warm cache for ${{ matrix.image }}
-        run: |
-          TMPDIR=$(mktemp -d)
-          echo 'FROM ${{ matrix.image }}' > "${TMPDIR}/Dockerfile"
-          docker buildx build \
-            --platform linux/arm64 \
-            --cache-from type=gha,scope=${{ matrix.scope }} \
-            --cache-to   type=gha,scope=${{ matrix.scope }},mode=max,ignore-error=true \
-            "${TMPDIR}"
-          rm -rf "${TMPDIR}"
+        timeout-minutes: 30
+        uses: docker/build-push-action@v5
+        with:
+          context: ./.gha-base-cache/${{ matrix.scope }}
+          file: ./.gha-base-cache/${{ matrix.scope }}/Dockerfile
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=${{ matrix.scope }},timeout=20m,version=2
+          cache-to: type=gha,scope=${{ matrix.scope }},mode=min,ignore-error=true,timeout=20m,version=2
 
   manual-build:
     name: Build & Push selected containers
@@ -164,7 +175,7 @@ jobs:
           # mode=max exports every intermediate layer and can easily consume 2-5 GB
           # per container, making multiple parallel builds hang on the 10 GB GHA
           # cache limit. mode=min is sufficient for CI build speed.
-          echo "cache_to=type=gha,scope=${{ matrix.image }},mode=min,ignore-error=true" >> $GITHUB_OUTPUT
+          echo "cache_to=type=gha,scope=${{ matrix.image }},mode=min,ignore-error=true,timeout=20m,version=2" >> $GITHUB_OUTPUT
           echo "Cache mode for ${{ matrix.image }}: min"
 
       - name: Connect to Tailscale (if key)
@@ -283,6 +294,7 @@ jobs:
         timeout-minutes: 45
         uses: docker/build-push-action@v5
         with:
+          builder: insecurebuilder
           context: ${{ matrix.dir }}
           file: ${{ matrix.dir }}/Dockerfile
           platforms: linux/arm64
@@ -293,10 +305,10 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.run_id }}
           cache-from: |
-            type=gha,scope=ros-humble
-            type=gha,scope=ros-humble-ros-base
-            type=gha,scope=ros-jazzy-ros-base
-            type=gha,scope=${{ matrix.image }}
+            type=gha,scope=ros-humble,timeout=20m,version=2
+            type=gha,scope=ros-humble-ros-base,timeout=20m,version=2
+            type=gha,scope=ros-jazzy-ros-base,timeout=20m,version=2
+            type=gha,scope=${{ matrix.image }},timeout=20m,version=2
           cache-to: ${{ steps.cachecfg.outputs.cache_to }}
 
       - name: Inter-build cooldown
