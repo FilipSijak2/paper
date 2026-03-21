@@ -3,7 +3,7 @@ FROM ros:humble-ros-base
 WORKDIR /root
 
 ENV DEBIAN_FRONTEND=noninteractive
-ARG HAILO_TAPPAS_CORE_VERSION=3.29.1
+ARG HAILO_TAPPAS_CORE_VERSION=3.31.0+1-1
 
 # Enable the Ubuntu 'universe' repository before the main install.
 # Many packages required here (ffmpeg, gstreamer codecs, OpenCV, etc.) live in
@@ -62,11 +62,11 @@ RUN apt-get update -o Acquire::Retries=3 && \
   rm -rf /var/lib/apt/lists/*
 
 # Install Hailo TAPPAS Core for Raspberry Pi AI Kit.
-# Base image is Ubuntu Jammy; Hailo .deb packages target Debian Bookworm.
-# Strategy: download the .deb directly (bypasses OS codename mismatch in apt),
-# add the RPi apt source only for resolving transitive deps, then remove it.
-# python-gi-dev: obsolete Python 2-era package that hailo depends on.
-# Satisfied with a dummy .deb that re-maps it to Depends: python3-gi.
+# Package naming convention changed in 3.31+: the binary package is now just
+# 'hailo-tappas-core' (version 3.31.0+1-1 in the RPi stable/bookworm repo).
+# Older 3.28.x embeds the version in the package name — not used here.
+# python-gi-dev: obsolete Python 2-era package that hailo depends on;
+# satisfied with a dummy .deb that re-maps it to Depends: python3-gi.
 RUN set -e; \
   if [ "$(dpkg --print-architecture)" != "arm64" ]; then \
   echo "ERROR: Hailo packages are arm64-only. Build with --platform linux/arm64." >&2; \
@@ -105,24 +105,17 @@ RUN set -e; \
   > /etc/apt/preferences.d/raspi-hailo.pref; \
   apt-get update -o Acquire::Retries=3; \
   \
-  HDEB_URL="https://archive.raspberrypi.com/debian/pool/main/h/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}_${HAILO_TAPPAS_CORE_VERSION}_arm64.deb"; \
-  echo "[hailo] Downloading ${HDEB_URL}"; \
-  wget --tries=5 --waitretry=15 --timeout=120 --progress=dot:mega \
-  -O /tmp/hailo-tappas-core.deb "${HDEB_URL}" \
+  echo "[hailo] Installing hailo-tappas-core (=${HAILO_TAPPAS_CORE_VERSION}) from RPi archive"; \
+  apt-get install -y --no-install-recommends \
+  "hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" \
   || { \
-  echo "[hailo][ERROR] Download failed for version ${HAILO_TAPPAS_CORE_VERSION}." >&2; \
-  echo "[hailo]        Run: apt-cache search hailo  (after adding RPi source) to see available versions." >&2; \
+  echo "[hailo][ERROR] Could not install hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" >&2; \
+  echo "[hailo]        Versions available in RPi archive:" >&2; \
+  apt-cache policy hailo-tappas-core 2>/dev/null >&2 || true; \
   apt-cache search hailo 2>/dev/null >&2 || true; \
   exit 1; \
   }; \
-  echo "[hailo] Installing..."; \
-  apt-get install -y --no-install-recommends /tmp/hailo-tappas-core.deb \
-  || { \
-  echo "[hailo][ERROR] apt-get install failed." >&2; \
-  dpkg --info /tmp/hailo-tappas-core.deb >&2; \
-  exit 1; \
-  }; \
-  rm -f /tmp/hailo-tappas-core.deb; \
+  \
   rm -f /etc/apt/sources.list.d/raspi.list \
   /etc/apt/preferences.d/raspi-hailo.pref; \
   rm -rf /var/lib/apt/lists/*
@@ -130,9 +123,9 @@ RUN set -e; \
 # by the host RPi OS at runtime. gst-inspect-1.0 hailonet is therefore NOT
 # validated here — hailonet will be functional at container runtime on the Pi.
 
-# Download Hailo examples/resources.
-RUN git clone https://github.com/hailo-ai/hailo-rpi5-examples.git && \
-  cd hailo-rpi5-examples && ./download_resources.sh
+# Clone Hailo examples (shallow). Models are downloaded at container first startup
+# via start_ai_kit.sh to avoid bloating the image and slowing CI builds.
+RUN git clone --depth 1 https://github.com/hailo-ai/hailo-rpi5-examples.git
 
 COPY start_ai_kit.sh /app/start_ai_kit.sh
 COPY realsense_hailo_node.py /app/realsense_hailo_node.py

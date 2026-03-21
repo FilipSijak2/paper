@@ -5,6 +5,21 @@ set +u
 source /opt/ros/humble/setup.bash
 set -u
 
+# Download Hailo example model resources on first startup (not baked into the
+# image to keep CI builds fast). Uses a stamp file so it only runs once even if
+# the container is restarted. Mount /root/hailo-rpi5-examples as a volume to
+# persist downloads across container recreations.
+HAILO_EXAMPLES_DIR=/root/hailo-rpi5-examples
+RESOURCES_STAMP="${HAILO_EXAMPLES_DIR}/.resources_downloaded"
+if [ ! -f "${RESOURCES_STAMP}" ]; then
+  echo "[ai-kit] Downloading Hailo example resources (first run)..."
+  cd "${HAILO_EXAMPLES_DIR}"
+  ./download_resources.sh
+  touch "${RESOURCES_STAMP}"
+  cd -
+  echo "[ai-kit] Resources downloaded."
+fi
+
 : "${RS_IMAGE_TOPIC:=/realsense/color/image_raw}"
 : "${RS_CAMERA_INFO_TOPIC:=/realsense/color/camera_info}"
 : "${RS_WAIT_TIMEOUT:=30}"
