@@ -8,12 +8,13 @@ ARG HAILO_TAPPAS_CORE_VERSION=3.29.1
 # Enable the Ubuntu 'universe' repository before the main install.
 # Many packages required here (ffmpeg, gstreamer codecs, OpenCV, etc.) live in
 # universe, which is NOT always active in the ros:humble-ros-base arm64 image.
-RUN apt-get update -o Acquire::Retries=3 && \
-  apt-get install -y --no-install-recommends \
-  software-properties-common \
-  ca-certificates && \
-  add-apt-repository universe && \
-  rm -rf /var/lib/apt/lists/*
+# We use sed directly instead of add-apt-repository to avoid installing
+# software-properties-common, whose libc-bin post-install script triggers a
+# QEMU arm64 segfault (signal 11) under GitHub Actions cross-compilation.
+RUN sed -i 's/^# \(.*universe\)$/\1/' /etc/apt/sources.list && \
+  grep -q "^deb.*universe" /etc/apt/sources.list \
+  || echo "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release; echo $VERSION_CODENAME) universe" \
+  >> /etc/apt/sources.list
 
 # Generic build/runtime dependencies used by Hailo examples.
 RUN apt-get update -o Acquire::Retries=3 && \
