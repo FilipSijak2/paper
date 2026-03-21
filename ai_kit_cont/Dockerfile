@@ -4,7 +4,6 @@ WORKDIR /root
 
 ENV DEBIAN_FRONTEND=noninteractive
 ARG HAILO_TAPPAS_CORE_VERSION=3.28.2
-ARG HAILO_TAPPAS_CORE_DEB_URL=
 
 # Generic build/runtime dependencies used by Hailo examples.
 RUN apt-get update && \
@@ -20,9 +19,12 @@ RUN apt-get update && \
     python3-setuptools \
     python3-venv \
     python3-gi \
+    python3-gst-1.0 \
     ffmpeg \
     x11-utils \
     build-essential \
+    gcc-12 \
+    g++-12 \
     meson \
     pkg-config \
     cmake \
@@ -51,18 +53,48 @@ RUN apt-get update && \
     ros-humble-compressed-image-transport && \
     rm -rf /var/lib/apt/lists/*
 
-# Install pinned Hailo TAPPAS package directly from the archive.
-# This avoids mixing Ubuntu base repositories with Debian Bookworm metadata.
+# Install pinned Hailo TAPPAS core package for Raspberry Pi AI Kit.
+# This step is strict by design: if Hailo cannot be installed and validated,
+# the image build must fail.
 RUN set -e; \
-    HAILO_DEB_URL="${HAILO_TAPPAS_CORE_DEB_URL:-https://archive.raspberrypi.com/debian/pool/main/h/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}_${HAILO_TAPPAS_CORE_VERSION}_arm64.deb}"; \
     if [ "$(dpkg --print-architecture)" != "arm64" ]; then \
       echo "Hailo package is arm64-only; current arch is $(dpkg --print-architecture)" >&2; \
       exit 1; \
     fi; \
+    mkdir -p /tmp/python-gi-dev-compat/DEBIAN; \
+    printf '%s\n' \
+      'Package: python-gi-dev' \
+      'Version: 0.0.1' \
+      'Section: misc' \
+      'Priority: optional' \
+      'Architecture: all' \
+      'Depends: python3-gi' \
+      'Description: Compatibility package mapping python-gi-dev to python3-gi on Ubuntu' \
+      > /tmp/python-gi-dev-compat/DEBIAN/control; \
+    dpkg-deb --build /tmp/python-gi-dev-compat /tmp/python-gi-dev-compat.deb; \
     apt-get update; \
+    apt-get install -y --no-install-recommends /tmp/python-gi-dev-compat.deb; \
+    rm -rf /tmp/python-gi-dev-compat /tmp/python-gi-dev-compat.deb; \
+    mkdir -p /etc/apt/keyrings; \
+    wget -qO- https://archive.raspberrypi.com/debian/raspberrypi.gpg.key | gpg --dearmor > /etc/apt/keyrings/raspberrypi-archive-keyring.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.com/debian/ bookworm main" > /etc/apt/sources.list.d/raspi.list; \
+    printf '%s\n' \
+      'Package: *' \
+      'Pin: origin "archive.raspberrypi.com"' \
+      'Pin-Priority: 100' \
+      '' \
+      'Package: hailo-*' \
+      'Pin: origin "archive.raspberrypi.com"' \
+      'Pin-Priority: 1001' \
+      > /etc/apt/preferences.d/raspi-hailo.pref; \
+    apt-get update; \
+    HAILO_DEB_URL="https://archive.raspberrypi.com/debian/pool/main/h/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}_${HAILO_TAPPAS_CORE_VERSION}_arm64.deb"; \
     wget -O /tmp/hailo-tappas-core.deb "${HAILO_DEB_URL}"; \
     apt-get install -y --no-install-recommends /tmp/hailo-tappas-core.deb; \
+    gst-inspect-1.0 hailonet > /dev/null; \
     rm -f /tmp/hailo-tappas-core.deb; \
+    rm -f /etc/apt/sources.list.d/raspi.list; \
+    rm -f /etc/apt/preferences.d/raspi-hailo.pref; \
     rm -rf /var/lib/apt/lists/*
 # Excludes hailort as it fails to install during build stage.
 
@@ -79,6 +111,7 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     RS_IMAGE_TOPIC=/realsense/color/image_raw \
     RS_CAMERA_INFO_TOPIC=/realsense/color/camera_info \
     RS_WAIT_TIMEOUT=30 \
+    AI_KIT_REQUIRE_HAILO=1 \
     AI_KIT_RUN_NODE=1
 
 CMD ["/app/start_ai_kit.sh"]
