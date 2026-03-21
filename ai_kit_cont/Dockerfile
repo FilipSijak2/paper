@@ -5,13 +5,21 @@ WORKDIR /root
 ENV DEBIAN_FRONTEND=noninteractive
 ARG HAILO_TAPPAS_CORE_VERSION=3.28.2
 
-# Generic build/runtime dependencies used by Hailo examples.
-RUN apt-get update && \
+# Enable the Ubuntu 'universe' repository before the main install.
+# Many packages required here (ffmpeg, gstreamer codecs, OpenCV, etc.) live in
+# universe, which is NOT always active in the ros:humble-ros-base arm64 image.
+RUN apt-get update -o Acquire::Retries=3 && \
   apt-get install -y --no-install-recommends \
   software-properties-common \
+  ca-certificates && \
+  add-apt-repository universe && \
+  rm -rf /var/lib/apt/lists/*
+
+# Generic build/runtime dependencies used by Hailo examples.
+RUN apt-get update -o Acquire::Retries=3 && \
+  apt-get install -y --no-install-recommends \
   wget \
   curl \
-  ca-certificates \
   gnupg2 \
   python3 \
   python3-dev \
@@ -21,10 +29,9 @@ RUN apt-get update && \
   python3-gi \
   python3-gst-1.0 \
   ffmpeg \
-  x11-utils \
   build-essential \
-  gcc-12 \
-  g++-12 \
+  gcc \
+  g++ \
   meson \
   pkg-config \
   cmake \
