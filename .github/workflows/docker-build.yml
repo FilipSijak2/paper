@@ -172,13 +172,12 @@ jobs:
         id: cachecfg
         run: |
           set -e
-          if [ '${{ matrix.image }}' = 'healthcheck_cont' ]; then
-            echo "cache_to=type=gha,scope=${{ matrix.image }},mode=min,ignore-error=true" >> $GITHUB_OUTPUT
-            echo "Cache mode for ${{ matrix.image }}: min (faster export for large apt layers)"
-          else
-            echo "cache_to=type=gha,scope=${{ matrix.image }},mode=max,ignore-error=true" >> $GITHUB_OUTPUT
-            echo "Cache mode for ${{ matrix.image }}: max"
-          fi
+          # mode=min exports only the final image layers (not intermediates).
+          # mode=max exports every intermediate layer and can easily consume 2-5 GB
+          # per container, making multiple parallel builds hang on the 10 GB GHA
+          # cache limit. mode=min is sufficient for CI build speed.
+          echo "cache_to=type=gha,scope=${{ matrix.image }},mode=min,ignore-error=true" >> $GITHUB_OUTPUT
+          echo "Cache mode for ${{ matrix.image }}: min"
 
       - name: Build (PR - no push)
         if: github.event_name == 'pull_request'
