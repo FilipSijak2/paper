@@ -167,8 +167,21 @@ jobs:
           echo "Using version tag: $CLEAN"
           echo "version_tag=$CLEAN" >> $GITHUB_OUTPUT
 
+      - name: Configure cache strategy
+        id: cachecfg
+        run: |
+          set -e
+          if [ '${{ matrix.image }}' = 'healthcheck_cont' ]; then
+            echo "cache_to=type=gha,scope=${{ matrix.image }},mode=min,ignore-error=true" >> $GITHUB_OUTPUT
+            echo "Cache mode for ${{ matrix.image }}: min (faster export for large apt layers)"
+          else
+            echo "cache_to=type=gha,scope=${{ matrix.image }},mode=max,ignore-error=true" >> $GITHUB_OUTPUT
+            echo "Cache mode for ${{ matrix.image }}: max"
+          fi
+
       - name: Build (PR - no push)
         if: github.event_name == 'pull_request'
+        timeout-minutes: 45
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.dir }}
@@ -177,7 +190,7 @@ jobs:
           push: false
           tags: test/${{ steps.meta.outputs.image_repo }}:pr-${{ steps.meta.outputs.base_name }}-${{ steps.version.outputs.version_tag }}
           cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          cache-to: ${{ steps.cachecfg.outputs.cache_to }}
 
       - name: Connect to Tailscale (if key)
         if: github.event_name == 'push'
@@ -319,6 +332,7 @@ jobs:
 
       - name: Build & Push (BananaPi)
         if: github.event_name == 'push' && steps.skipcheck.outputs.skip != 'true'
+        timeout-minutes: 45
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.dir }}
@@ -331,7 +345,7 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
           cache-from: type=gha,scope=${{ matrix.image }}
-          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+          cache-to: ${{ steps.cachecfg.outputs.cache_to }}
 
       - name: Inter-build cooldown
         if: github.event_name == 'push'
