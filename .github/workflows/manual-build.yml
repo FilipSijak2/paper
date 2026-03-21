@@ -1,133 +1,81 @@
-name: Build and Push Changed Docker Images
+name: Manual Container Build
 
 on:
-  push:
-    branches: [devel]
-  pull_request:
-    branches: [devel]
+  workflow_dispatch:
+    inputs:
+      container_choice:
+        description: "Dropdown: choose a single container, or select 'all'/'manual'."
+        required: false
+        type: choice
+        default: manual
+        options:
+          - manual
+          - all
+          - ai_kit_cont
+          - bridge_cont
+          - camera_cont
+          - db_cont
+          - foxglove_bridge_cont
+          - laser_driver_cont
+          - nav_cont
+          - rosbridge_cont
+          - sensor_fusion_cont
+          - slam_cont
+          - realsense_cont
+          - bag_recorder_cont
+          - healthcheck_cont
+      containers:
+        description: "Manual list (space/comma separated). Used when container_choice=manual; can add extras."
+        required: false
+        type: string
+      custom_tag:
+        description: Optional override for the version tag (defaults to commit-derived tag).
+        required: false
+        type: string
 
 permissions:
   contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 concurrency:
   group: ${{ github.repository }}-container-build
   cancel-in-progress: false
 
-env:
-  REPO_OWNER_LC: ${{ github.repository_owner }}
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
-  detect-changes:
-    name: Detect changed Docker images
+  prepare:
+    name: Validate requested containers
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
-      any_changed: ${{ steps.set-matrix.outputs.any_changed }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: List changed files
-        id: diff
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE_SHA='${{ github.event.pull_request.base.sha }}'
-            HEAD_SHA='${{ github.event.pull_request.head.sha }}'
-          else
-            BASE_SHA="$(git rev-parse HEAD^ || echo '')"
-            HEAD_SHA="$(git rev-parse HEAD)"
-          fi
-          echo "BASE_SHA=$BASE_SHA";
-            echo "HEAD_SHA=$HEAD_SHA";
-          if [ -n "$BASE_SHA" ]; then
-            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed_files.txt
-          else
-            git ls-files > changed_files.txt
-          fi
-          echo "Changed files:"; cat changed_files.txt
-
-      - name: Determine changed images
-        id: set-matrix
+      - name: Build matrix from manual input
+        id: matrix
+        env:
+          CHOICE: ${{ github.event.inputs.container_choice }}
+          CONTAINERS: ${{ github.event.inputs.containers }}
         run: |
           set -e
-          candidates=()
-          while IFS= read -r f; do
-            [ ! -f "$f" ] && continue
-            d=$(dirname "$f")
-            while [ "$d" != "." ] && [ -n "$d" ]; do
-              if [ -f "$d/Dockerfile" ]; then
-                candidates+=("$d")
-                break
-              fi
-              d=$(dirname "$d")
-            done
-          done < changed_files.txt
-
-          while IFS= read -r f; do
-            case "$f" in */Dockerfile|*/Dockerfile.*) candidates+=("${f%%/Dockerfile*}");; esac
-          done < changed_files.txt
-
-          if [ ${#candidates[@]} -eq 0 ]; then
-            echo "No Docker-related changes detected.";
-            echo 'matrix={"include":[]}' >> $GITHUB_OUTPUT
-            echo 'any_changed=false' >> $GITHUB_OUTPUT
-            exit 0
+          matrix=$(python -c $'import json, os, sys\n\nchoice = (os.environ.get("CHOICE") or "").strip()\nraw = os.environ.get("CONTAINERS") or ""\n\nALL = [\n    "ai_kit_cont",\n    "bridge_cont",\n    "camera_cont",\n    "db_cont",\n    "foxglove_bridge_cont",\n    "laser_driver_cont",\n    "nav_cont",\n    "rosbridge_cont",\n    "sensor_fusion_cont",\n    "slam_cont",\n    "realsense_cont",\n]\n\ntokens = []\nif choice:\n    if choice == "all":\n        tokens.append("all")\n    elif choice != "manual":\n        tokens.append(choice)\n\nraw_tokens = [p.strip() for p in raw.replace(",", " ").replace(";", " ").split()]\ntokens.extend(raw_tokens)\n\nif not tokens:\n    print("::error::No container names provided.")\n    sys.exit(1)\n\nunique = []\nseen = set()\n\ndef add_token(token):\n    if token in seen:\n        return\n    seen.add(token)\n    unique.append(token)\n\nfor token in tokens:\n    if token == "all":\n        for c in ALL:\n            add_token(c)\n        continue\n    add_token(token)\n\nfinal = []\nfor token in unique:\n    dockerfile = os.path.join(token, "Dockerfile")\n    if not os.path.isfile(dockerfile):\n        print(f"::error::Directory {token} does not contain a Dockerfile")\n        sys.exit(1)\n    final.append(token)\n\nentries = [\n    {"dir": d, "base": d[:-5] if d.endswith("_cont") else d, "image": d}\n    for d in final\n]\npayload = json.dumps({"include": entries})\nprint(payload)\n')
+          if [ -z "$matrix" ]; then
+            echo "::error::Failed to build matrix JSON" >&2
+            exit 1
           fi
-
-          unique_dirs=($(printf '%s\n' "${candidates[@]}" | sort -u))
-          if [ ${#unique_dirs[@]} -eq 0 ]; then
-            echo "No Dockerfile changes detected.";
-            echo 'matrix={"include":[]}' >> $GITHUB_OUTPUT
-            echo 'any_changed=false' >> $GITHUB_OUTPUT
-            exit 0
-          fi
-
-          json='{"include":['
-          first=true
-          for dir in "${unique_dirs[@]}"; do
-            base="${dir%_cont}"; [ -z "$base" ] && base="$dir"
-            if [ "$first" = true ]; then
-              json+='{"dir":"'$dir'","base":"'$base'","image":"'$dir'"}'
-              first=false
-            else
-              json+=',{"dir":"'$dir'","base":"'$base'","image":"'$dir'"}'
-            fi
-          done
-          json+=']}'
-          echo "Matrix JSON: $json"
-          echo "matrix=$json" >> $GITHUB_OUTPUT
-          echo 'any_changed=true' >> $GITHUB_OUTPUT
-
-  python-tests:
-    name: Python Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Install test dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest psycopg2-binary
-
-      - name: Run pytest
-        run: pytest -q
+          echo "Matrix: $matrix"
+          echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
   # Pre-cache the two ROS base images used across all containers.
-  # Uses mode=max so base image layers end up in GHA cache and every
-  # subsequent matrix build gets a cache-hit instead of pulling from Docker Hub.
-  # These shared scopes are ~600-800 MB total; well within the 10 GB GHA limit.
+  # See docker-build.yml for full explanation.
   warm-base-cache:
     name: Warm ROS base image cache (${{ matrix.scope }})
     runs-on: ubuntu-latest
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -143,10 +91,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
       - name: Warm cache for ${{ matrix.image }}
         run: |
-          # Write a minimal single-FROM Dockerfile to a temp file and build it.
-          # docker/build-push-action does not support inline Dockerfiles, so we
-          # use buildx directly. The --load flag is omitted intentionally; we
-          # only want the layer cache entries written to GHA (--cache-to).
           TMPDIR=$(mktemp -d)
           echo 'FROM ${{ matrix.image }}' > "${TMPDIR}/Dockerfile"
           docker buildx build \
@@ -156,20 +100,16 @@ jobs:
             "${TMPDIR}"
           rm -rf "${TMPDIR}"
 
-  build:
-    name: Build & Push (BananaPi)
+  manual-build:
+    name: Build & Push selected containers
     runs-on: ubuntu-latest
-    needs: [detect-changes, python-tests, warm-base-cache]
-    if: needs.detect-changes.outputs.any_changed == 'true'
-    env:
-      skip_push: "false"
+    needs: [prepare, warm-base-cache]
     strategy:
       fail-fast: false
-      # Serialize builds to avoid overloading BananaPi registry (no parallel pushes)
       max-parallel: 1
-      matrix: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+      matrix: ${{ fromJson(needs.prepare.outputs.matrix) }}
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up QEMU (ARM emulation)
@@ -187,10 +127,21 @@ jobs:
           IMAGE_REPO=${OWNER_LC}/${BASE}
           echo "image_repo=$IMAGE_REPO" >> $GITHUB_OUTPUT
           echo "base_name=$BASE" >> $GITHUB_OUTPUT
-      - name: Derive version tag
+
+      - name: Determine version tag
         id: version
         run: |
           set -e
+          CUSTOM='${{ github.event.inputs.custom_tag }}'
+          if [ -n "$CUSTOM" ]; then
+            CLEAN=$(echo "$CUSTOM" | sed 's/[^a-zA-Z0-9_.-]/-/g')
+            if ! echo "$CLEAN" | grep -qE '^[a-zA-Z0-9]'; then
+              CLEAN="v$CLEAN"
+            fi
+            echo "Using custom version tag: $CLEAN"
+            echo "version_tag=$CLEAN" >> $GITHUB_OUTPUT
+            exit 0
+          fi
           MSG=$(git log -1 --pretty=%s || echo '')
           echo "Commit message: $MSG"
           VERSION=$(echo "$MSG" | grep -oE 'v[0-9]+(\.[0-9]+)*\.[Rr][Cc][0-9]+' | tail -n1 | tr 'A-Z' 'a-z' || true)
@@ -214,24 +165,7 @@ jobs:
           echo "cache_to=type=gha,scope=${{ matrix.image }},mode=min,ignore-error=true" >> $GITHUB_OUTPUT
           echo "Cache mode for ${{ matrix.image }}: min"
 
-      - name: Build (PR - no push)
-        if: github.event_name == 'pull_request'
-        timeout-minutes: 45
-        uses: docker/build-push-action@v5
-        with:
-          context: ${{ matrix.dir }}
-          file: ${{ matrix.dir }}/Dockerfile
-          platforms: linux/arm64
-          push: false
-          tags: test/${{ steps.meta.outputs.image_repo }}:pr-${{ steps.meta.outputs.base_name }}-${{ steps.version.outputs.version_tag }}
-          cache-from: |
-            type=gha,scope=ros-humble
-            type=gha,scope=ros-humble-ros-base
-            type=gha,scope=${{ matrix.image }}
-          cache-to: ${{ steps.cachecfg.outputs.cache_to }}
-
       - name: Connect to Tailscale (if key)
-        if: github.event_name == 'push'
         env:
           TAILSCALE_KEY: ${{ secrets.TAILSCALE_AUTHKEY }}
         run: |
@@ -253,45 +187,37 @@ jobs:
 
       - name: Normalize registry host
         id: normalize
-        if: github.event_name == 'push'
         env:
           RAW_HOST: ${{ secrets.BANANAPI_REGISTRY_HOST }}
         run: |
           set -e
           if [ -z "$RAW_HOST" ]; then echo "BANANAPI_REGISTRY_HOST not set" >&2; exit 1; fi
           ORIG="$RAW_HOST"
-          # Strip protocol if present
           STRIPPED=${RAW_HOST#http://}
           STRIPPED=${STRIPPED#https://}
-          # Remove any path component after first '/'
           CORE=${STRIPPED%%/*}
-          # Append default port 5000 if no port specified
-            if [[ "$CORE" != *:* ]]; then
+          if [[ "$CORE" != *:* ]]; then
             CORE="$CORE:5000"
             echo "No port detected in registry host. Defaulting to :5000 -> $CORE"
           fi
           echo "Using normalized registry host: $CORE (original: $ORIG)"
           echo "REGISTRY_HOST_EFFECTIVE=$CORE" >> $GITHUB_ENV
           echo "registry_host=$CORE" >> $GITHUB_OUTPUT
-          # Warn if protocol was included originally
           if [[ "$ORIG" == http://* || "$ORIG" == https://* ]]; then
             echo "Warning: Do not include protocol scheme in BANANAPI_REGISTRY_HOST secret. It was stripped." >&2
           fi
 
       - name: Configure buildx (insecure registry)
-        if: github.event_name == 'push'
         run: |
           set -e
           if [ -z "$REGISTRY_HOST_EFFECTIVE" ]; then echo "REGISTRY_HOST_EFFECTIVE not in env" >&2; exit 1; fi
           echo "Creating custom buildx builder with insecure HTTP allowance for $REGISTRY_HOST_EFFECTIVE";
           printf '[registry."%s"]\n  http = true\n  insecure = true\n' "$REGISTRY_HOST_EFFECTIVE" > buildkitd.toml
-          # Remove previous builder if exists
           docker buildx rm insecurebuilder 2>/dev/null || true
           docker buildx create --name insecurebuilder --driver docker-container --config buildkitd.toml --use
           docker buildx inspect --bootstrap
 
       - name: Pre-check BananaPi registry connectivity
-        if: github.event_name == 'push'
         env:
           REGISTRY_HOST: ${{ steps.normalize.outputs.registry_host }}
         run: |
@@ -312,14 +238,11 @@ jobs:
           done
           if [ "$ok" = false ]; then
             echo "Registry not reachable on TCP level (will still try login)." >&2
-            echo "skip_push=true" >> $GITHUB_ENV
           else
             echo "Connectivity OK";
-            echo "skip_push=false" >> $GITHUB_ENV
           fi
 
       - name: Login to BananaPi registry
-        if: github.event_name == 'push'
         env:
           REGISTRY_HOST: ${{ steps.normalize.outputs.registry_host }}
           REGISTRY_USERNAME: ${{ secrets.BANANAPI_REGISTRY_USER }}
@@ -327,12 +250,9 @@ jobs:
           INSECURE: ${{ secrets.BANANAPI_REGISTRY_INSECURE }}
         run: |
           set -e
-          if [ "$skip_push" = "true" ]; then
-            echo "Skipping login due to earlier connectivity failure (skip flag)."; exit 0; fi
           if [ -z "$REGISTRY_HOST" ]; then echo 'BANANAPI_REGISTRY_HOST missing'; exit 1; fi
-          # Default to insecure=true when secret not explicitly provided
           if [ -z "$INSECURE" ]; then
-            echo "BANANAPI_REGISTRY_INSECURE not set -> defaulting to true (insecure registry).";
+            echo "BANANAPI_REGISTRY_INSECURE not set -> defaulting to true (insecure registry)."
             INSECURE=true
           fi
           if [ "${INSECURE,,}" = "true" ]; then
@@ -357,19 +277,7 @@ jobs:
           if [ $tries -ge 5 ]; then
             echo "Login failed after retries" >&2; exit 1; fi
 
-      - name: Evaluate push skip flag
-        id: skipcheck
-        if: github.event_name == 'push'
-        run: |
-          if [ "$skip_push" = "true" ]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
-            echo "Push will be skipped due to earlier connectivity decision.";
-          else
-            echo "skip=false" >> $GITHUB_OUTPUT
-          fi
-
       - name: Build & Push (BananaPi)
-        if: github.event_name == 'push' && steps.skipcheck.outputs.skip != 'true'
         timeout-minutes: 45
         uses: docker/build-push-action@v5
         with:
@@ -381,7 +289,7 @@ jobs:
           labels: |
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.run_id }}
           cache-from: |
             type=gha,scope=ros-humble
             type=gha,scope=ros-humble-ros-base
@@ -389,7 +297,6 @@ jobs:
           cache-to: ${{ steps.cachecfg.outputs.cache_to }}
 
       - name: Inter-build cooldown
-        if: github.event_name == 'push'
         env:
           REGISTRY_HOST: ${{ steps.normalize.outputs.registry_host }}
           IMAGE_REPO: ${{ steps.meta.outputs.image_repo }}
@@ -443,24 +350,22 @@ jobs:
             echo "jq not found; assuming size 0"
           fi
 
-          SIZE_MEGABYTES=$(jq '([.layers[].size] | add) / 1048576 | (. * 100 | round / 100)' manifest.cool.json 2>/dev/null || echo 0)
-          echo "Calculated image size (megabytes): $SIZE_MEGABYTES MB"
+          echo "Calculated image size (bytes): $SIZE_BYTES"
           MB=$((200*1024*1024))
           GB=$((1024*1024*1024))
           if [ "$SIZE_BYTES" -le 0 ]; then
             SLEEP=30
           elif [ "$SIZE_BYTES" -le $MB ]; then
-            SLEEP=60
+            SLEEP=15
           elif [ "$SIZE_BYTES" -le $GB ]; then
-            SLEEP=180
+            SLEEP=30
           else
-            SLEEP=180
+            SLEEP=60
           fi
           echo "Adaptive cooldown: sleeping ${SLEEP}s based on size threshold";
           sleep $SLEEP
 
       - name: Verify manifest schema (v2 / OCI)
-        if: github.event_name == 'push' && steps.skipcheck.outputs.skip != 'true'
         env:
           REGISTRY_USERNAME: ${{ secrets.BANANAPI_REGISTRY_USER }}
           REGISTRY_PASSWORD: ${{ secrets.BANANAPI_REGISTRY_PASS }}
@@ -471,7 +376,6 @@ jobs:
           TAG='${{ steps.meta.outputs.base_name }}-${{ steps.version.outputs.version_tag }}'
           URL="http://$HOST/v2/$REPO/manifests/$TAG"
           echo "Fetching manifest: $URL";
-          # Try OCI first then classic docker v2 mediaType
           ACCEPT_LIST=(
             'application/vnd.oci.image.manifest.v1+json'
             'application/vnd.docker.distribution.manifest.v2+json'
@@ -520,7 +424,6 @@ jobs:
                 MT=$(jq -r ".manifests[$i].mediaType" manifest.json)
                 echo "Fetching sub-manifest $i digest=$DIGEST mediaType=$MT";
                 curl -s -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' "http://$HOST/v2/$REPO/manifests/$DIGEST" -o sub.json || true
-                # Sum layer sizes if layers present
                 PART=$(jq '[.layers[].size] | add' sub.json 2>/dev/null || echo 0)
                 echo "  -> layers total size: $PART bytes"
                 TOTAL=$((TOTAL + PART))
@@ -539,20 +442,18 @@ jobs:
           fi
           case "$MTYPE" in
             application/vnd.docker.distribution.manifest.v1+json)
-              echo "WARNING: Registry returned schema v1 manifest (size aggregation in some UIs may be missing)." >&2
-              echo "If you need schema2/OCI: upgrade registry (distribution >=2.3) or ensure Accept header is respected." >&2
+              echo "[WARN] legacy schema v1 manifest detected; consider upgrading builder." >&2
               ;;
             application/vnd.docker.distribution.manifest.v2+json|application/vnd.oci.image.manifest.v1+json)
-              echo "OK: Using modern manifest ($MTYPE).";
+              echo "Schema v2/OCI manifest detected."
               ;;
             application/vnd.docker.distribution.manifest.list.v2+json|application/vnd.oci.image.index.v1+json)
-               echo "OK: Using manifest list ($MTYPE).";
-               ;;
+              echo "Manifest list / image index detected."
+              ;;
             *)
-              echo "Unknown/other manifest type: $MTYPE" >&2
+              echo "[WARN] Unknown manifest mediaType: $MTYPE" >&2
               ;;
           esac
-          # Append a short note to summary
           echo "Manifest mediaType: $MTYPE" >> $GITHUB_STEP_SUMMARY
 
       - name: Discord Notification
@@ -562,26 +463,19 @@ jobs:
         run: |
           if [ -z "$DISCORD_WEBHOOK_URL" ]; then echo 'Discord webhook not configured'; exit 0; fi
           STATUS='${{ job.status }}'
-          if [ "$STATUS" = 'success' ]; then ICON='✅'; COLOR=3066993; else ICON='❌'; COLOR=15158332; fi
+          if [ "$STATUS" = 'success' ]; then ICON='OK'; COLOR=3066993; else ICON='FAIL'; COLOR=15158332; fi
           ACTOR='${{ github.actor }}'
           REF='${{ github.ref_name }}'
           COMMIT_URL='${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}'
           COMMIT_MSG=$(git log -1 --pretty=%s || echo commit)
           COMMIT_TRUNC=$(printf '%s' "$COMMIT_MSG" | head -c 120)
           AVATAR="https://github.com/${ACTOR}.png"
-          DEST_REG='${{ secrets.BANANAPI_REGISTRY_HOST }}'
-          if [ '${{ github.event_name }}' = 'push' ]; then
-            IMAGE_LINES=$(printf '%s/%s:%s-%s' "${{ steps.normalize.outputs.registry_host }}" '${{ steps.meta.outputs.image_repo }}' '${{ steps.meta.outputs.base_name }}' '${{ steps.version.outputs.version_tag }}')
-          else
-            IMAGE_LINES='n/a (PR build)'
-          fi
-          PUSHED='No'
-          [ '${{ github.event_name }}' = 'push' ] && PUSHED='Yes'
+          IMAGE_LINES=$(printf '%s/%s:%s-%s' "${{ steps.normalize.outputs.registry_host }}" '${{ steps.meta.outputs.image_repo }}' '${{ steps.meta.outputs.base_name }}' '${{ steps.version.outputs.version_tag }}')
+          PUSHED='Yes'
           TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
-          # Use jq -n with --arg to safely construct JSON
           PAYLOAD=$(jq -n \
-            --arg title "$ICON ${{ matrix.image }} build $STATUS" \
+            --arg title "$ICON manual build $STATUS" \
             --arg url "$COMMIT_URL" \
             --arg repo '${{ github.repository }}' \
             --arg cmsg "$COMMIT_TRUNC" \
@@ -593,26 +487,13 @@ jobs:
             --arg avatar "$AVATAR" \
             --arg pushed "$PUSHED" \
             --arg color "$COLOR" \
-            '{embeds:[{title:$title,url:$url,color:($color|tonumber),author:{name:$actor,icon_url:$avatar,url:("https://github.com/"+$actor)},description:$cmsg,fields:[{name:"Repository",value:$repo,inline:true},{name:"Branch",value:$branch,inline:true},{name:"Directory",value:$dir,inline:true},{name:"Pushed Images",value:$images,inline:false},{name:"Push Performed",value:$pushed,inline:true}],timestamp:$ts}]}')
+            '{embeds:[{title:$title,url:$url,color:($color|tonumber),author:{name:$actor,icon_url:$avatar,url:("https://github.com/"+$actor)},description:$cmsg,fields:[{name:"Repository",value:$repo,inline:true},{name:"Branch",value:$branch,inline:true},{name:"Directory",value:$dir,inline:true},{name:"Pushed Images",value:$images,inline:false},{name:"Push Performed",value:$pushed,inline:true}],timestamp:$ts}]}' )
 
           curl -s -H 'Content-Type: application/json' -d "$PAYLOAD" "$DISCORD_WEBHOOK_URL" || echo 'Discord notify failed'
 
       - name: Summary
         run: |
-          echo '## Build Summary' >> $GITHUB_STEP_SUMMARY
+          echo '## Manual Build Summary' >> $GITHUB_STEP_SUMMARY
+          echo "Directory: ${{ matrix.dir }}" >> $GITHUB_STEP_SUMMARY
           echo "Repository: ${{ steps.meta.outputs.image_repo }}" >> $GITHUB_STEP_SUMMARY
           echo "Tag: ${{ steps.meta.outputs.base_name }}-${{ steps.version.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
-          echo "Directory: ${{ matrix.dir }}" >> $GITHUB_STEP_SUMMARY
-          if [ '${{ github.event_name }}' = 'push' ]; then
-            echo "Pushed to: ${{ steps.normalize.outputs.registry_host }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo 'PR build – no push' >> $GITHUB_STEP_SUMMARY
-          fi
-
-  no-changes:
-    name: No Docker changes
-    runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.any_changed != 'true'
-    steps:
-      - run: echo 'No Dockerfile changes detected; skipping builds.'
