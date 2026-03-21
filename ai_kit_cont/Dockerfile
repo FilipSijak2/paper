@@ -1,22 +1,24 @@
-FROM ros:humble-ros-base
+FROM ros:jazzy-ros-base
 
 WORKDIR /root
 
 ENV DEBIAN_FRONTEND=noninteractive
-# HAILO_TAPPAS_CORE_VERSION is consumed by start_ai_kit.sh at runtime, not
-# during the image build (see comment below for why).
-ENV HAILO_TAPPAS_CORE_VERSION=3.31.0+1-1
+# HAILO_TAPPAS_CORE_VERSION is passed to start_ai_kit.sh which installs it
+# via pip at first container startup on the real Pi (Ubuntu 24.04 Noble).
+# TAPPAS 5.x targets Noble natively — no Bookworm dependency conflicts.
+ENV HAILO_TAPPAS_CORE_VERSION=5.2.0
 
-# Enable the Ubuntu 'universe' repository before the main install.
-# Many packages required here (ffmpeg, gstreamer codecs, OpenCV, etc.) live in
-# universe, which is NOT always active in the ros:humble-ros-base arm64 image.
-# We use sed directly instead of add-apt-repository to avoid installing
-# software-properties-common, whose libc-bin post-install script triggers a
-# QEMU arm64 segfault (signal 11) under GitHub Actions cross-compilation.
-RUN sed -i 's/^# \(.*universe\)$/\1/' /etc/apt/sources.list && \
-  grep -q "^deb.*universe" /etc/apt/sources.list \
-  || echo "deb http://ports.ubuntu.com/ubuntu-ports $(. /etc/os-release; echo $VERSION_CODENAME) universe" \
-  >> /etc/apt/sources.list
+# Ensure 'universe' is enabled.
+# Ubuntu 24.04 uses DEB822 .sources files; append 'universe' to the Components
+# line if it is missing. Fall back to the legacy sources.list modification for
+# any image that still uses the old format.
+RUN if ls /etc/apt/sources.list.d/*.sources 2>/dev/null | head -1 | grep -q .; then \
+      sed -i '/^Components:/ { /universe/! s/$/ universe/ }' /etc/apt/sources.list.d/*.sources; \
+    else \
+      sed -i 's/^# \(.*universe\)$/\1/' /etc/apt/sources.list 2>/dev/null || true; \
+      grep -q "^deb.*universe" /etc/apt/sources.list 2>/dev/null \
+        || echo "deb http://ports.ubuntu.com/ubuntu-ports noble universe" >> /etc/apt/sources.list; \
+    fi
 
 # Generic build/runtime dependencies used by Hailo examples.
 RUN apt-get update -o Acquire::Retries=3 && \
@@ -56,23 +58,18 @@ RUN apt-get update -o Acquire::Retries=3 && \
   gir1.2-gstreamer-1.0 \
   libopencv-dev \
   python3-opencv \
-  ros-humble-rmw-cyclonedds-cpp \
-  ros-humble-cv-bridge \
-  ros-humble-image-transport \
-  ros-humble-image-transport-plugins \
-  ros-humble-compressed-image-transport && \
+  ros-jazzy-rmw-cyclonedds-cpp \
+  ros-jazzy-cv-bridge \
+  ros-jazzy-image-transport \
+  ros-jazzy-image-transport-plugins \
+  ros-jazzy-compressed-image-transport && \
   rm -rf /var/lib/apt/lists/*
 
 # NOTE: hailo-tappas-core is NOT installed during image build.
-# The RPi binary packages (3.31.0+1-1) depend on Debian Bookworm libraries
-# (libopencv-core406, libpython3.11, gstreamer1.0-libcamera) that are not
-# available in Ubuntu Jammy (this base image). Building from GitHub source
-# has the same problem since it links against hailort dev headers which
-# themselves ship as Bookworm-only .debs.
-#
-# Solution: install hailo-tappas-core at first container startup on the real
-# Raspberry Pi (which runs Raspberry Pi OS Bookworm and has all deps natively).
-# start_ai_kit.sh handles this automatically.
+# TAPPAS 5.x is distributed as a pip wheel targeting Ubuntu 24.04 (Noble).
+# The wheel requires hailort which in turn requires the HailoRT kernel module
+# provided by the host Pi OS — unavailable in a QEMU CI build environment.
+# start_ai_kit.sh installs it via pip at first container startup on the Pi.
 
 # Clone Hailo examples (shallow). Models are downloaded at container first startup
 # via start_ai_kit.sh to avoid bloating the image and slowing CI builds.

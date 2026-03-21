@@ -2,48 +2,39 @@
 set -euo pipefail
 
 set +u
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 set -u
 
 # ---------------------------------------------------------------------------
-# First-run: install hailo-tappas-core from RPi apt repo.
+# First-run: install hailo-tappas-core via pip.
 #
 # Why deferred and not baked into the image:
-#   hailo-tappas-core requires Debian Bookworm libraries (libopencv-core406,
-#   libpython3.11, gstreamer1.0-libcamera) that are not available in the
-#   Ubuntu Jammy base image used for building. On the real Raspberry Pi running
-#   Raspberry Pi OS (Bookworm), all those libraries are present natively and
-#   apt-get install works without any conflicts.
+#   TAPPAS 5.x pip wheels for arm64 link against hailort, which requires the
+#   HailoRT kernel module (hailort.ko) provided by the host Pi OS. The module
+#   is not present in the QEMU-based CI build environment, so pip install
+#   would succeed but the GStreamer hailonet plugin would not load without it.
+#   On the real Pi (Ubuntu 24.04 Noble + HailoRT from host), it works natively.
 #
+# Also installs hailort Python bindings which TAPPAS depends on.
 # The stamp file prevents re-installation on every container restart.
-# Mount /var/cache/apt as a volume to speed up repeated installations.
 # ---------------------------------------------------------------------------
 HAILO_STAMP=/etc/hailo-tappas-core-installed
-: "${HAILO_TAPPAS_CORE_VERSION:=3.31.0+1-1}"
+: "${HAILO_TAPPAS_CORE_VERSION:=5.2.0}"
 
 if [ ! -f "${HAILO_STAMP}" ]; then
-  echo "[ai-kit] Installing hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION} (first run)..."
+  echo "[ai-kit] Installing hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION} via pip (first run)..."
   if [ "$(dpkg --print-architecture)" != "arm64" ]; then
     echo "[ai-kit] WARN: Not running on arm64 — skipping hailo install (passthrough mode)."
   else
-    mkdir -p /etc/apt/keyrings
-    wget --tries=5 --waitretry=15 --timeout=60 -qO- \
-      https://archive.raspberrypi.com/debian/raspberrypi.gpg.key \
-      | gpg --dearmor > /etc/apt/keyrings/raspberrypi-archive-keyring.gpg
-    echo "deb [signed-by=/etc/apt/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.com/debian/ bookworm main" \
-      > /etc/apt/sources.list.d/raspi.list
-    apt-get update -o Acquire::Retries=3
-    apt-get install -y --no-install-recommends \
-      "hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" \
+    pip3 install --no-cache-dir \
+      "hailort" \
+      "hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION}" \
     || {
-      echo "[ai-kit][ERROR] Could not install hailo-tappas-core=${HAILO_TAPPAS_CORE_VERSION}" >&2
-      echo "[ai-kit]        Versions in RPi archive:" >&2
-      apt-cache policy hailo-tappas-core 2>/dev/null >&2 || true
-      rm -f /etc/apt/sources.list.d/raspi.list
+      echo "[ai-kit][ERROR] pip install hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION} failed." >&2
+      echo "[ai-kit]        Check that the version exists on PyPI or Hailo's package index." >&2
+      echo "[ai-kit]        Available: pip index versions hailo-tappas-core" >&2
       exit 1
     }
-    rm -f /etc/apt/sources.list.d/raspi.list
-    rm -rf /var/lib/apt/lists/*
     touch "${HAILO_STAMP}"
     echo "[ai-kit] hailo-tappas-core installed successfully."
   fi

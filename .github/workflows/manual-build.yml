@@ -84,6 +84,8 @@ jobs:
             scope: ros-humble
           - image: ros:humble-ros-base
             scope: ros-humble-ros-base
+          - image: ros:jazzy-ros-base
+            scope: ros-jazzy-ros-base
     steps:
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -293,6 +295,7 @@ jobs:
           cache-from: |
             type=gha,scope=ros-humble
             type=gha,scope=ros-humble-ros-base
+            type=gha,scope=ros-jazzy-ros-base
             type=gha,scope=${{ matrix.image }}
           cache-to: ${{ steps.cachecfg.outputs.cache_to }}
 
