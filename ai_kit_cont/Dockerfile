@@ -13,12 +13,12 @@ ENV HAILO_TAPPAS_CORE_VERSION=5.2.0
 # line if it is missing. Fall back to the legacy sources.list modification for
 # any image that still uses the old format.
 RUN if ls /etc/apt/sources.list.d/*.sources 2>/dev/null | head -1 | grep -q .; then \
-      sed -i '/^Components:/ { /universe/! s/$/ universe/ }' /etc/apt/sources.list.d/*.sources; \
-    else \
-      sed -i 's/^# \(.*universe\)$/\1/' /etc/apt/sources.list 2>/dev/null || true; \
-      grep -q "^deb.*universe" /etc/apt/sources.list 2>/dev/null \
-        || echo "deb http://ports.ubuntu.com/ubuntu-ports noble universe" >> /etc/apt/sources.list; \
-    fi
+  sed -i '/^Components:/ { /universe/! s/$/ universe/ }' /etc/apt/sources.list.d/*.sources; \
+  else \
+  sed -i 's/^# \(.*universe\)$/\1/' /etc/apt/sources.list 2>/dev/null || true; \
+  grep -q "^deb.*universe" /etc/apt/sources.list 2>/dev/null \
+  || echo "deb http://ports.ubuntu.com/ubuntu-ports noble universe" >> /etc/apt/sources.list; \
+  fi
 
 # Generic build/runtime dependencies used by Hailo examples.
 RUN apt-get update -o Acquire::Retries=3 && \
