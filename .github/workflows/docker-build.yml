@@ -15,6 +15,7 @@ concurrency:
 
 env:
   REPO_OWNER_LC: ${{ github.repository_owner }}
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   detect-changes:
