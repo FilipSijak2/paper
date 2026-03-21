@@ -142,18 +142,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       - name: Warm cache for ${{ matrix.image }}
-        uses: docker/build-push-action@v5
-        with:
-          push: false
-          platforms: linux/arm64
-          tags: ${{ matrix.image }}-cached
-          build-args: BASE_IMAGE=${{ matrix.image }}
-          # Inline single-line Dockerfile via heredoc context
-          file-inline: |
-            ARG BASE_IMAGE
-            FROM ${{ matrix.image }}
-          cache-from: type=gha,scope=${{ matrix.scope }}
-          cache-to: type=gha,scope=${{ matrix.scope }},mode=max,ignore-error=true
+        run: |
+          # Write a minimal single-FROM Dockerfile to a temp file and build it.
+          # docker/build-push-action does not support inline Dockerfiles, so we
+          # use buildx directly. The --load flag is omitted intentionally; we
+          # only want the layer cache entries written to GHA (--cache-to).
+          TMPDIR=$(mktemp -d)
+          echo 'FROM ${{ matrix.image }}' > "${TMPDIR}/Dockerfile"
+          docker buildx build \
+            --platform linux/arm64 \
+            --cache-from type=gha,scope=${{ matrix.scope }} \
+            --cache-to   type=gha,scope=${{ matrix.scope }},mode=max,ignore-error=true \
+            "${TMPDIR}"
+          rm -rf "${TMPDIR}"
 
   build:
     name: Build & Push (BananaPi)
