@@ -36,9 +36,6 @@ on:
 permissions:
   contents: read
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 concurrency:
   group: ${{ github.repository }}-container-build
   cancel-in-progress: false
@@ -70,40 +67,10 @@ jobs:
           echo "Matrix: $matrix"
           echo "matrix=$matrix" >> $GITHUB_OUTPUT
 
-  # Pre-cache the two ROS base images used across all containers.
-  # See docker-build.yml for full explanation.
-  warm-base-cache:
-    name: Warm ROS base image cache (${{ matrix.scope }})
-    runs-on: ubuntu-latest
-    needs: prepare
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - image: ros:humble
-            scope: ros-humble
-          - image: ros:humble-ros-base
-            scope: ros-humble-ros-base
-    steps:
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Warm cache for ${{ matrix.image }}
-        run: |
-          TMPDIR=$(mktemp -d)
-          echo 'FROM ${{ matrix.image }}' > "${TMPDIR}/Dockerfile"
-          docker buildx build \
-            --platform linux/arm64 \
-            --cache-from type=gha,scope=${{ matrix.scope }} \
-            --cache-to   type=gha,scope=${{ matrix.scope }},mode=max,ignore-error=true \
-            "${TMPDIR}"
-          rm -rf "${TMPDIR}"
-
   manual-build:
     name: Build & Push selected containers
     runs-on: ubuntu-latest
-    needs: [prepare, warm-base-cache]
+    needs: prepare
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -153,17 +120,6 @@ jobs:
           if ! echo "$CLEAN" | grep -qE '^[a-z0-9]'; then CLEAN="v$CLEAN"; fi
           echo "Using version tag: $CLEAN"
           echo "version_tag=$CLEAN" >> $GITHUB_OUTPUT
-
-      - name: Configure cache strategy
-        id: cachecfg
-        run: |
-          set -e
-          # mode=min exports only the final image layers (not intermediates).
-          # mode=max exports every intermediate layer and can easily consume 2-5 GB
-          # per container, making multiple parallel builds hang on the 10 GB GHA
-          # cache limit. mode=min is sufficient for CI build speed.
-          echo "cache_to=type=gha,scope=${{ matrix.image }},mode=min,ignore-error=true" >> $GITHUB_OUTPUT
-          echo "Cache mode for ${{ matrix.image }}: min"
 
       - name: Connect to Tailscale (if key)
         env:
@@ -278,7 +234,6 @@ jobs:
             echo "Login failed after retries" >&2; exit 1; fi
 
       - name: Build & Push (BananaPi)
-        timeout-minutes: 45
         uses: docker/build-push-action@v5
         with:
           context: ${{ matrix.dir }}
@@ -290,11 +245,8 @@ jobs:
             org.opencontainers.image.source=${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp || github.run_id }}
-          cache-from: |
-            type=gha,scope=ros-humble
-            type=gha,scope=ros-humble-ros-base
-            type=gha,scope=${{ matrix.image }}
-          cache-to: ${{ steps.cachecfg.outputs.cache_to }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
       - name: Inter-build cooldown
         env:
