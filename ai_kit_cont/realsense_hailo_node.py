@@ -42,7 +42,7 @@ try:
 except Exception as exc:  # pragma: no cover - runtime environment specific
     GST_AVAILABLE = False
     GST_IMPORT_ERROR = str(exc)
-    Gst = None  # type: ignore
+    Gst = None
 
 
 def _env_bool(name: str, default: bool) -> bool:

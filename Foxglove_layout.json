@@ -45,6 +45,12 @@
             "#10d233ff"
           ]
         },
+        "/map": {
+          "visible": true,
+          "colorMode": "flat",
+          "flatColor": "rgba(210, 218, 230, 0.85)",
+          "explicitAlpha": 0.9
+        },
         "/slam_toolbox/graph_visualization": {
           "visible": false
         },

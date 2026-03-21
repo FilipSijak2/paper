@@ -3,6 +3,8 @@ FROM ros:humble-ros-base
 WORKDIR /root
 
 ENV DEBIAN_FRONTEND=noninteractive
+ARG HAILO_TAPPAS_CORE_VERSION=3.28.2
+ARG HAILO_TAPPAS_CORE_DEB_URL=
 
 # Generic build/runtime dependencies used by Hailo examples.
 RUN apt-get update && \
@@ -49,13 +51,18 @@ RUN apt-get update && \
     ros-humble-compressed-image-transport && \
     rm -rf /var/lib/apt/lists/*
 
-# Raspberry Pi repository provides Hailo Debian packages used on RPi AI kit setups.
+# Install pinned Hailo TAPPAS package directly from the archive.
+# This avoids mixing Ubuntu base repositories with Debian Bookworm metadata.
 RUN set -e; \
-    mkdir -p /etc/apt/keyrings; \
-    wget -qO- https://archive.raspberrypi.com/debian/raspberrypi.gpg.key | gpg --dearmor > /etc/apt/keyrings/raspberrypi-archive-keyring.gpg; \
-    echo "deb [signed-by=/etc/apt/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.com/debian/ bookworm main" > /etc/apt/sources.list.d/raspi.list; \
+    HAILO_DEB_URL="${HAILO_TAPPAS_CORE_DEB_URL:-https://archive.raspberrypi.com/debian/pool/main/h/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}_${HAILO_TAPPAS_CORE_VERSION}_arm64.deb}"; \
+    if [ "$(dpkg --print-architecture)" != "arm64" ]; then \
+      echo "Hailo package is arm64-only; current arch is $(dpkg --print-architecture)" >&2; \
+      exit 1; \
+    fi; \
     apt-get update; \
-    apt-get install -y --no-install-recommends hailo-tappas-core-3.28.2; \
+    wget -O /tmp/hailo-tappas-core.deb "${HAILO_DEB_URL}"; \
+    apt-get install -y --no-install-recommends /tmp/hailo-tappas-core.deb; \
+    rm -f /tmp/hailo-tappas-core.deb; \
     rm -rf /var/lib/apt/lists/*
 # Excludes hailort as it fails to install during build stage.
 

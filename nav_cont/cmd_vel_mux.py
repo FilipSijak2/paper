@@ -5,6 +5,7 @@ from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
 
+#basically manual mode
 
 class CmdVelMux(Node):
     def __init__(self):

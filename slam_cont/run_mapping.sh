@@ -100,7 +100,7 @@ else
   err "ROS 2 environment not found"; exit 1
 fi
 
-SESSION_TS=$(date +%Y%m%d-%H%M%S)          # container local time (likely UTC if tzdata not set)
+SESSION_TS=$(date +%Y%m%d-%H%M%S)
 SESSION_TS_UTC=$(date -u +%Y%m%d-%H%M%S)
 
 # Determine human-friendly SESSION_ID

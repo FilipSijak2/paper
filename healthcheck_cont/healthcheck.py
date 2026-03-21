@@ -97,7 +97,6 @@ def check_host_health(fh) -> bool:
     code, out, _ = run(["df", "-h", "/srv"])
     if code == 0:
         log(out, file_handle=fh)
-        # crude parse for available percentage
         parts = out.splitlines()
         if len(parts) >= 2:
             avail = parts[1].split()
