@@ -25,9 +25,9 @@
          python3 robot_serial_bridge.py
 
   Protocol: 
-    Host → ESP32: CommandPacket (20 bytes, includes cmd_vel)
-    ESP32 → Host: SensorPacket (64 bytes, includes IMU + encoders + odometry)
-    ESP32 → UNO: CommandPacket (20 bytes, motor commands)
+    Host → ESP32: CommandPacket (22 bytes, includes cmd_vel)
+    ESP32 → Host: SensorPacket (66 bytes, includes IMU + encoders + odometry)
+    ESP32 → UNO: CommandPacket (22 bytes, motor commands)
     
   Robust features: CRC validation, sequence numbers, timeout handling, error flags.
 */
@@ -54,8 +54,8 @@ static const uint32_t STATUS_PACKET_HEADER  = 0xABCDEF01;
 static const uint32_t STATUS_PACKET_TAIL    = 0x12345678;
 
 // Packet sizes for parsing
-static const uint8_t SENSOR_PACKET_SIZE  = 64;  // Fixed size for easy parsing
-static const uint8_t COMMAND_PACKET_SIZE = 20;
+static const uint8_t SENSOR_PACKET_SIZE  = 66;  // sizeof(SensorPacket) with __attribute__((packed))
+static const uint8_t COMMAND_PACKET_SIZE = 22;  // sizeof(CommandPacket) with __attribute__((packed))
 static const uint8_t STATUS_PACKET_SIZE  = 32;
 
 // Sensor data from Nano ESP32 → Host PC (64 bytes total)

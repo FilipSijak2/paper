@@ -33,7 +33,7 @@ RUN echo ': "${AMENT_TRACE_SETUP_FILES:=}"' >> /root/.bashrc && \
 RUN echo "export PS1='\[\033[1;34m\]slam_cont: \[\033[0m\]'" >> /root/.bashrc
 
 # Install necessary Python dependencies
-RUN pip3 install psycopg2 pyyaml pillow
+RUN pip3 install --no-cache-dir psycopg2 pyyaml pillow
 
 # Copy Python script into container
 WORKDIR /app

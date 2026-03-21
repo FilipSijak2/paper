@@ -3,7 +3,7 @@ FROM ros:humble
 # Install dependencies (pyserial for serial comms, optional colorlog)
 RUN apt-get update && apt-get install -y \
     python3-pip \
-    ros-humble-rmw-cyclonedds-cpp \ 
+    ros-humble-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.

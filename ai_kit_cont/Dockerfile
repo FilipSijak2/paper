@@ -77,7 +77,7 @@ RUN set -e; \
   apt-get install -y --no-install-recommends /tmp/python-gi-dev-compat.deb; \
   rm -rf /tmp/python-gi-dev-compat /tmp/python-gi-dev-compat.deb; \
   mkdir -p /etc/apt/keyrings; \
-  wget -qO- https://archive.raspberrypi.com/debian/raspberrypi.gpg.key | gpg --dearmor > /etc/apt/keyrings/raspberrypi-archive-keyring.gpg; \
+  wget --tries=5 --waitretry=10 --timeout=30 -qO- https://archive.raspberrypi.com/debian/raspberrypi.gpg.key | gpg --dearmor > /etc/apt/keyrings/raspberrypi-archive-keyring.gpg; \
   echo "deb [signed-by=/etc/apt/keyrings/raspberrypi-archive-keyring.gpg] http://archive.raspberrypi.com/debian/ bookworm main" > /etc/apt/sources.list.d/raspi.list; \
   printf '%s\n' \
   'Package: *' \
@@ -89,10 +89,14 @@ RUN set -e; \
   'Pin-Priority: 1001' \
   > /etc/apt/preferences.d/raspi-hailo.pref; \
   apt-get update; \
-  HAILO_DEB_URL="https://archive.raspberrypi.com/debian/pool/main/h/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}/hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}_${HAILO_TAPPAS_CORE_VERSION}_arm64.deb"; \
-  wget -O /tmp/hailo-tappas-core.deb "${HAILO_DEB_URL}"; \
-  apt-get install -y --no-install-recommends /tmp/hailo-tappas-core.deb; \
-  rm -f /tmp/hailo-tappas-core.deb; \
+  echo "[hailo] Installing hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION} from Raspberry Pi archive"; \
+  apt-get install -y --no-install-recommends "hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION}" \
+  || { \
+  echo "[ERROR] hailo-tappas-core-${HAILO_TAPPAS_CORE_VERSION} could not be installed." >&2; \
+  echo "Packages available in the Raspberry Pi archive matching 'hailo':" >&2; \
+  apt-cache search hailo 2>/dev/null >&2 || true; \
+  exit 1; \
+  }; \
   rm -f /etc/apt/sources.list.d/raspi.list; \
   rm -f /etc/apt/preferences.d/raspi-hailo.pref; \
   rm -rf /var/lib/apt/lists/*

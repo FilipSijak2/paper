@@ -18,6 +18,8 @@ Usage:
 	python3 robot_serial_bridge.py --port /dev/ttyUSB0 --baud 115200
 """
 
+import math
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
@@ -26,7 +28,6 @@ import serial
 import struct
 import threading
 import time
-from collections import deque
 
 # ROS message types
 from geometry_msgs.msg import Twist
@@ -45,11 +46,11 @@ PROTOCOL_VERSION = 1
 
 SENSOR_PACKET_HEADER = 0xDEADBEEF
 SENSOR_PACKET_TAIL   = 0xCAFEBABE
-SENSOR_PACKET_SIZE   = 64
+SENSOR_PACKET_SIZE   = 66  # sizeof(SensorPacket) with __attribute__((packed))
 
 COMMAND_PACKET_HEADER = 0xFEEDFACE  
 COMMAND_PACKET_TAIL   = 0xDEADC0DE
-COMMAND_PACKET_SIZE   = 20
+COMMAND_PACKET_SIZE   = 22  # sizeof(CommandPacket) with __attribute__((packed))
 
 STATUS_PACKET_HEADER  = 0xABCDEF01
 STATUS_PACKET_TAIL    = 0x12345678
@@ -243,13 +244,17 @@ class RobotSerialBridge(Node):
 		"""Parse sensor packet and publish ROS messages"""
 		try:
 			# Unpack sensor packet
-			unpacked = struct.unpack('<LBBHL ffffff ff fff HB HL', data)
+			# Format: header(L) version(B) sequence(B) flags(H) timestamp_ms(L)
+			#         accel×3(fff) gyro×3(fff) encoders×2(ff) odom×3(fff)
+			#         battery_mv(H) temperature(B) error_flags(B) crc16(H) tail(L)
+			# Total: 66 bytes = sizeof(SensorPacket) with __attribute__((packed))
+			unpacked = struct.unpack('<LBBHL ffffff ff fff HBB HL', data)
             
 			(header, version, sequence, flags, timestamp_ms,
 			 accel_x, accel_y, accel_z, gyro_x, gyro_y, gyro_z,
 			 left_angle, right_angle,
 			 odom_x, odom_y, odom_yaw,
-			 battery_mv, temperature, crc16, tail) = unpacked
+			 battery_mv, temperature, error_flags, crc16, tail) = unpacked
             
 			# Validate packet structure
 			if header != SENSOR_PACKET_HEADER or tail != SENSOR_PACKET_TAIL:

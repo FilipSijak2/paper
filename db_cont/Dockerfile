@@ -28,8 +28,8 @@ ENV TZ=Europe/Zagreb
 # Copy initialization scripts
 COPY init-db.sql /docker-entrypoint-initdb.d/
 
-# Performance settings
-ENV POSTGRES_SHARED_PRELOAD_LIBRARIES=postgis
+# PostGIS is enabled as an extension via init-db.sql (CREATE EXTENSION postgis)
+# No shared_preload_libraries entry is needed for PostGIS
 
 # Expose port
 EXPOSE 5432

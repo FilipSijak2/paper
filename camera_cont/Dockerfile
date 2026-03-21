@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-cv-bridge \
     && rm -rf /var/lib/apt/lists/*
 
-RUN pip3 install numpy
+RUN pip3 install --no-cache-dir numpy
 
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ENV ROS_DOMAIN_ID=0

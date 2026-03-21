@@ -6,7 +6,7 @@
 //   OLD: micro-ROS client (unstable, memory issues)
 //   NEW: Serial protocol bridge (Nano ESP32 ↔ UNO R4)
 //
-// Protocol: CommandPacket (20 bytes) with CRC validation, timeout safety
+// Protocol: CommandPacket (22 bytes) with CRC validation, timeout safety
 // Features: Motor control + LED matrix animation + error handling
 #include <Arduino.h>
 
@@ -22,7 +22,7 @@ ArduinoLEDMatrix matrix;
 static const uint8_t PROTOCOL_VERSION = 1;
 static const uint32_t COMMAND_PACKET_HEADER = 0xFEEDFACE;  
 static const uint32_t COMMAND_PACKET_TAIL   = 0xDEADC0DE;
-static const uint8_t COMMAND_PACKET_SIZE = 20;
+static const uint8_t COMMAND_PACKET_SIZE = 22;  // sizeof(CommandPacket) with __attribute__((packed))
 
 // Command data from Host PC → Nano ESP32 → UNO R4 (20 bytes total)
 struct __attribute__((packed)) CommandPacket {
