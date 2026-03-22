@@ -17,6 +17,7 @@ RUN chmod +x /app/bag_recorder.sh
 ENV TOPICS_FILE=/config/recorded_topics.yaml \
     BAG_OUTPUT_DIR=/bags \
     MAX_BAG_MB=150 \
-    MAX_BAG_DURATION_S=0
+    MAX_BAG_DURATION_S=0 \
+    RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 ENTRYPOINT ["/app/bag_recorder.sh"]

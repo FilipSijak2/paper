@@ -2,7 +2,7 @@
 """Basic healthcheck script for the robot stack.
 
 Checks expected Docker containers, reports their runtime and health status,
-and writes a timestamped report into the mounted logs directory.
+prints the report to stdout, and can optionally append it to a daily log file.
 """
 
 import os
@@ -10,6 +10,7 @@ import glob
 import subprocess
 import sys
 import time
+from contextlib import nullcontext
 from datetime import datetime
 from typing import List, Tuple
 
@@ -25,7 +26,18 @@ def run(cmd: List[str]) -> Tuple[int, str, str]:
 
 def log(line: str, *, file_handle) -> None:
     print(line)
-    file_handle.write(line + "\n")
+    if file_handle is not None:
+        timestamp = datetime.now().astimezone().isoformat(sep=" ", timespec="milliseconds")
+        file_handle.write(f"[{timestamp}] {line}\n")
+        file_handle.flush()
+
+
+def daily_log_path(log_dir: str, container_name: str) -> str:
+    date_folder_format = os.environ.get("LOG_DATE_FORMAT", "%-d-%-m-%Y")
+    day_dir = datetime.now().astimezone().strftime(date_folder_format)
+    target_dir = os.path.join(log_dir, day_dir)
+    os.makedirs(target_dir, exist_ok=True)
+    return os.path.join(target_dir, f"{container_name}.log")
 
 
 def run_ros2(args: List[str], timeout_s: int = 6) -> Tuple[int, str, str]:
@@ -205,9 +217,10 @@ def main() -> int:
     os.makedirs(log_dir, exist_ok=True)
 
     timestamp = datetime.utcnow().strftime("%Y%m%d-%H%M%S")
-    log_path = os.path.join(log_dir, f"healthcheck-{timestamp}.log")
     start_ts = time.time()
     overall_deadline = start_ts + 150  # 2.5 minutes overall budget
+    log_to_file = os.environ.get("HEALTHCHECK_LOG_TO_FILE", "0") == "1"
+    log_path = daily_log_path(log_dir, os.environ.get("HEALTHCHECK_CONTAINER_NAME", "healthcheck_cont")) if log_to_file else None
 
     # Default container list can be overridden via REQUIRED_CONTAINERS env (comma separated)
     default_containers = [
@@ -236,7 +249,8 @@ def main() -> int:
         "/camera/realsense/color/image_raw",
     ]
 
-    with open(log_path, "w", encoding="utf-8") as fh:
+    file_context = open(log_path, "a", encoding="utf-8") if log_path else nullcontext(None)
+    with file_context as fh:
         log(f"=== Healthcheck {timestamp} UTC ===", file_handle=fh)
         log(f"Log directory: {log_dir}", file_handle=fh)
 
@@ -305,9 +319,12 @@ def main() -> int:
             log("One or more checks reported issues.", file_handle=fh)
 
     duration = time.time() - start_ts
-    with open(log_path, "a", encoding="utf-8") as fh:
-        log(f"Healthcheck duration: {duration:.1f}s", file_handle=fh)
-    print(f"Report written to {log_path}")
+    if log_path:
+        with open(log_path, "a", encoding="utf-8") as fh:
+            log(f"Healthcheck duration: {duration:.1f}s", file_handle=fh)
+        print(f"Report appended to {log_path}")
+    else:
+        print(f"Healthcheck duration: {duration:.1f}s")
     return 0 if overall_ok else 1
 
 

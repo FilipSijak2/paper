@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
   bash curl jq coreutils \
   ca-certificates gnupg lsb-release locales \
-  docker.io iproute2 iputils-ping netcat-openbsd procps util-linux usbutils \
+  docker.io iproute2 iputils-ping netcat-openbsd procps python3-yaml util-linux usbutils \
   && rm -rf /var/lib/apt/lists/*
 
 # ROS 2 Humble (Ubuntu 22.04) CLI for ROS graph/topic checks
@@ -27,6 +27,7 @@ ENV ROS_DOMAIN_ID=0
 ENV TZ=Europe/Zagreb
 
 COPY healthcheck.py /usr/local/bin/healthcheck.py
-RUN chmod +x /usr/local/bin/healthcheck.py
+COPY container_log_collector.py /usr/local/bin/container_log_collector.py
+RUN chmod +x /usr/local/bin/healthcheck.py /usr/local/bin/container_log_collector.py
 
 ENTRYPOINT ["/usr/local/bin/healthcheck.py"]
