@@ -27,6 +27,7 @@ if [ ! -f "${HAILO_STAMP}" ]; then
     echo "[ai-kit] WARN: Not running on arm64 — skipping hailo install (passthrough mode)."
   else
     pip3 install --no-cache-dir --break-system-packages \
+      --extra-index-url https://hailo-hailort.s3.eu-west-2.amazonaws.com \
       "hailort" \
       "hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION}" \
     || {

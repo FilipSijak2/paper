@@ -20,6 +20,7 @@ RUN set -e; \
     ros-humble-realsense2-camera \
     ros-humble-realsense2-description \
     ros-humble-rmw-cyclonedds-cpp \
+    ros-humble-image-transport-plugins \ 
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Europe/Zagreb
