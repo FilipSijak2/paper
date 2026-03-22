@@ -23,6 +23,25 @@ set -u
 : "${RS_COLOR_PROFILE:=640x480x15}"
 : "${RS_ALIGN_DEPTH:=true}"
 : "${RS_ENABLE_POINTCLOUD:=false}"
+: "${RS_COMPRESSED_JPEG_QUALITY:=40}"
+
+normalize_unite_imu_method() {
+  case "${RS_UNITE_IMU_METHOD}" in
+    0|none|off|disabled)
+      RS_UNITE_IMU_METHOD=0
+      ;;
+    1|copy)
+      RS_UNITE_IMU_METHOD=1
+      ;;
+    2|linear_interpolation)
+      RS_UNITE_IMU_METHOD=2
+      ;;
+    *)
+      echo "[realsense] WARN: Unsupported RS_UNITE_IMU_METHOD='${RS_UNITE_IMU_METHOD}', falling back to 2 (linear_interpolation)." >&2
+      RS_UNITE_IMU_METHOD=2
+      ;;
+  esac
+}
 
 # Backward compatibility for older env naming.
 if [ -z "${RS_USB_PORT_ID}" ] && [ -n "${RS_PORT_ID}" ]; then
@@ -123,6 +142,8 @@ pick_serial_or_fail() {
 # --- Preflight ---
 echo "[realsense] Preflight: enumerating devices..."
 enumerate_realsense | sed 's/^/[realsense]   /' || true
+normalize_unite_imu_method
+echo "[realsense] Using unite_imu_method=${RS_UNITE_IMU_METHOD}"
 
 SELECTED_SERIAL="$(pick_serial_or_fail)"
 
@@ -172,4 +193,60 @@ elif [ -z "${RS_USB_PORT_ID}" ]; then
 fi
 
 echo "[realsense] Starting RealSense camera: ${RS_CAMERA_NAME}"
-exec ros2 launch realsense2_camera rs_launch.py "${args[@]}"
+
+apply_runtime_compression_tuning() {
+  local node="/camera/${RS_CAMERA_NAME}"
+  local attempts=60
+  local attempt
+
+  if [[ -z "${RS_COMPRESSED_JPEG_QUALITY}" ]]; then
+    echo "[realsense] Compressed JPEG quality tuning disabled."
+    return 0
+  fi
+
+  if [[ ! "${RS_COMPRESSED_JPEG_QUALITY}" =~ ^[0-9]+$ ]] || (( RS_COMPRESSED_JPEG_QUALITY < 1 || RS_COMPRESSED_JPEG_QUALITY > 100 )); then
+    echo "[realsense] WARN: RS_COMPRESSED_JPEG_QUALITY='${RS_COMPRESSED_JPEG_QUALITY}' is invalid; expected 1..100. Leaving default compressed transport quality." >&2
+    return 0
+  fi
+
+  for (( attempt=1; attempt<=attempts; attempt++ )); do
+    if ! kill -0 "${RS_PID}" 2>/dev/null; then
+      return 0
+    fi
+
+    if ros2 node list 2>/dev/null | grep -Fxq -- "${node}"; then
+      if ros2 param set "${node}" jpeg_quality "${RS_COMPRESSED_JPEG_QUALITY}" >/dev/null 2>&1; then
+        echo "[realsense] Set ${node} jpeg_quality=${RS_COMPRESSED_JPEG_QUALITY} for compressed image transport"
+        return 0
+      fi
+    fi
+
+    sleep 1
+  done
+
+  echo "[realsense] WARN: Could not set jpeg_quality on ${node}; leaving default compressed transport quality." >&2
+  return 0
+}
+
+terminate() {
+  if [[ -n "${RS_PID:-}" ]] && kill -0 "${RS_PID}" 2>/dev/null; then
+    kill -TERM "${RS_PID}" 2>/dev/null || true
+    wait "${RS_PID}" 2>/dev/null || true
+  fi
+  exit 0
+}
+
+ros2 launch realsense2_camera rs_launch.py "${args[@]}" &
+RS_PID=$!
+
+trap terminate SIGINT SIGTERM
+apply_runtime_compression_tuning &
+TUNER_PID=$!
+
+set +e
+wait "${RS_PID}"
+RS_STATUS=$?
+set -e
+
+wait "${TUNER_PID}" 2>/dev/null || true
+exit "${RS_STATUS}"
