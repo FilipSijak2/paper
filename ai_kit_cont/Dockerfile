@@ -3,10 +3,9 @@ FROM ros:jazzy-ros-base
 WORKDIR /root
 
 ENV DEBIAN_FRONTEND=noninteractive
-# HAILO_TAPPAS_CORE_VERSION is passed to start_ai_kit.sh which installs it
-# via pip at first container startup on the real Pi (Ubuntu 24.04 Noble).
-# TAPPAS 5.x targets Noble natively — no Bookworm dependency conflicts.
-ENV HAILO_TAPPAS_CORE_VERSION=5.2.0
+# Hailo runtime (hailort + hailo-tappas-core) is NOT installed in the image.
+# The host Pi provides the libraries via bind-mounts in docker-compose.yaml.
+# Prerequisite on the host: sudo apt install hailo-all
 
 # Ensure 'universe' is enabled.
 # Ubuntu 24.04 uses DEB822 .sources files; append 'universe' to the Components

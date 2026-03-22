@@ -6,39 +6,30 @@ source /opt/ros/jazzy/setup.bash
 set -u
 
 # ---------------------------------------------------------------------------
-# First-run: install hailo-tappas-core via pip.
-#
-# Why deferred and not baked into the image:
-#   TAPPAS 5.x pip wheels for arm64 link against hailort, which requires the
-#   HailoRT kernel module (hailort.ko) provided by the host Pi OS. The module
-#   is not present in the QEMU-based CI build environment, so pip install
-#   would succeed but the GStreamer hailonet plugin would not load without it.
-#   On the real Pi (Ubuntu 24.04 Noble + HailoRT from host), it works natively.
-#
-# Also installs hailort Python bindings which TAPPAS depends on.
-# The stamp file prevents re-installation on every container restart.
+# Hailo runtime is NOT installed inside the image.
+# The host Raspberry Pi has 'hailo-all' installed via apt, which provides:
+#   - /usr/lib/libhailort.so            (HailoRT userspace library)
+#   - /usr/lib/aarch64-linux-gnu/       (GStreamer hailonet plugin .so)
+#   - /usr/lib/hailo/                   (TAPPAS post-process .so files)
+#   - /usr/lib/python3/dist-packages/   (hailort + tappas Python bindings)
+# These are bind-mounted into the container via docker-compose.yaml.
+# No downloading or installing is needed at runtime.
 # ---------------------------------------------------------------------------
-HAILO_STAMP=/etc/hailo-tappas-core-installed
-: "${HAILO_TAPPAS_CORE_VERSION:=5.2.0}"
 
-if [ ! -f "${HAILO_STAMP}" ]; then
-  echo "[ai-kit] Installing hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION} via pip (first run)..."
+# Verify that the host mounts are in place before proceeding.
+if [ ! -f /usr/lib/libhailort.so ] && [ ! -f /usr/lib/aarch64-linux-gnu/libhailort.so.4 ]; then
   if [ "$(dpkg --print-architecture)" != "arm64" ]; then
-    echo "[ai-kit] WARN: Not running on arm64 — skipping hailo install (passthrough mode)."
+    echo "[ai-kit] WARN: Not running on arm64 — Hailo libs not expected (passthrough mode)."
   else
-    pip3 install --no-cache-dir --break-system-packages \
-      --extra-index-url https://hailo-hailort.s3.eu-west-2.amazonaws.com \
-      "hailort" \
-      "hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION}" \
-    || {
-      echo "[ai-kit][ERROR] pip install hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION} failed." >&2
-      echo "[ai-kit]        Check that the version exists on PyPI or Hailo's package index." >&2
-      echo "[ai-kit]        Available: pip index versions hailo-tappas-core" >&2
-      exit 1
-    }
-    touch "${HAILO_STAMP}"
-    echo "[ai-kit] hailo-tappas-core installed successfully."
+    echo "[ai-kit][ERROR] libhailort.so not found inside container." >&2
+    echo "[ai-kit]        Make sure the host has 'hailo-all' installed:" >&2
+    echo "[ai-kit]          sudo apt install hailo-all" >&2
+    echo "[ai-kit]        And that docker-compose mounts /usr/lib/hailo and" >&2
+    echo "[ai-kit]        /usr/lib/aarch64-linux-gnu into the container." >&2
+    exit 1
   fi
+else
+  echo "[ai-kit] Hailo host libraries detected — no installation needed."
 fi
 
 # ---------------------------------------------------------------------------
