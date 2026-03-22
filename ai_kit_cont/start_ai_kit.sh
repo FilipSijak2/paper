@@ -26,7 +26,7 @@ if [ ! -f "${HAILO_STAMP}" ]; then
   if [ "$(dpkg --print-architecture)" != "arm64" ]; then
     echo "[ai-kit] WARN: Not running on arm64 — skipping hailo install (passthrough mode)."
   else
-    pip3 install --no-cache-dir \
+    pip3 install --no-cache-dir --break-system-packages \
       "hailort" \
       "hailo-tappas-core==${HAILO_TAPPAS_CORE_VERSION}" \
     || {
