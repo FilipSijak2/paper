@@ -116,6 +116,13 @@ dedupe_lines() {
 	awk '!seen[$0]++'
 }
 
+dedupe_array() {
+	if (( $# == 0 )); then
+		return 0
+	fi
+	printf '%s\n' "$@" | dedupe_lines
+}
+
 refresh_topic_resolution() {
 	local requested
 	local resolved
@@ -160,8 +167,17 @@ refresh_topic_resolution() {
 		fi
 	done
 
-	mapfile -t RESOLVED_TOPICS < <(printf '%s\n' "${RESOLVED_TOPICS[@]}" | dedupe_lines)
-	mapfile -t ACTIVE_TOPICS < <(printf '%s\n' "${ACTIVE_TOPICS[@]}" | dedupe_lines)
+	if (( ${#RESOLVED_TOPICS[@]} > 0 )); then
+		mapfile -t RESOLVED_TOPICS < <(dedupe_array "${RESOLVED_TOPICS[@]}")
+	else
+		RESOLVED_TOPICS=()
+	fi
+
+	if (( ${#ACTIVE_TOPICS[@]} > 0 )); then
+		mapfile -t ACTIVE_TOPICS < <(dedupe_array "${ACTIVE_TOPICS[@]}")
+	else
+		ACTIVE_TOPICS=()
+	fi
 }
 
 wait_for_active_topics() {
