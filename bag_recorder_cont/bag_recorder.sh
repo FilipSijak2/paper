@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROS_DISTRO=${ROS_DISTRO:-humble}
+ROS_DISTRO=${ROS_DISTRO:-jazzy}
 TOPICS_FILE=${TOPICS_FILE:-/config/recorded_topics.yaml}
 BAG_OUTPUT_DIR=${BAG_OUTPUT_DIR:-/bags}
 MAX_BAG_MB=${MAX_BAG_MB:-150}

@@ -1,12 +1,12 @@
-FROM ros:humble-ros-base
+FROM ros:jazzy-ros-base
 
 # Install ros2 bag tooling and compression plugins
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    ros-humble-ros2bag \
-    ros-humble-rosbag2-storage-default-plugins \
-    ros-humble-rosbag2-compression-zstd \
-    ros-humble-rmw-cyclonedds-cpp \
+    ros-jazzy-ros2bag \
+    ros-jazzy-rosbag2-storage-default-plugins \
+    ros-jazzy-rosbag2-compression-zstd \
+    ros-jazzy-rmw-cyclonedds-cpp \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
