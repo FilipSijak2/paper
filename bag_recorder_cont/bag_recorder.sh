@@ -24,6 +24,21 @@ source_ros_environment() {
 	set -u
 }
 
+verify_ros_cli() {
+	if ! command -v ros2 >/dev/null 2>&1; then
+		echo "[bag_recorder][ERROR] ros2 CLI is not available after sourcing /opt/ros/${ROS_DISTRO}/setup.bash" >&2
+		echo "[bag_recorder][ERROR] PATH=${PATH}" >&2
+		return 1
+	fi
+}
+
+log_runtime_configuration() {
+	echo "[bag_recorder] ROS_DISTRO=${ROS_DISTRO}"
+	echo "[bag_recorder] RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-unset}"
+	echo "[bag_recorder] ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
+	echo "[bag_recorder] CYCLONEDDS_URI=${CYCLONEDDS_URI:-unset}"
+}
+
 normalize_rmw() {
 	local want="${RMW_IMPLEMENTATION:-}"
 	if [[ "$want" =~ cyclonedx ]]; then
@@ -269,6 +284,8 @@ run_recorder_loop() {
 main() {
 	source_ros_environment
 	normalize_rmw
+	verify_ros_cli
+	log_runtime_configuration
 	load_topics_file
 	mkdir -p "${BAG_OUTPUT_DIR}"
 	trap terminate SIGINT SIGTERM

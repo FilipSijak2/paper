@@ -1,5 +1,8 @@
 FROM ros:humble-ros-base
 
+ENV ROS_DISTRO=humble \
+    BASH_ENV=/opt/ros/humble/setup.bash
+
 # Install ros2 bag tooling and compression plugins
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -7,7 +10,12 @@ RUN apt-get update \
     ros-humble-rosbag2-storage-default-plugins \
     ros-humble-rosbag2-compression-zstd \
     ros-humble-rmw-cyclonedds-cpp \
+    bash \
     && rm -rf /var/lib/apt/lists/*
+
+# Make interactive and non-interactive bash shells immediately usable.
+RUN echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> /root/.bashrc \
+    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> /etc/bash.bashrc
 
 WORKDIR /app
 
