@@ -72,14 +72,14 @@ if [ -n "${HAILO_GST_PIPELINE}" ]; then
 fi
 
 echo "[ai-kit] Waiting up to ${RS_WAIT_TIMEOUT}s for ROS image topic: ${RS_IMAGE_TOPIC}"
-if ! timeout "${RS_WAIT_TIMEOUT}" bash -c "until ros2 topic list | grep -Fxq '${RS_IMAGE_TOPIC}'; do sleep 1; done"; then
+if ! timeout "${RS_WAIT_TIMEOUT}" bash -c "until ros2 topic list 2>/dev/null | grep -Fxq '${RS_IMAGE_TOPIC}'; do sleep 1; done"; then
   echo "[ai-kit] WARN: Topic ${RS_IMAGE_TOPIC} not detected yet." >&2
   echo "[ai-kit]       Start realsense_cont first or update RS_IMAGE_TOPIC." >&2
 else
   echo "[ai-kit] Image topic detected: ${RS_IMAGE_TOPIC}"
 fi
 
-if ros2 topic list | grep -Fxq "${RS_CAMERA_INFO_TOPIC}"; then
+if ros2 topic list 2>/dev/null | grep -Fxq "${RS_CAMERA_INFO_TOPIC}"; then
   echo "[ai-kit] Camera info topic detected: ${RS_CAMERA_INFO_TOPIC}"
 fi
 
