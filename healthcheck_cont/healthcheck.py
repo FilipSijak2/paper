@@ -127,14 +127,10 @@ def check_host_health(fh) -> bool:
 
 
 def check_lidar(path: str, fh) -> bool:
-    if not check_device(path, "Lidar", fh):
-        return False
-    code, out, err = run(["timeout", "2s", "head", "-c", "16", path])
-    if code == 0 and out:
-        log(f"Lidar data sample (hex): {out.encode().hex()[:32]}", file_handle=fh)
-        return True
-    log(f"WARN: Lidar read failed ({err or 'no data'})", file_handle=fh)
-    return False
+    # Only check device node existence — do NOT read raw bytes from the serial
+    # port while laser_driver_cont is using it (serial ports are not shareable).
+    # Functional validation is done via the ROS /scan topic check below.
+    return check_device(path, "Lidar", fh)
 
 
 def check_camera(rs_usb_path: str, fh) -> bool:
@@ -237,7 +233,7 @@ def main() -> int:
         "/odom",
         "/tf",
         "/tf_static",
-        "/realsense/color/image_raw",
+        "/camera/realsense/color/image_raw",
     ]
 
     with open(log_path, "w", encoding="utf-8") as fh:
