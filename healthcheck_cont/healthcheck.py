@@ -14,6 +14,26 @@ from contextlib import nullcontext
 from datetime import datetime
 from typing import List, Tuple
 
+DEFAULT_REQUIRED_CONTAINERS = [
+    "nav_cont",
+    "database_cont",
+    "slam_cont",
+    "sensor_fusion_cont",
+    "robot_bridge_cont",
+    "rosbridge_websocket_cont",
+    "foxglove_bridge_cont",
+    "realsense_cont",
+    "laser_driver_cont",
+]
+
+DEFAULT_EXPECTED_TOPICS = [
+    "/scan",
+    "/odom",
+    "/tf",
+    "/tf_static",
+    "/camera/realsense/color/image_raw",
+]
+
 
 def run(cmd: List[str]) -> Tuple[int, str, str]:
     """Run a command and capture exit code, stdout, stderr."""
@@ -38,6 +58,38 @@ def daily_log_path(log_dir: str, container_name: str) -> str:
     target_dir = os.path.join(log_dir, day_dir)
     os.makedirs(target_dir, exist_ok=True)
     return os.path.join(target_dir, f"{container_name}.log")
+
+
+def topic_alias_candidates(topic: str) -> List[str]:
+    candidates = [topic]
+
+    if topic.startswith("/camera/realsense/"):
+        candidates.append(topic[len("/camera"):])
+    elif topic.startswith("/realsense/"):
+        candidates.append(f"/camera{topic}")
+
+    if topic == "/odom":
+        candidates.append("/wheel_odom")
+    elif topic == "/wheel_odom":
+        candidates.append("/odom")
+
+    if topic.endswith("/image_compressed"):
+        candidates.append(f"{topic[:-len('/image_compressed')]}/image_raw/compressed")
+    elif topic.endswith("/image_raw/compressed"):
+        candidates.append(f"{topic[:-len('/image_raw/compressed')]}/image_compressed")
+
+    unique = []
+    for candidate in candidates:
+        if candidate not in unique:
+            unique.append(candidate)
+    return unique
+
+
+def resolve_available_topic(expected_topic: str, observed_topics: set[str]) -> str | None:
+    for candidate in topic_alias_candidates(expected_topic):
+        if candidate in observed_topics:
+            return candidate
+    return None
 
 
 def run_ros2(args: List[str], timeout_s: int = 6) -> Tuple[int, str, str]:
@@ -190,14 +242,16 @@ def check_ros_topics(fh, expected_topics: List[str]) -> bool:
     topics = set(out.splitlines()) if out else set()
     ok = True
     for topic in expected_topics:
-        if topic not in topics:
+        resolved_topic = resolve_available_topic(topic, topics)
+        if resolved_topic is None:
             ok = False
-            log(f"WARN: ROS topic missing: {topic}", file_handle=fh)
+            aliases = ", ".join(topic_alias_candidates(topic))
+            log(f"WARN: ROS topic missing: {topic} (checked: {aliases})", file_handle=fh)
             continue
-        info_code, info_out, info_err = run_ros2(["topic", "info", topic], timeout_s=6)
+        info_code, info_out, info_err = run_ros2(["topic", "info", resolved_topic], timeout_s=6)
         if info_code != 0:
             ok = False
-            log(f"WARN: ros2 topic info failed for {topic} ({info_err})", file_handle=fh)
+            log(f"WARN: ros2 topic info failed for {resolved_topic} ({info_err})", file_handle=fh)
             continue
         # Look for publishers count
         pub_lines = [ln for ln in info_out.splitlines() if "Publisher count" in ln]
@@ -206,7 +260,7 @@ def check_ros_topics(fh, expected_topics: List[str]) -> bool:
                 count = int(pub_lines[0].split(":")[-1].strip())
                 if count == 0:
                     ok = False
-                    log(f"WARN: {topic} has zero publishers", file_handle=fh)
+                    log(f"WARN: {resolved_topic} has zero publishers", file_handle=fh)
             except ValueError:
                 pass
     return ok
@@ -223,31 +277,14 @@ def main() -> int:
     log_path = daily_log_path(log_dir, os.environ.get("HEALTHCHECK_CONTAINER_NAME", "healthcheck_cont")) if log_to_file else None
 
     # Default container list can be overridden via REQUIRED_CONTAINERS env (comma separated)
-    default_containers = [
-        "nav_cont",
-        "database_cont",
-        "slam_cont",
-        "sensor_fusion_cont",
-        "robot_bridge_cont",
-        "rosbridge_websocket_cont",
-        "foxglove_bridge_cont",
-        "realsense_cont",
-        "laser_driver_cont",
-    ]
     env_override = os.environ.get("REQUIRED_CONTAINERS")
-    containers = [c.strip() for c in env_override.split(",") if c.strip()] if env_override else default_containers
+    containers = [c.strip() for c in env_override.split(",") if c.strip()] if env_override else DEFAULT_REQUIRED_CONTAINERS
 
     lidar_dev = os.environ.get("LIDAR_DEVICE", "/dev/ttyUSB0")
     rs_usb_path = os.environ.get("REALSENSE_USB_PATH", "/dev/bus/usb")
     bridge_dev = os.environ.get("BRIDGE_SERIAL_DEVICE", "/dev/ttyACM0")
     stabilization_delay = 30  # seconds after containers become ready
-    expected_topics = [
-        "/scan",
-        "/odom",
-        "/tf",
-        "/tf_static",
-        "/camera/realsense/color/image_raw",
-    ]
+    expected_topics = DEFAULT_EXPECTED_TOPICS
 
     file_context = open(log_path, "a", encoding="utf-8") if log_path else nullcontext(None)
     with file_context as fh:

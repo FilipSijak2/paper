@@ -1,0 +1,86 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-syntax:
+    name: Python Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile Python files
+        run: |
+          python - <<'PY'
+          import pathlib
+          import py_compile
+
+          root = pathlib.Path(".")
+          skipped = {".git", "__pycache__", ".pytest_cache", ".venv", "venv"}
+          failures = []
+
+          for path in sorted(root.rglob("*.py")):
+              if skipped.intersection(path.parts):
+                  continue
+              try:
+                  py_compile.compile(str(path), doraise=True)
+                  print(f"[OK] {path}")
+              except py_compile.PyCompileError as exc:
+                  failures.append((path, exc))
+
+          if failures:
+              for path, exc in failures:
+                  print(f"[FAIL] {path}: {exc.msg}")
+              raise SystemExit(1)
+          PY
+
+  shell-syntax:
+    name: Shell Syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate shell scripts
+        run: |
+          find . -type f -name "*.sh" \
+            -not -path "./.git/*" \
+            -print0 | while IFS= read -r -d '' file; do
+              echo "Checking $file"
+              bash -n "$file"
+            done
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: tests/requirements-ci.txt
+
+      - name: Install test dependencies
+        run: pip install -r tests/requirements-ci.txt
+
+      - name: Run pytest
+        run: pytest -q tests

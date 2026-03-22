@@ -158,7 +158,7 @@ class RobotSerialBridge(Node):
 		"""Handle incoming cmd_vel commands"""
 		try:
 			# Build command packet
-			packet = struct.pack('<LBBHFF HL',
+			packet = struct.pack('<LBBHffHL',
 				COMMAND_PACKET_HEADER,  # header
 				PROTOCOL_VERSION,       # version  
 				self.command_sequence & 0xFF,  # sequence

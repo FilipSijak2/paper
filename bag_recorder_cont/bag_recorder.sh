@@ -12,10 +12,17 @@ TOPIC_RECHECK_INTERVAL_S=${TOPIC_RECHECK_INTERVAL_S:-2}
 MIN_ACTIVE_TOPICS=${MIN_ACTIVE_TOPICS:-1}
 RESOLVE_TOPIC_ALIASES=${RESOLVE_TOPIC_ALIASES:-1}
 
-export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
-set +u
-source /opt/ros/${ROS_DISTRO}/setup.bash
-set -u
+TOPICS=()
+RESOLVED_TOPICS=()
+ACTIVE_TOPICS=()
+stop_requested=false
+
+source_ros_environment() {
+	export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
+	set +u
+	source /opt/ros/${ROS_DISTRO}/setup.bash
+	set -u
+}
 
 normalize_rmw() {
 	local want="${RMW_IMPLEMENTATION:-}"
@@ -34,26 +41,24 @@ normalize_rmw() {
 	fi
 }
 
-normalize_rmw
+load_topics_file() {
+	if [[ ! -s "${TOPICS_FILE}" ]]; then
+		echo "No topics file at ${TOPICS_FILE} or it is empty." >&2
+		return 1
+	fi
 
-if [[ ! -s "${TOPICS_FILE}" ]]; then
-	echo "No topics file at ${TOPICS_FILE} or it is empty." >&2
-	exit 1
-fi
-
-mapfile -t TOPICS < <(
-	sed -n 's/^[[:space:]]*-[[:space:]]*//p' "${TOPICS_FILE}" \
-	| sed 's/[[:space:]]*#.*$//' \
-	| sed 's/\r$//' \
-	| sed 's/[[:space:]]*$//' \
-	| sed '/^$/d'
-)
-if [[ ${#TOPICS[@]} -eq 0 ]]; then
-	echo "No topics found in ${TOPICS_FILE}." >&2
-	exit 1
-fi
-
-mkdir -p "${BAG_OUTPUT_DIR}"
+	mapfile -t TOPICS < <(
+		sed -n 's/^[[:space:]]*-[[:space:]]*//p' "${TOPICS_FILE}" \
+		| sed 's/[[:space:]]*#.*$//' \
+		| sed 's/\r$//' \
+		| sed 's/[[:space:]]*$//' \
+		| sed '/^$/d'
+	)
+	if [[ ${#TOPICS[@]} -eq 0 ]]; then
+		echo "No topics found in ${TOPICS_FILE}." >&2
+		return 1
+	fi
+}
 
 topic_exists() {
 	local topic="$1"
@@ -110,9 +115,6 @@ topic_candidates() {
 dedupe_lines() {
 	awk '!seen[$0]++'
 }
-
-RESOLVED_TOPICS=()
-ACTIVE_TOPICS=()
 
 refresh_topic_resolution() {
 	local requested
@@ -193,51 +195,70 @@ wait_for_active_topics() {
 	done
 }
 
-stop_requested=false
 terminate() {
 	stop_requested=true
 	if [[ -n ${record_pid:-} ]]; then
 		kill -INT "${record_pid}" 2>/dev/null || true
 	fi
 }
-trap terminate SIGINT SIGTERM
 
-while [[ "${stop_requested}" == false ]]; do
-	timestamp=$(date -u +%Y%m%d-%H%M%S)
-	prefix="${BAG_OUTPUT_DIR}/recording_${timestamp}"
+run_recorder_loop() {
+	local timestamp
+	local prefix
+	local max_bag_bytes
+	local exit_code
+	local -a args
 
-	max_bag_bytes=$((MAX_BAG_MB * 1024 * 1024))
-	if [[ ${max_bag_bytes} -lt 86016 ]]; then
-		echo "MAX_BAG_MB too small (${MAX_BAG_MB}); must be >= 1 MB" >&2
-		exit 1
-	fi
+	while [[ "${stop_requested}" == false ]]; do
+		timestamp=$(date -u +%Y%m%d-%H%M%S)
+		prefix="${BAG_OUTPUT_DIR}/recording_${timestamp}"
 
-	if ! wait_for_active_topics; then
-		echo "[bag_recorder] Skipping recorder start and retrying in ${RESTART_DELAY_S}s"
+		max_bag_bytes=$((MAX_BAG_MB * 1024 * 1024))
+		if [[ ${max_bag_bytes} -lt 86016 ]]; then
+			echo "MAX_BAG_MB too small (${MAX_BAG_MB}); must be >= 1 MB" >&2
+			return 1
+		fi
+
+		if ! wait_for_active_topics; then
+			echo "[bag_recorder] Skipping recorder start and retrying in ${RESTART_DELAY_S}s"
+			sleep "${RESTART_DELAY_S}"
+			continue
+		fi
+
+		args=(ros2 bag record --output "${prefix}" --max-bag-size "${max_bag_bytes}" --compression-mode file --compression-format zstd)
+		if [[ "${MAX_BAG_DURATION_S}" != "0" ]]; then
+			args+=(--max-bag-duration "${MAX_BAG_DURATION_S}")
+		fi
+		args+=("${RESOLVED_TOPICS[@]}")
+
+		echo "Starting ros2 bag record -> ${prefix} (max ${MAX_BAG_MB} MB per bag)"
+		"${args[@]}" &
+		record_pid=$!
+		set +e
+		wait "${record_pid}"
+		exit_code=$?
+		set -e
+
+		if [[ "${stop_requested}" == true ]]; then
+			break
+		fi
+
+		echo "Recorder exited with code ${exit_code}; restarting in ${RESTART_DELAY_S}s"
 		sleep "${RESTART_DELAY_S}"
-		continue
-	fi
+	done
 
-	args=(ros2 bag record --output "${prefix}" --max-bag-size "${max_bag_bytes}" --compression-mode file --compression-format zstd)
-	if [[ "${MAX_BAG_DURATION_S}" != "0" ]]; then
-		args+=(--max-bag-duration "${MAX_BAG_DURATION_S}")
-	fi
-	args+=("${RESOLVED_TOPICS[@]}")
+	echo "Recorder stopped."
+}
 
-	echo "Starting ros2 bag record -> ${prefix} (max ${MAX_BAG_MB} MB per bag)"
-	"${args[@]}" &
-	record_pid=$!
-	set +e
-	wait "${record_pid}"
-	exit_code=$?
-	set -e
+main() {
+	source_ros_environment
+	normalize_rmw
+	load_topics_file
+	mkdir -p "${BAG_OUTPUT_DIR}"
+	trap terminate SIGINT SIGTERM
+	run_recorder_loop
+}
 
-	if [[ "${stop_requested}" == true ]]; then
-		break
-	fi
-
-	echo "Recorder exited with code ${exit_code}; restarting in ${RESTART_DELAY_S}s"
-	sleep "${RESTART_DELAY_S}"
-done
-
-echo "Recorder stopped."
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+	main "$@"
+fi
