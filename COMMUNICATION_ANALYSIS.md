@@ -1,153 +1,157 @@
-# Three-Device Communication Analysis & Integration Plan
+# Current Communication Analysis
 
-## Current System Architecture
+This document describes the communication model that matches the current
+implementation in this repository.
 
-```
-Raspberry Pi 4 (Linux)
-├── ROS2 Containers (Docker)
-│   ├── slam_cont (SLAM + mapping)
-│   ├── nav_cont (navigation planning)
-│   ├── sensor_fusion_cont (IMU processing)
-│   └── rosbridge_cont (web interface)
-│
-├── micro-ROS Agent (native/container)
-│   └── USB Serial ↔ Arduino R4 WiFi
-│
-└── Physical Hardware
-    ├── Arduino R4 WiFi (Main Controller)
-    │   ├── USB → Raspberry Pi (micro-ROS)
-    │   ├── I2C → Arduino Nano ESP32 (encoder data)
-    │   ├── PWM → Motor drivers (BTS7960)
-    │   └── I2C → LSM6DS IMU
-    │
-    └── Arduino Nano ESP32 (Encoder Processor)
-        ├── I2C → Arduino R4 WiFi (odometry)
-        ├── I2C → AS5600 Left encoder
-        └── I2C → AS5600 Right encoder
-```
+## Current Architecture
 
-## Communication Flow Analysis
+```text
+Raspberry Pi / Docker stack
+  |
+  +-- robot_bridge (custom binary protocol over USB serial)
+  |      |
+  |      +-- /cmd_vel      -> Nano ESP32
+  |      +-- /wheel_odom   <- Nano ESP32
+  |      +-- /imu/arduino  <- Nano ESP32
+  |      +-- /robot_status <- Nano ESP32
+  |
+  +-- realsense_cont -> sensor_fusion_cont -> /imu/data
+  +-- laser_driver -> /scan
+  +-- slam_cont / nav_cont consume ROS topics
 
-### 1. Raspberry Pi ↔ Arduino R4 WiFi (USB Serial)
-
-**Protocol:** micro-ROS over USB CDC
-**Topics:**
-- `→ /cmd_vel` (geometry_msgs/Twist) - Movement commands
-- `← /imu/data_raw` (sensor_msgs/Imu) - IMU data
-- `← /odom` (nav_msgs/Odometry) - Robot position
-
-**Potential Issues:**
-✅ **COMPATIBLE** - micro-ROS agent handles USB serial communication
-❌ **MISSING:** Docker container setup for micro-ROS agent
-❌ **MISSING:** USB device passthrough configuration
-
-### 2. Arduino R4 WiFi ↔ Arduino Nano ESP32 (I2C)
-
-**Protocol:** I2C with JSON payload
-**Address:** 0x42 (Nano ESP32 as slave)
-**Data Format:**
-```json
-{
-  "x": 1.234, "y": 0.567, "theta": 0.789,
-  "vx": 0.12, "vth": 0.05, "valid": true
-}
+Physical robot:
+  Raspberry Pi <-> USB <-> Nano ESP32
+                           |
+                           +-- I2C -> TCA9548A -> AS5600 LEFT
+                           |                  \-> AS5600 RIGHT
+                           |
+                           +-- GPIO -> DRV8833 -> LEFT / RIGHT motor
 ```
 
-**Potential Issues:**
-✅ **COMPATIBLE** - Both devices support I2C
-⚠️ **CONCERN:** JSON parsing on memory-constrained R4 WiFi
-⚠️ **CONCERN:** I2C timing conflicts with micro-ROS processing
+## Active Communication Layers
 
-### 3. Arduino Nano ESP32 ↔ AS5600 Encoders (I2C)
+### 1. Raspberry Pi <-> Nano ESP32
 
-**Protocol:** I2C register read
-**Addresses:** 0x36 (both encoders on different buses)
-**Frequency:** 50Hz per encoder
+Current active transport:
 
-**Potential Issues:**
-✅ **COMPATIBLE** - Nano ESP32 has dual I2C buses
-✅ **TESTED** - Code includes wrap-around detection and error handling
+- USB serial
+- custom binary protocol
+- `115200` baud
+- runtime stack default device: `/dev/ttyACM0`
 
-## Critical Missing Components
+Active bridge container:
 
-### 1. Docker Integration for micro-ROS Agent
+- `robot_bridge` in `../stack/docker-compose.yaml`
 
-**Problem:** No container setup for micro-ROS agent
-**Solution:** Add micro-ROS agent service to docker-compose
+Published ROS topics from the bridge:
 
-### 2. USB Device Access in Docker
+- `/wheel_odom`
+- `/imu/arduino`
+- `/robot_status`
 
-**Problem:** Containers need access to /dev/ttyACM0
-**Solution:** Device mapping and privileged container access
+Subscribed ROS topics:
 
-### 3. Container Orchestration
+- `/cmd_vel`
 
-**Problem:** No docker-compose.yaml found in project
-**Solution:** Create complete container orchestration
+### 2. Nano ESP32 internal sensor bus
 
-## Compatibility Assessment
+Current sensor bus on Nano:
 
-### ✅ **WILL WORK:**
-1. **Arduino R4 WiFi ↔ Nano ESP32:** I2C communication is solid
-2. **Nano ESP32 ↔ Encoders:** Dual I2C buses handle dual AS5600
-3. **ROS2 Topic Flow:** All message types are compatible
-4. **Hardware Interfaces:** Pin assignments don't conflict
+- `I2C` on `A4/D21` and `A5/D22`
+- `TCA9548A` at `0x70`
+- `AS5600 LEFT` on `CH0`
+- `AS5600 RIGHT` on `CH1`
 
-### ⚠️ **POTENTIAL ISSUES:**
-1. **Memory Pressure on R4 WiFi:**
-   - micro-ROS + JSON + IMU + Motor control = ~28KB RAM
-   - R4 WiFi has 32KB total → 4KB margin (tight but feasible)
+The Nano firmware reads both encoders, unwraps their angle, and computes wheel
+odometry locally before sending it to the bridge.
 
-2. **I2C Timing Conflicts:**
-   - micro-ROS executor runs at 1ms intervals
-   - I2C odometry requests every 100ms
-   - Could cause communication delays
+### 3. Nano ESP32 direct motor control
 
-3. **USB Serial Reliability:**
-   - micro-ROS over USB can be unstable
-   - Need proper container restart policies
+Current motor control path:
 
-### ❌ **MAJOR MISSING PIECES:**
+- `D5  -> DRV8833 AIN1`
+- `D6  -> DRV8833 AIN2`
+- `D9  -> DRV8833 BIN1`
+- `D10 -> DRV8833 BIN2`
 
-1. **Container Infrastructure:**
-   - No docker-compose.yaml
-   - No micro-ROS agent container
-   - No USB device passthrough
+There is no active `Nano <-> UNO` link in the current implementation.
 
-2. **Integration Testing:**
-   - No end-to-end communication test
-   - No fallback behavior for failed I2C
-   - No container health checks
+## IMU Data Paths
 
-## Immediate Action Plan
+There are two different IMU paths in the project documentation and codebase.
+Only one is the default runtime path today.
 
-### Phase 1: Create Missing Container Infrastructure
-1. Create docker-compose.yaml with all services
-2. Add micro-ROS agent container with USB passthrough
-3. Configure container networking and volumes
+### Default runtime path
 
-### Phase 2: Test Communication Layers
-1. Test Nano ESP32 encoder processor standalone
-2. Test R4 WiFi with mock I2C responses  
-3. Test micro-ROS agent USB communication
-4. Test complete chain: ROS2 → R4 WiFi → Nano ESP32
+- `RealSense D455 -> sensor_fusion_cont -> /imu/data`
 
-### Phase 3: Integration & Error Handling
-1. Add I2C error recovery in R4 WiFi code
-2. Add USB reconnection logic in micro-ROS agent
-3. Implement graceful degradation (continue without encoders)
-4. Add system health monitoring
+This is the path configured by default in `../stack/docker-compose.yaml`.
 
-## Predicted Success Rate
+### Legacy / debug path
 
-**Current State:** 60% likely to work
-- Hardware interfaces are compatible
-- Communication protocols are sound
-- Major missing pieces in software integration
+- `Nano ESP32 -> robot_bridge -> /imu/arduino`
 
-**With Missing Components:** 85% likely to work
-- Docker integration is straightforward
-- USB passthrough is well-documented
-- Main risk is memory constraints on R4 WiFi
+This path is still available for debugging and recording, but it is not the
+default IMU source for the stack.
 
-**Recommendation:** Implement missing container infrastructure first, then test layer by layer.
+## Known Mismatches Still Present In The Project
+
+These are important when reading older documents and configs.
+
+### `/wheel_odom` vs `/odom`
+
+The robot serial bridge currently publishes:
+
+- `/wheel_odom`
+
+Some legacy documents, scripts, and configs still refer to:
+
+- `/odom`
+
+Examples:
+
+- healthcheck and bag recorder already tolerate both names
+- some stack configs still expect `/odom`
+
+For documentation purposes, the current bridge output should be treated as
+`/wheel_odom`.
+
+### Legacy Arduino IMU listener
+
+The project still contains `sensor_fusion_cont/arduino_listener.py`, which
+expects line-based text IMU data such as `IMU,...` or `RAW,...`.
+
+The current Nano firmware in this repository uses a binary packet protocol for
+the bridge, so that legacy listener is not the primary path for the current
+Nano implementation.
+
+### Older UNO / micro-ROS documents
+
+Any document that still mentions:
+
+- `UNO R4` as the active motor controller
+- `Nano <-> UNO` UART as the main robot architecture
+- `BTS7960 / IBT-2`
+- `micro-ROS agent`
+
+should be treated as historical unless explicitly marked otherwise.
+
+## Current Recommended Integration Model
+
+The simplest and most consistent current setup is:
+
+1. Raspberry Pi runs the Docker stack.
+2. `robot_bridge` talks to the Nano over USB serial.
+3. Nano reads encoders and optional onboard IMU.
+4. Nano directly drives the `DRV8833`.
+5. RealSense remains the default source for `/imu/data`.
+
+## Practical Checklist
+
+- Use `Nano ESP32` as the only robot microcontroller.
+- Connect the Pi to Nano via USB.
+- Connect `DRV8833` directly to Nano `D5/D6/D9/D10`.
+- Connect both `AS5600` sensors through `TCA9548A`.
+- Treat `/wheel_odom` as the current odometry output from the robot bridge.
+- Treat `/imu/arduino` as a legacy or debug stream unless you intentionally
+  switch the stack away from RealSense IMU.

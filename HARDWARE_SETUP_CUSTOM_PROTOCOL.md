@@ -1,266 +1,259 @@
 # Custom Serial Protocol - Hardware Setup Guide
 
-## Overview
-Custom serial protocol system for reliable robot communication without micro-ROS complexity.
+This guide reflects the current `Nano-only` hardware architecture.
 
-## Architecture
+## Overview
+
+The current robot controller architecture is:
+
+```text
+Host PC / Raspberry Pi (ROS 2)
+    <- custom binary protocol over USB serial ->
+Arduino Nano ESP32
+    |- I2C -> TCA9548A -> AS5600 LEFT
+    |- I2C -> TCA9548A -> AS5600 RIGHT
+    \- GPIO -> DRV8833 -> LEFT and RIGHT motors
 ```
-Host PC (ROS 2) ↔ USB ↔ Nano ESP32 ↔ UART ↔ UNO R4 WiFi
-                     ↓ I2C sensors      ↓ Motors+LEDs
-                   IMU + Encoders    BTS7960 + Matrix
-```
+
+There is no active `UNO R4` motor-controller stage in this version.
 
 ## Required Hardware
 
 ### Controllers
-- **Arduino Nano ESP32** (ESP32-S3, ~320KB SRAM) - Main controller
-- **Arduino UNO R4 WiFi** (RA4M1, 32KB SRAM) - Motor controller
 
-### Sensors  
-- **LSM6DSO32** - 6-axis IMU (I2C)
-- **2x AS5600** - Magnetic encoders (I2C)
-- **TCA9548A** - I2C multiplexer (resolves AS5600 address conflict)
+- `Arduino Nano ESP32` - single robot controller
+- `Raspberry Pi` or host PC running the ROS 2 stack
+
+### Sensors
+
+- `TCA9548A` I2C multiplexer
+- `2x AS5600` magnetic rotary encoder
+- optional `LSM6DSO32` IMU on the Nano I2C bus
 
 ### Actuators
-- **2x IBT-2/BTS7960** - Motor driver modules
-- **2x DC Motors** - Geared motors with magnets for encoders
-- **LED Matrix** - Built-in UNO R4 8x12 matrix
 
-## Wiring Connections
+- `DRV8833` dual H-bridge motor driver
+- `2x DC geared motors`
 
-### Nano ESP32 ↔ Host PC
-```
-Nano ESP32 USB-C ←→ Host PC USB-A/C
-- Protocol: Custom binary packets over USB serial
-- Baud rate: 115200
-- No micro-ROS agent needed!
-```
+### Power
 
-### Nano ESP32 ↔ UNO R4 Communication
-```
-Nano ESP32    →    UNO R4
-   TX1 (D17)  →    RX (D0)
-   RX1 (D18)  →    TX (D1)  
-   GND        →    GND
+- USB from Raspberry Pi to Nano ESP32
+- separate motor supply for `DRV8833`
+
+## Wiring Summary
+
+### Raspberry Pi <-> Nano ESP32
+
+```text
+Nano ESP32 USB-C <-> Raspberry Pi USB
+- custom binary protocol
+- 115200 baud
+- also provides Nano logic power
 ```
 
-### Nano ESP32 ↔ I2C Sensors
-```
-Nano ESP32    →    TCA9548A Multiplexer
-   SDA (D21)  →    SDA
-   SCL (D22)  →    SCL
-   3.3V       →    VCC
-   GND        →    GND
+### Nano ESP32 <-> TCA9548A
 
-TCA9548A Ch0  →    LSM6DSO32 IMU
-   SDA        →    SDA  
-   SCL        →    SCL
-   3.3V       →    VCC/VIN
-   GND        →    GND
+```text
+Nano ESP32    ->    TCA9548A
+ A4 / D21 SDA ->    SDA
+ A5 / D22 SCL ->    SCL
+ 3V3          ->    VCC
+ GND          ->    GND
 
-TCA9548A Ch1  →    AS5600 Encoder #1 (Left)
-   SDA        →    SDA
-   SCL        →    SCL  
-   3.3V       →    VCC
-   GND        →    GND
-
-TCA9548A Ch2  →    AS5600 Encoder #2 (Right)
-   SDA        →    SDA
-   SCL        →    SCL
-   3.3V       →    VCC  
-   GND        →    GND
+TCA9548A address:
+ A0 -> GND
+ A1 -> GND
+ A2 -> GND
+ address = 0x70
 ```
 
-### UNO R4 ↔ Motor Drivers
-```
-UNO R4        →    IBT-2 Module #1 (Left Motor)
-   D2         →    L_PWM
-   D3         →    R_PWM  
-   D4         →    L_EN
-   D5         →    R_EN
-   5V         →    VCC
-   GND        →    GND
+### TCA9548A <-> AS5600 encoders
 
-UNO R4        →    IBT-2 Module #2 (Right Motor)  
-   D6         →    L_PWM
-   D7         →    R_PWM
-   D8         →    L_EN
-   D9         →    R_EN
-   5V         →    VCC (shared)
-   GND        →    GND (shared)
+```text
+TCA9548A CH0 -> AS5600 LEFT
+ SDA/SCL     -> SDA/SCL
 
-IBT-2 #1      →    Left DC Motor
-   M+         →    Motor positive
-   M-         →    Motor negative
+TCA9548A CH1 -> AS5600 RIGHT
+ SDA/SCL     -> SDA/SCL
 
-IBT-2 #2      →    Right DC Motor
-   M+         →    Motor positive  
-   M-         →    Motor negative
+Both AS5600 boards:
+ VCC -> Nano 3V3
+ GND -> common ground
 ```
 
-### Power Supply
-```
-12V Power Supply:
-   +12V  →  IBT-2 Motor Supply (both modules)
-   GND   →  Common ground
+Current firmware channel assignment:
 
-USB Power:
-   Host PC USB  →  Nano ESP32 (powers Nano + sensors)
-   USB/Barrel   →  UNO R4 (powers UNO + logic)
+- `CH0` = left encoder
+- `CH1` = right encoder
+
+### Nano ESP32 <-> DRV8833
+
+```text
+Nano ESP32 -> DRV8833
+ D5         -> AIN1
+ D6         -> AIN2
+ D9         -> BIN1
+ D10        -> BIN2
 ```
+
+### DRV8833 <-> Motors
+
+```text
+DRV8833 -> LEFT motor
+ AOUT1  -> motor wire 1
+ AOUT2  -> motor wire 2
+
+DRV8833 -> RIGHT motor
+ BOUT1  -> motor wire 1
+ BOUT2  -> motor wire 2
+```
+
+If a wheel spins in the wrong direction, swap the two motor wires for that
+side.
+
+### Power
+
+```text
+External motor supply:
+ + -> DRV8833 VM / VIN
+ - -> DRV8833 GND
+
+Nano power:
+ Raspberry Pi USB -> Nano ESP32
+```
+
+Important:
+
+- all grounds must be common
+- `DRV8833` motor supply does not come from the Raspberry Pi
+- a buck converter is not required if Nano is powered over USB and the motor
+  driver has its own external supply
 
 ## Protocol Packets
 
-### 1. SensorPacket (Nano ESP32 → Host PC)
-```
-64 bytes total:
-- Header: 0xDEADBEEF
-- Version: 1
-- Sequence number
-- Flags (sensor status)
-- Timestamp (ms)
-- IMU: accel_xyz, gyro_xyz (6 floats)
-- Encoders: left_angle, right_angle (2 floats)  
-- Odometry: x, y, yaw (3 floats)
-- Battery voltage (mV)
-- Temperature (°C)
-- CRC-16/CCITT
-- Tail: 0xCAFEBABE
+### CommandPacket
 
-Rate: 20 Hz
-```
+Direction:
 
-### 2. CommandPacket (Host PC → Nano ESP32 → UNO R4)
-```
-20 bytes total:
-- Header: 0xFEEDFACE
-- Version: 1
-- Sequence number  
-- Timeout (ms)
-- Linear velocity X (m/s)
-- Angular velocity Z (rad/s)
-- CRC-16/CCITT
-- Tail: 0xDEADC0DE
+- `Host -> Nano ESP32`
 
-Rate: On cmd_vel updates
-```
+Purpose:
 
-### 3. StatusPacket (Nano ESP32 → Host PC)
-```
-32 bytes total:
-- Header: 0xABCDEF01
-- Diagnostic info
-- Error codes
-- System health
-- CRC-16/CCITT
-- Tail: 0x12345678
+- carries `cmd_vel` style motion commands
 
-Rate: 1 Hz
-```
+Size:
+
+- `22 bytes`
+
+### SensorPacket
+
+Direction:
+
+- `Nano ESP32 -> Host`
+
+Contents:
+
+- IMU data
+- left/right encoder angles
+- odometry pose
+- basic health fields
+
+Size:
+
+- `66 bytes`
+
+Rate:
+
+- `20 Hz`
+
+### StatusPacket
+
+Direction:
+
+- `Nano ESP32 -> Host`
+
+Purpose:
+
+- periodic diagnostics and health summary
+
+Size:
+
+- `32 bytes`
+
+Rate:
+
+- every `2000 ms` in the current firmware
 
 ## Software Setup
 
-### 1. Arduino IDE Setup
+### 1. Arduino IDE
+
+Install:
+
+- `ESP32 Arduino Core`
+- `Adafruit LSM6DS`
+- `Adafruit BusIO`
+
+### 2. Upload firmware
+
+Upload:
+
+- `devastator_sensors_nano_esp32/devastator_sensors_nano_esp32.ino`
+
+Board:
+
+- `Arduino Nano ESP32`
+
+### 3. ROS bridge
+
+Typical runtime stack configuration:
+
+- `robot_bridge` container
+- serial device: `/dev/ttyACM0`
+- baud: `115200`
+
+### 4. Verify topics
+
 ```bash
-# Install boards:
-- ESP32 Arduino Core (for Nano ESP32)
-- Arduino UNO R4 boards
-
-# Libraries needed:
-- Adafruit LSM6DSO32 (IMU)
-- ArduinoGraphics (LED matrix)
-- Arduino_LED_Matrix (UNO R4)
-```
-
-### 2. Upload Firmware
-```bash
-# Upload to Nano ESP32:
-File → Open → devastator_sensors_nano/devastator_sensors_nano.ino
-Board: "Arduino Nano ESP32"
-Upload
-
-# Upload to UNO R4:
-File → Open → devastator_controler_r4/devastator_controler_r4.ino  
-Board: "Arduino UNO R4 WiFi"
-Upload
-```
-
-### 3. ROS 2 Bridge Setup
-```bash
-# Install Python dependencies
-pip install -r bridge_requirements.txt
-
-# Run bridge (Linux example)
-python3 robot_serial_bridge.py --port /dev/ttyUSB0 --baud 115200
-
-# Windows example
-python robot_serial_bridge.py --port COM3 --baud 115200
-```
-
-### 4. Test ROS Topics
-```bash
-# View sensor data
-ros2 topic echo /imu/data
 ros2 topic echo /wheel_odom
+ros2 topic echo /imu/arduino
 ros2 topic echo /robot_status
-
-# Send movement commands  
 ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.1}}"
 ```
 
-## Debugging Features
+## Notes About IMU Usage
 
-### Serial Monitor (Arduino IDE)
-- Connect to Nano ESP32
-- View sensor readings, packet stats, errors
-- Debug I2C communication issues
+The current stack defaults to:
 
-### ROS Bridge Logging
-- CRC validation errors
-- Packet sync issues  
-- Serial connection status
-- Communication statistics
+- `RealSense -> sensor_fusion_cont -> /imu/data`
 
-### LED Matrix Status (UNO R4)
-- Movement patterns show cmd_vel activity
-- Error patterns indicate communication problems  
-- Heartbeat shows system alive
+The Nano IMU stream is still useful for:
 
-## Advantages vs micro-ROS
-
-✅ **Stability**: No XRCE-DDS transport issues  
-✅ **Memory**: 32KB UNO R4 RAM sufficient  
-✅ **Debugging**: Hex dump analysis, clear error codes  
-✅ **Latency**: Direct serial, no middleware overhead  
-✅ **Reliability**: CRC validation, timeout handling  
-✅ **Simplicity**: Standard Arduino Serial, no agents
+- debugging
+- bag recording
+- fallback experiments
 
 ## Troubleshooting
 
-### Serial Connection Issues
-```bash
-# Linux: Check device permissions
-sudo usermod -a -G dialout $USER
-ls -l /dev/ttyUSB*
+### No serial bridge data
 
-# Windows: Check COM port in Device Manager
-# Verify cable supports data (not just power)
-```
+- confirm the Nano appears as `/dev/ttyACM0`
+- confirm the bridge is using `115200`
+- confirm the USB cable supports data, not just power
 
-### I2C Sensor Issues
-```
-# Check TCA9548A multiplexer channels:
-- LSM6DSO32 should appear on channel 0
-- AS5600 #1 should appear on channel 1  
-- AS5600 #2 should appear on channel 2
-```
+### No encoder movement
 
-### Motor Control Issues
-```
-# Verify IBT-2 connections:
-- Check PWM signal generation (oscilloscope)
-- Verify enable pins are HIGH
-- Check 12V motor supply voltage
-```
+- confirm `TCA9548A` is at `0x70`
+- confirm left encoder is on `CH0`
+- confirm right encoder is on `CH1`
+- confirm the magnet is centered above the AS5600
 
-This custom protocol provides the same functionality as micro-ROS but with much better reliability and debugging capabilities!
+### Motors do not move
+
+- confirm external motor power is present on `DRV8833 VM`
+- confirm `nSLEEP` is high if your breakout requires it
+- confirm Nano pins `D5/D6/D9/D10` are wired correctly
+
+### Robot drives opposite direction
+
+- swap the two wires on the affected motor

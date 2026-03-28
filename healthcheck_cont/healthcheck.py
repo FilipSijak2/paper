@@ -28,7 +28,7 @@ DEFAULT_REQUIRED_CONTAINERS = [
 
 DEFAULT_EXPECTED_TOPICS = [
     "/scan",
-    "/odom",
+    "/wheel_odom",
     "/tf",
     "/tf_static",
     "/imu/data",

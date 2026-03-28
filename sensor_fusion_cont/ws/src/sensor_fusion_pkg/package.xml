@@ -2,7 +2,7 @@
 <package format="3">
   <name>sensor_fusion_pkg</name>
   <version>0.1.0</version>
-  <description>Arduino IMU listener and sensor fusion scaffolding.</description>
+  <description>Bridge-relayed IMU listener and sensor fusion runtime.</description>
   <maintainer email="example@example.com">Maintainer</maintainer>
   <license>MIT</license>
   <!-- Python package: use ament_python instead of ament_cmake -->
@@ -11,8 +11,6 @@
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>diagnostic_msgs</exec_depend>
-  <!-- Optional: declare dependencies explicitly for clarity -->
-  <exec_depend>pyserial</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
   <export>
     <!-- Explicitly declare this is an ament_python (pure Python) package -->

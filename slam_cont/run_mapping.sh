@@ -161,7 +161,7 @@ if [[ -n "$TOPICS_FILE" ]]; then
   TOPICS=$(grep -Ev '^#|^$' "$TOPICS_FILE" | xargs || true)
 else
   # Default essential topics for slam_toolbox map reproduction (adjust as needed)
-  TOPICS="/tf /tf_static /odom /scan /imu /robot_description /clock"
+  TOPICS="/tf /tf_static /wheel_odom /scan /imu/data /robot_description /clock"
 fi
 info "Topics: $TOPICS"
 log "Root: $MAP_ROOT | session=$SESSION_ID (incremental=$INCREMENTAL_NAMES prefix=$NAME_PREFIX index=${SESSION_INDEX:-N/A})"

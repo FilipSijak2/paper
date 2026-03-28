@@ -1,9 +1,12 @@
 # Diplomski Rad
 
-Ovaj repozitorij sadrzi glavne softverske komponente robotskog sustava temeljenog na ROS 2, Dockeru i vise specijaliziranih servisa. Repo pokriva:
+Ovaj repozitorij sadrzi glavne softverske komponente robotskog sustava temeljenog
+na ROS 2, Dockeru i vise specijaliziranih servisa.
+
+Repo pokriva:
 
 - prikupljanje podataka sa senzora
-- komunikaciju s mikrokontrolerima
+- komunikaciju s mikrokontrolerom robota
 - SLAM i izradu mapa
 - autonomnu navigaciju
 - AI obradu slike
@@ -11,24 +14,40 @@ Ovaj repozitorij sadrzi glavne softverske komponente robotskog sustava temeljeno
 - pohranu podataka u PostgreSQL bazu
 - vizualizaciju preko rosbridge i Foxglove bridge
 
-Operativni `docker-compose` stack je tipicno u sibling direktoriju `../stack/`, dok ovaj repo sadrzi imageove, skripte i aplikacijsku logiku.
+Operativni `docker-compose` stack tipicno zivi u sibling direktoriju
+`../stack/`, dok ovaj repo sadrzi imageove, skripte, firmware i dokumentaciju.
+
+## Trenutna hardverska arhitektura
+
+Trenutna podrzana robot arhitektura je:
+
+```text
+Raspberry Pi -> USB -> Nano ESP32 -> DRV8833 -> motori
+                           |
+                           \-> TCA9548A -> AS5600 LEFT / RIGHT
+```
+
+Napomena:
+
+- `UNO R4` vise nije dio glavne implementacije
+- `DRV8833` je trenutni motor driver
+- `robot_bridge` tipicno koristi `/dev/ttyACM0`
 
 ## Glavne komponente
 
 | Komponenta | Uloga | Najvazniji ulazi / izlazi |
 | --- | --- | --- |
-| `bridge_cont` | Serijski most prema mikrokontroleru robota | Publisha `/imu/arduino`, `/wheel_odom`, `/robot_status`; subscriba `/cmd_vel` |
+| `bridge_cont` | Serijski most prema Nano ESP32 | Publisha `/imu/arduino`, `/wheel_odom`, `/robot_status`; subscriba `/cmd_vel` |
 | `laser_driver_cont` | ROS 2 driver za RPLidar | Publisha `/scan` |
-| `realsense_cont` | Intel RealSense ROS 2 driver | Objavljuje RGB, depth, camera info i point cloud topice |
-| `slam_cont` | `slam_toolbox`, mapiranje, save/export mape, upis u bazu | Koristi `/scan`, `/tf`, `/odom`, `/imu`; publisha `/map` |
-| `nav_cont` | Nav2, prosljedivanje goalova i `cmd_vel` mux | Prima `/move_base_simple/goal`; publisha `/cmd_vel_auto` i anomaly topice |
+| `realsense_cont` | Intel RealSense ROS 2 driver | Objavljuje RGB, depth, camera info i IMU topice |
+| `slam_cont` | `slam_toolbox`, mapiranje, save/export mape, upis u bazu | Koristi `/scan`, `/tf`, odometriju i IMU; publisha `/map` |
+| `nav_cont` | Nav2, prosljedivanje goalova i `cmd_vel` mux | Prima `/move_base_simple/goal`; publisha `/cmd_vel_auto` i finalni `/cmd_vel` |
 | `bag_recorder_cont` | Kontinuirano snimanje ROS 2 bagova | Snima topice iz `TOPICS_FILE` u `BAG_OUTPUT_DIR` |
 | `db_cont` | PostgreSQL/PostGIS baza | Sprema mape, slike, waypointove i sesije |
 | `rosbridge_cont` | ROS 2 -> WebSocket za web klijente | Tipicno port `9090` |
 | `foxglove_bridge_cont` | ROS 2 bridge za Foxglove Studio | Tipicno port `8765` |
 | `ai_kit_cont` | Hailo AI obrada slike ili passthrough overlay | Prima RealSense sliku; publisha AI overlay topice |
-| `sensor_fusion_cont` | ROS 2 paket za IMU ingest i filtriranje | Po defaultu filtrira RealSense IMU u `/imu/data`; u Arduino modu publisha `imu/data_raw`, `imu/raw_line`, `/diagnostics` |
-| `camera_cont` | UDP video ulaz i objava u ROS 2 | Publisha `/camera/image_raw/compressed` i `/camera/camera_info` |
+| `sensor_fusion_cont` | Filtriranje IMU podataka | Po defaultu pretvara RealSense IMU u `/imu/data`; Arduino IMU ostaje debug/fallback stream |
 | `healthcheck_cont` | Provjera stanja kontejnera, portova, uredaja i ROS grafa | Pise health report u logove |
 
 ## Arhitektura ukratko
@@ -36,19 +55,19 @@ Operativni `docker-compose` stack je tipicno u sibling direktoriju `../stack/`, 
 ```text
 Lidar --------> laser_driver_cont ----\
                                        \
-RealSense ----> realsense_cont ---------> slam_cont ------> /map
-                                         /       \
-Microcontroller -> bridge_cont ---------/         \--> db_cont
-            |               ^                      \--> bag_recorder_cont
-            |               |
-            +----- /cmd_vel-+
+RealSense ----> realsense_cont ---------> sensor_fusion_cont --> /imu/data
+                                         \
+Microcontroller -> bridge_cont -----------> /wheel_odom, /imu/arduino, /robot_status
+            ^               |
+            |               +<------------------------------ /cmd_vel
+            |
+            +-- Nano ESP32 -> DRV8833 -> motori
 
-nav_cont <----- /map, /tf, /odom, /scan
+nav_cont <----- /map, /tf, odometrija, /scan
    |
    +--> /cmd_vel_auto --> cmd_vel_mux --> /cmd_vel --> bridge_cont
 
-rosbridge_cont / foxglove_bridge_cont --> RViz / Foxglove / web klijenti
-ai_kit_cont <----- RealSense slike -----> AI overlay topici
+slam_cont <----- /scan, /tf, odometrija, /imu/data
 ```
 
 ## Tipicni scenariji rada
@@ -60,7 +79,7 @@ Uobicajeni redoslijed je:
 1. Buildati ili preuzeti imageove iz ovog repoa.
 2. Pokrenuti runtime stack iz `../stack/`.
 3. Provjeriti da su aktivni barem `bridge_cont`, `laser_driver_cont` i `slam_cont`.
-4. Po potrebi dodati `realsense_cont`, `nav_cont`, `db_cont`, `ai_kit_cont` i ostale servise.
+4. Provjeriti da je Nano vidljiv kao `/dev/ttyACM0`.
 
 Healthcheck primjer:
 
@@ -70,29 +89,20 @@ docker exec -it healthcheck_cont /usr/local/bin/healthcheck.py
 
 ### Mapiranje
 
-Glavni alat za mapiranje je `slam_cont/run_mapping.sh`. Skripta:
-
-- pokrece ili reuse-a `slam_toolbox`
-- pokrece `ros2 bag record`
-- tijekom voznje objavljuje live mapu na `/map`
-- na `Ctrl+C` sprema live mapu i pokusava occupancy export
-- po potrebi upisuje rezultat u bazu
-
-Primjer:
-
-```bash
-docker exec -it slam_cont bash
-bash /app/run_mapping.sh --name mapa1
-```
+Glavni alat za mapiranje je `slam_cont/run_mapping.sh`.
 
 Tijekom mapiranja korisno je pratiti:
 
 - `/map`
 - `/scan`
 - `/tf`
-- `/odom`
+- `/wheel_odom`
+- `/imu/data`
 
-Napomena: `/map` moze postojati i prije finalnog spremanja. To je live mapa u memoriji. Na disk se sprema tek u save/export koraku.
+Napomena:
+
+- bridge trenutno publisha `/wheel_odom`
+- dio starijih konfiguracija i skripti jos uvijek koristi `/odom` kao legacy naziv
 
 ### Navigacija
 
@@ -103,14 +113,11 @@ Napomena: `/map` moze postojati i prije finalnog spremanja. To je live mapa u me
 - `cmd_vel_mux.py`
 - opcionalno joystick i teleop
 
-Ako prava mapa nije zadana, skripta moze generirati placeholder mapu da servisi ostanu aktivni. Za stvarnu voznju treba koristiti stvarni `map.yaml`.
-
 ### AI obrada slike
 
 `ai_kit_cont` je namijenjen Raspberry Pi AI Kitu s Hailo akceleratorom:
 
-- Hailo runtime se ocekuje na hostu, nije bake-an u image
-- kontejner ceka RealSense image topic prije starta noda
+- Hailo runtime se ocekuje na hostu
 - bez `HAILO_GST_PIPELINE` radi u passthrough modu
 - s pipelineom objavljuje AI overlay topice
 
@@ -122,8 +129,6 @@ Ako zelis neovisno snimati topice:
 docker exec -it bag_recorder_cont /app/bag_recorder.sh
 ```
 
-`TOPICS_FILE` se u praksi cesto mounta iz `../stack/config/recorded_topics.yaml`.
-
 ## Najvazniji ROS topici i servisi
 
 Topici:
@@ -131,31 +136,18 @@ Topici:
 - `/scan`
 - `/tf`
 - `/tf_static`
-- `/odom`
+- `/wheel_odom`
+- `/imu/data`
+- `/imu/arduino`
 - `/map`
 - `/cmd_vel`
 - `/cmd_vel_auto`
 - `/cmd_vel_joy`
-- `/move_base_simple/goal`
-- `/navigation/anomaly_on_path`
-- `/ai_kit/image_overlay/compressed`
 
 Servisi i actioni:
 
 - `/slam_toolbox/save_map`
-- `/set_manual_mode`
 - `navigate_to_pose`
-
-## Baza podataka
-
-`db_cont/init-db.sql` inicijalizira `robot_data` schemu i glavne tablice:
-
-- `robot_data.maps`
-- `robot_data.camera_images`
-- `robot_data.waypoints`
-- `robot_data.robot_sessions`
-
-U praksi je najvaznije da `slam_cont` moze nakon mapiranja spremiti finalnu mapu i metadata zapis u `robot_data.maps`.
 
 ## Preduvjeti
 
@@ -164,7 +156,7 @@ Projekt tipicno pretpostavlja:
 - ROS 2 Humble za vecinu kontejnera
 - Docker i Docker Compose
 - lidar i/ili kameru spojenu na host
-- serijski uredaj za mikrokontroler
+- Nano ESP32 spojen kao serijski uredaj
 - pristup uredajima poput `/dev/ttyUSB0`, `/dev/ttyACM0` i `/dev/bus/usb`
 
 Za `ai_kit_cont` dodatno:
@@ -175,9 +167,9 @@ Za `ai_kit_cont` dodatno:
 
 ## Dodatna dokumentacija
 
-Za detaljniji tehnicki opis pogledaj:
-
 - [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md)
+- [COMMUNICATION_ANALYSIS.md](./COMMUNICATION_ANALYSIS.md)
+- [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md)
 - [HARDWARE_WIRING_GUIDE.md](./HARDWARE_WIRING_GUIDE.md)
 - [HARDWARE_SETUP_CUSTOM_PROTOCOL.md](./HARDWARE_SETUP_CUSTOM_PROTOCOL.md)
 - [bridge_cont/README.md](./bridge_cont/README.md)

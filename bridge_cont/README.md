@@ -1,74 +1,99 @@
 # bridge_cont
 
-ROS 2 Serial Bridge container for custom Devastator robot protocol.
+ROS 2 serial bridge container for the current Devastator robot protocol.
 
 ## Purpose
-Bridges custom binary protocol over USB serial from Nano ESP32 into ROS 2 topics (`/imu/arduino`, `/wheel_odom`, `/robot_status`) and subscribes to `/cmd_vel`.
+
+The bridge talks to the `Nano ESP32` over USB serial using the project's custom
+binary protocol.
+
+It currently:
+
+- subscribes to `/cmd_vel`
+- publishes `/wheel_odom`
+- publishes `/imu/arduino`
+- publishes `/robot_status`
+
+In the current hardware architecture, the Nano is the only active robot
+microcontroller and drives the `DRV8833` directly.
+
+## Runtime Defaults
+
+Current stack defaults in `../stack/docker-compose.yaml`:
+
+- `SERIAL_PORT=/dev/ttyACM0`
+- `SERIAL_BAUD=115200`
+- `IMU_TOPIC=/imu/arduino`
+
+Note:
+
+- the bridge publishes `/wheel_odom`, not `/odom`
+- if another consumer expects `/odom`, add a remap or adapter
 
 ## Environment Variables
-- SERIAL_PORT: Path to serial device (default /dev/ttyUSB0)
-- SERIAL_BAUD: Baud rate (default 115200)
-- IMU_TOPIC: ROS topic for the Arduino IMU stream (default /imu/arduino)
-- RMW_IMPLEMENTATION: DDS RMW layer (default rmw_cyclonedds_cpp)
 
-## Docker Compose Snippet
-```
+- `SERIAL_PORT`: serial device path
+- `SERIAL_BAUD`: baud rate
+- `IMU_TOPIC`: ROS topic for the Nano IMU stream
+- `RMW_IMPLEMENTATION`: DDS RMW layer
+
+## Docker Compose Example
+
+```yaml
 services:
-  bridge:
+  robot_bridge:
     build: ./bridge_cont
-    container_name: bridge_cont
+    container_name: robot_bridge_cont
+    network_mode: host
     restart: unless-stopped
     environment:
-      SERIAL_PORT: /dev/ttyUSB0
+      SERIAL_PORT: /dev/ttyACM0
       SERIAL_BAUD: "115200"
       IMU_TOPIC: /imu/arduino
       RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
     devices:
-      - /dev/ttyUSB0:/dev/ttyUSB0
-    networks:
-      - ros
-    healthcheck:
-      test: ["CMD", "bash", "-c", "source /opt/ros/humble/setup.bash && ros2 topic list >/dev/null 2>&1"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
+      - /dev/ttyACM0:/dev/ttyACM0
+```
+
+## Data Flow
+
+```text
+/cmd_vel
+  -> bridge_cont
+  -> Nano ESP32
+  -> motor control on Nano
+
+Nano ESP32
+  -> bridge_cont
+  -> /wheel_odom
+  -> /imu/arduino
+  -> /robot_status
 ```
 
 ## Notes
-Ensure user on host has permission to access the serial device (dialout group on Linux). All ROS 2 nodes must share network/subnet for DDS discovery (Compose bridge network is fine).
 
-### Integration / DDS Discovery
-ROS 2 (CycloneDDS) performs peer discovery via multicast on the Docker network. Using a single user-defined bridge network (e.g. `networks: ros`) allows automatic discovery; no manual ROS_DOMAIN_ID changes required unless you want isolation.
+- Ensure the host user can access the serial device.
+- In the stack, the bridge runs with `network_mode: host`.
+- The default filtered IMU for the rest of the stack is usually `/imu/data`
+  from `sensor_fusion_cont`, while `/imu/arduino` remains useful for debugging
+  and bag recording.
 
-If other containers already set `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`, they will communicate transparently. If using mixed RMW implementations, align them by setting the same env var in each container.
+## Verifying Data Flow
 
-### Windows / WSL2 Considerations
-If running Docker Desktop with WSL2 and the serial device is on Windows host (COMx):
-1. Enable serial device passthrough (Docker Desktop Settings → Resources → "Use the WSL 2 based engine").
-2. Use a USB-to-serial adapter visible to WSL (check `dmesg | grep ttyUSB`).
-3. Map the discovered `/dev/ttyUSB*` into the container's `/dev/ttyUSB0`.
+Inside another ROS container or on the host:
 
-If the device only appears as `COM3` in Windows, use a tool like `usbipd-win` to attach it into WSL:
-```
-usbipd list
-usbipd attach --busid <BUSID>
-```
-Then re-run `ls /dev/ttyUSB*` inside WSL to find the mapped port.
-
-### Verifying Data Flow
-Inside any other ROS container (same network):
-```
-source /opt/ros/humble/setup.bash
+```bash
 ros2 topic echo /wheel_odom
 ros2 topic echo /imu/arduino
+ros2 topic echo /robot_status
 ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0}}" -r 1
 ```
 
-### Troubleshooting
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| No topics visible | Different networks | Put all containers on same compose network |
-| /imu/arduino empty | Serial not open | Check device mapping & permissions |
-| CRC errors climbing | Noise / wrong baud | Confirm 115200 on firmware & cable quality |
-| Discovery delay | Multicast blocked | Avoid host network isolation or custom firewall |
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| No topics visible | Bridge not running or DDS discovery issue | Confirm container state and ROS network settings |
+| `/imu/arduino` empty | Serial not open or Nano not sending packets | Check `/dev/ttyACM0`, baud, USB cable, and firmware |
+| `/wheel_odom` missing | Bridge not receiving valid sensor packets | Check serial logs and CRC errors |
+| CRC errors climbing | Noise, wrong baud, or protocol mismatch | Confirm `115200`, cable quality, and matching firmware |

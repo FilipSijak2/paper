@@ -17,7 +17,7 @@ setup(
     zip_safe=True,
     maintainer='Maintainer',
     maintainer_email='example@example.com',
-    description='Arduino IMU listener and sensor fusion scaffolding',
+    description='Bridge-relayed IMU listener and sensor fusion runtime',
     license='MIT',
     tests_require=['pytest'],
     entry_points={

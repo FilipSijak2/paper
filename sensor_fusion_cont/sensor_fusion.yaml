@@ -1,11 +1,13 @@
 # Configuration used when `SF_IMU_SOURCE=arduino`.
+# In the current implementation, Arduino/Nano IMU data already arrives in ROS
+# through `robot_bridge` on `/imu/arduino`. The listener in Arduino mode now
+# relays that ROS topic to `imu/data_raw` and publishes diagnostics.
+#
 # In the default `realsense` mode the container runs a Madgwick filter over the
 # camera IMU and publishes the filtered result on `/imu/data`.
 
-serial:
-  port: /dev/ttyACM0
-  baudrate: 115200
-  timeout_ms: 200
+source:
+  topic: /imu/arduino
 
 imu:
   frame_id: imu_link
@@ -17,6 +19,6 @@ imu:
 logging:
   level: INFO
 
-# Example expected serial line formats (implementation supports both):
-#   IMU,qw,qx,qy,qz,ax,ay,az,gx,gy,gz
-#   RAW,ax,ay,az,gx,gy,gz,mx,my,mz,yaw,roll,pitch
+# The Arduino listener no longer opens `/dev/ttyACM0` directly in Arduino mode.
+# This avoids conflicting serial access with `robot_bridge`, which already owns
+# the custom binary protocol connection to the Nano.

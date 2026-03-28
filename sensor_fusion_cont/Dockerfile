@@ -1,27 +1,26 @@
 FROM ros:humble
 
-# Napomena: uklonjen paket 'ros-humble-serial' (nije službeni paket); koristimo pyserial iz pip-a.
+# Install only the ROS/runtime pieces used by the current implementation.
+# `ros-humble-imu-tools` is intentionally omitted because it pulls in RViz
+# plugins and a large GUI dependency chain that is not needed here and has been
+# causing container build failures on ARM images.
+ARG DEBIAN_FRONTEND=noninteractive
 RUN set -e; \
     apt-get update -y; \
     apt-get install -y --no-install-recommends \
-        python3-pip \
         python3-colcon-common-extensions \
         python3-yaml \
+        tzdata \
         ros-humble-rmw-cyclonedds-cpp \
         ros-humble-rclpy \
         ros-humble-imu-filter-madgwick \
-        ros-humble-robot-localization \
-        ros-humble-imu-tools \
-        ros-humble-tf2-ros \
-        ros-humble-geometry-msgs \
-        ros-humble-nav-msgs \
         ros-humble-diagnostic-msgs \
     ; \
     rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.
 # Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
-ARG INSTALL_EDITORS=true
+ARG INSTALL_EDITORS=false
 RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
             echo "Installing editors (nano) for debugging..." && \
             apt-get update && apt-get install -y --no-install-recommends nano && \
@@ -30,13 +29,9 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
             echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
         fi
 
-# Python dependencies (colcon via apt now)
-RUN pip3 install --no-cache-dir pyserial numpy
-
-RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=Europe/Zagreb
 
-# Postavi ROS okruženje
+# Postavi ROS okruzenje
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 RUN echo "export PS1='\[\033[1;34m\]sensor_fusion: \[\033[0m\]'" >> /root/.bashrc
 
