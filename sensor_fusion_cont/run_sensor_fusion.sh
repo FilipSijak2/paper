@@ -12,15 +12,30 @@ LAUNCH_COMMAND=(ros2 launch ${PKG_NAME} sensor_fusion.launch.py)
 LIBEXEC_DIR=/app/ws/install/lib/${PKG_NAME}
 MAX_LAUNCH_RETRIES=${MAX_LAUNCH_RETRIES:-3}
 SF_IMU_SOURCE=${SF_IMU_SOURCE:-realsense}
+SF_IMU_MODE=""
 
 red() { echo -e "\033[31m$*\033[0m"; }
 green() { echo -e "\033[32m$*\033[0m"; }
 yellow() { echo -e "\033[33m$*\033[0m"; }
 
+normalize_imu_source() {
+  local raw_source="${SF_IMU_SOURCE,,}"
+  case "${raw_source}" in
+    realsense|camera|d455)
+      echo "realsense"
+      ;;
+    *)
+      echo "arduino"
+      ;;
+  esac
+}
+
 if [ -f /etc/timezone ]; then echo "[INFO] Container timezone: $(cat /etc/timezone)"; fi
 
 echo "SENSOR_FUSION_IMAGE_TAG=${SF_VERSION_TAG:-unset}"
 echo "SENSOR_FUSION_IMU_SOURCE=${SF_IMU_SOURCE}"
+SF_IMU_MODE="$(normalize_imu_source)"
+echo "SENSOR_FUSION_IMU_MODE=${SF_IMU_MODE}"
 
 # Prevent 'unbound variable' issues for traced setup scripts under set -u
 : "${AMENT_TRACE_SETUP_FILES:=}"
@@ -66,9 +81,10 @@ else
   green "[OK] Workspace already built and package present."
 fi
 
-# Additional integrity check: ament_python package should have executables in libexec dir, but for pure python
-# ament index still expects directory existence. Rebuild if missing.
-if [ ! -d "$LIBEXEC_DIR" ]; then
+# Additional integrity check: Arduino mode launches a package executable, so it
+# requires the standard ROS libexec install location. RealSense mode only uses
+# the launch file plus imu_filter_madgwick and can run without it.
+if [[ "${SF_IMU_MODE}" == "arduino" && ! -d "$LIBEXEC_DIR" ]]; then
   yellow "[WARN] Expected libexec directory missing: $LIBEXEC_DIR (will attempt one clean rebuild)"
   pushd /app/ws >/dev/null
   rm -rf build install log 2>/dev/null || true
@@ -76,7 +92,7 @@ if [ ! -d "$LIBEXEC_DIR" ]; then
   popd >/dev/null
   set +u; source "$OVERLAY_SETUP"; set -u
   if [ ! -d "$LIBEXEC_DIR" ]; then
-    yellow "[WARN] libexec directory still absent after rebuild; will fallback to direct python execution"
+    yellow "[WARN] libexec directory still absent after rebuild; Arduino mode will fallback to direct python execution"
   else
     green "[OK] libexec directory created after rebuild."
   fi
@@ -98,7 +114,7 @@ while :; do
   fi
   red "[ERROR] ros2 launch exited with code $rc (attempt ${attempt}/${MAX_LAUNCH_RETRIES})"
   if [ $attempt -ge $MAX_LAUNCH_RETRIES ]; then
-    if [[ "${SF_IMU_SOURCE}" == "arduino" ]]; then
+    if [[ "${SF_IMU_MODE}" == "arduino" ]]; then
       yellow "[WARN] Reached max launch retries; invoking direct Arduino fallback."
       # Direct fallback: run module entry point without launch system
       python3 - <<'PYEOF'

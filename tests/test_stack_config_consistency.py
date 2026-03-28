@@ -68,3 +68,5 @@ def test_stack_topics_are_resolvable_against_known_runtime_publishers():
 
     for topic in healthcheck.DEFAULT_EXPECTED_TOPICS:
         assert healthcheck.resolve_available_topic(topic, known_runtime_topics) is not None
+
+    assert "/rosout" in recorded_topics
