@@ -1,34 +1,23 @@
-# Trenutna shema ožičenja
+# Nano-only shema ozicenja
 
-Ova shema je složena prema trenutnoj kombinaciji runtime stacka i firmwarea:
+Ovo je odabrana pojednostavljena arhitektura:
 
-- `../stack/docker-compose.yaml`
-- `devastator_sensors_nano_esp32/devastator_sensors_nano_esp32.ino`
-- `devastator_controler_r4/devastator_controler_r4.ino`
+- `Raspberry Pi / robot_bridge -> USB -> Arduino Nano ESP32`
+- `Nano ESP32 -> DRV8833 -> lijevi i desni motor`
+- `Nano ESP32 -> TCA9548A -> AS5600 LEFT + AS5600 RIGHT`
 
-Fokus je samo na granama koje si tražio:
+`UNO R4` vise nije potreban u ovoj varijanti.
 
-- `Raspberry Pi -> Nano ESP32`
-- `Nano ESP32 -> UNO R4`
-- `UNO R4 -> DRV8833 -> motori`
-- `Nano ESP32 -> TCA9548A -> enkoderi`
-
-Napomena:
-
-- `robot_bridge` u stacku razgovara USB-om samo s Nano ESP32.
-- U trenutnom stacku je `RealSense` primarni izvor za `/imu/data`, a `/imu/arduino` je legacy/debug tema, pa IMU nije ucrtana u glavnu shemu.
-
-## Čista vizualizacija
+## Vizualizacija
 
 ```mermaid
 flowchart LR
     PI["Raspberry Pi / ROS stack<br/>robot_bridge<br/>USB serial /dev/ttyACM0<br/>115200"]
-    NANO["Arduino Nano ESP32<br/>USB power from Pi"]
-    TCA["TCA9548A<br/>VCC=3V3<br/>A0=A1=A2=GND"]
+    NANO["Arduino Nano ESP32<br/>glavni kontroler"]
+    TCA["TCA9548A<br/>A0=A1=A2=GND"]
     LENC["AS5600 LEFT"]
     RENC["AS5600 RIGHT"]
-    UNO["Arduino UNO R4<br/>motor controller"]
-    DRIVER["DRV8833<br/>dual H-bridge"]
+    DRV["DRV8833"]
     LM["LEFT motor"]
     RM["RIGHT motor"]
     EXT["External motor supply"]
@@ -36,8 +25,8 @@ flowchart LR
 
     PI <-->|USB data + 5V| NANO
 
-    NANO -->|"I2C SDA = A4 / D21"| TCA
-    NANO -->|"I2C SCL = A5 / D22"| TCA
+    NANO -->|"A4 / D21 SDA"| TCA
+    NANO -->|"A5 / D22 SCL"| TCA
     NANO -->|"3V3"| TCA
     NANO -->|"GND"| TCA
 
@@ -46,25 +35,22 @@ flowchart LR
     NANO -->|"3V3 + GND"| LENC
     NANO -->|"3V3 + GND"| RENC
 
-    NANO -->|"UART TX -> UNO RX<br/>intended command link"| UNO
-    UNO -.->|"UNO TX -> Nano RX only if you need return path"| NANO
+    NANO -->|"D5 -> AIN1"| DRV
+    NANO -->|"D6 -> AIN2"| DRV
+    NANO -->|"D9 -> BIN1"| DRV
+    NANO -->|"D10 -> BIN2"| DRV
+    NANO -->|"3V3 -> nSLEEP only if needed"| DRV
 
-    UNO -->|"D5 -> AIN1 (LEFT_FWD)"| DRIVER
-    UNO -->|"D6 -> AIN2 (LEFT_REV)"| DRIVER
-    UNO -->|"D9 -> BIN1 (RIGHT_FWD)"| DRIVER
-    UNO -->|"D10 -> BIN2 (RIGHT_REV)"| DRIVER
+    DRV -->|"AOUT1/AOUT2"| LM
+    DRV -->|"BOUT1/BOUT2"| RM
 
-    DRIVER -->|"AOUT1/AOUT2"| LM
-    DRIVER -->|"BOUT1/BOUT2"| RM
-
-    EXT -->|"VM / VIN +"| DRIVER
-    EXT -->|"optional UNO VIN / barrel"| UNO
+    EXT -->|"VM / VIN +"| DRV
 
     NANO --- CGND
-    UNO --- CGND
-    DRIVER --- CGND
+    TCA --- CGND
     LENC --- CGND
     RENC --- CGND
+    DRV --- CGND
     EXT --- CGND
 ```
 
@@ -72,87 +58,96 @@ flowchart LR
 
 ```text
 Raspberry Pi
-   │
-   └── USB ──> Nano ESP32
-                 │
-                 ├── I2C A4/A5 ──> TCA9548A ── CH0 ──> AS5600 LEFT
-                 │                          └─ CH1 ──> AS5600 RIGHT
-                 │
-                 └── UART ──> UNO R4 ── D5 D6 D9 D10 ──> DRV8833 ──> LEFT / RIGHT motor
+   |
+   +-- USB --> Nano ESP32
+                  |
+                  +-- I2C A4/A5 --> TCA9548A --> CH0 --> AS5600 LEFT
+                  |                         \--> CH1 --> AS5600 RIGHT
+                  |
+                  +-- D5  --> DRV8833 AIN1
+                  +-- D6  --> DRV8833 AIN2
+                  +-- D9  --> DRV8833 BIN1
+                  +-- D10 --> DRV8833 BIN2
+                  |
+                  +-- 3V3/GND --> senzori
 
-External motor supply ──> DRV8833 VM/VIN
-External motor supply ──> UNO VIN/barrel (samo ako UNO napajaš s iste baterije)
+External motor supply --> DRV8833 VM/VIN
 
-Sve mase moraju biti zajedničke:
-Pi USB GND = Nano GND = UNO GND = driver GND = encoder GND = external supply GND
+Sve mase moraju biti zajednicke:
+Pi USB GND = Nano GND = TCA GND = AS5600 GND = DRV8833 GND = external supply GND
 ```
 
-## Pinovi koji su stvarno vidljivi u kodu
+## Preporuceni pinout
 
 ### Nano ESP32
 
-- USB prema Raspberry Pi (`robot_bridge` na `/dev/ttyACM0`, `115200`)
-- I2C default pinovi: `A4/SDA` i `A5/SCL`
-- `TCA9548A` adresa: `0x70`
-- `CH0` = lijevi enkoder
-- `CH1` = desni enkoder
-- TCA i AS5600 se hrane s `Nano 3V3`
+- USB-C <-> Raspberry Pi
+- `A4 / D21` -> `TCA9548A SDA`
+- `A5 / D22` -> `TCA9548A SCL`
+- `3V3` -> `TCA9548A VCC`
+- `GND` -> `TCA9548A GND`
+- `D5` -> `DRV8833 AIN1`
+- `D6` -> `DRV8833 AIN2`
+- `D9` -> `DRV8833 BIN1`
+- `D10` -> `DRV8833 BIN2`
 
-### UNO R4
+### TCA9548A
 
-- `D5` -> `AIN1`
-- `D6` -> `AIN2`
-- `D9` -> `BIN1`
-- `D10` -> `BIN2`
+- `A0`, `A1`, `A2` -> `GND`
+- `CH0` -> lijevi `AS5600`
+- `CH1` -> desni `AS5600`
 
-## Bitne napomene prije fizičkog spajanja
+### AS5600 LEFT / RIGHT
 
-### 1. Buck converter
+- `VCC` -> `Nano 3V3`
+- `GND` -> zajednicka masa
+- `SDA/SCL` -> preko `TCA9548A`
 
-Buck ti stvarno nije potreban samo ako vrijedi ovo:
+### DRV8833
 
-- Nano ESP32 dobiva napajanje preko USB-a s Raspberry Pi-a
-- UNO R4 već ima svoje napajanje preko `VIN` / barrel jacka ili zasebnog USB-a
-
-Ako UNO R4 nema drugi izvor napajanja, buck ne smiješ maknuti bez alternative.
-
-### 2. DRV8833 sada direktno odgovara trenutnom UNO firmwareu
-
-Aktualni `UNO R4` firmware koristi baš 4 upravljačka izlaza:
-
-- `D5` -> `AIN1`
-- `D6` -> `AIN2`
-- `D9` -> `BIN1`
-- `D10` -> `BIN2`
-
-To je dobar match za `DRV8833`, jer ima 2 H-mosta:
-
+- `AIN1` <- `Nano D5`
+- `AIN2` <- `Nano D6`
+- `BIN1` <- `Nano D9`
+- `BIN2` <- `Nano D10`
 - `AOUT1/AOUT2` -> lijevi motor
 - `BOUT1/BOUT2` -> desni motor
+- `VM` ili `VIN` -> vanjsko napajanje motora
+- `GND` -> zajednicka masa
+- `nSLEEP` / `SLP`
+  - ako je na modulu vec pull-upan, ostavi kako jest
+  - ako nije, vezi na `HIGH` da driver bude aktivan
+- `nFAULT` nije potreban za osnovni rad
 
-Ako tvoja `DRV8833` breakout pločica ima dodatni pin `nSLEEP`, `SLP` ili `STBY`:
+## Napajanje
 
-- ako je već pull-upan na modulu, može ostati nespojen
-- ako nije, veži ga na `HIGH` da driver bude omogućen
+Buck converter ti nije potreban ako vrijedi ovo:
 
-`nFAULT` ti za osnovni rad ne treba spajati.
+- Nano ESP32 dobiva napajanje preko USB-a s Raspberry Pi-a
+- DRV8833 i motori dobivaju vanjsko napajanje
+- sve mase su povezane zajedno
 
-Vanjsko napajanje motora ide na `DRV8833 VM/VIN`, a mase moraju ostati zajedničke.
+U ovoj varijanti nema vise zasebnog napajanja za `UNO`, jer `UNO` vise nije u sustavu.
 
-Naponski raspon za `DRV8833` je `2.7 V do 10.8 V`, pa je tipičan paket `6x NiMH` u redu dok si unutar tog raspona.
+## Sto se mijenja u firmwareu
 
-### 3. UART između Nano i UNO je trenutno najspornija točka
+U `Nano-only` varijanti Nano radi sve:
 
-Arhitektura jasno kaže da `Nano -> UNO` ide preko UART-a, ali kod i dokumentacija nisu potpuno usklađeni:
+- prima `cmd_vel` preko USB protokola
+- cita IMU
+- cita oba `AS5600` enkodera
+- racuna odometriju
+- direktno upravlja `DRV8833`
 
-- Nano firmware šalje komandne pakete preko `MotorSerial`
-- UNO firmware čita komande preko `Serial`, a ne eksplicitno preko `Serial1`
-- stariji dokumenti i komentari oko Nano UART pinova nisu sasvim konzistentni
+Time se izbacuje:
 
-Zato ovu shemu treba čitati kao "intended wiring", a UART pinove treba uskladiti s onim što ćeš stvarno ostaviti u firmwareu.
+- `Nano <-> UNO` UART veza
+- `UNO R4` firmware iz glavnog toka rada
+- dodatno olicenje i dodatna tocka kvara
 
-### 4. Trenutna razlika između starog crteža i stvarnog stacka
+## Stack utjecaj
 
-- `robot_bridge` je na Nano USB-u, ne na UNO-u
-- enkoderi su u Nano kodu na `TCA CH0` i `TCA CH1`
-- `/imu/arduino` je trenutno samo fallback/debug, nije glavni IMU za stack
+Na Raspberry Pi strani skoro nista ne moras mijenjati:
+
+- `robot_bridge` i dalje ide na Nano preko `/dev/ttyACM0`
+- ROS topici ostaju isti
+- mijenja se samo firmware i fizicko ozicenje na robotu
