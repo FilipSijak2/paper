@@ -1,5 +1,6 @@
-# Placeholder configuration for sensor fusion / robot_localization or custom node
-# Extend as needed.
+# Configuration used when `SF_IMU_SOURCE=arduino`.
+# In the default `realsense` mode the container runs a Madgwick filter over the
+# camera IMU and publishes the filtered result on `/imu/data`.
 
 serial:
   port: /dev/ttyACM0

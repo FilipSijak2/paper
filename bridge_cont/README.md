@@ -3,11 +3,12 @@
 ROS 2 Serial Bridge container for custom Devastator robot protocol.
 
 ## Purpose
-Bridges custom binary protocol over USB serial from Nano ESP32 into ROS 2 topics (/imu/data, /wheel_odom, /robot_status) and subscribes to /cmd_vel.
+Bridges custom binary protocol over USB serial from Nano ESP32 into ROS 2 topics (`/imu/arduino`, `/wheel_odom`, `/robot_status`) and subscribes to `/cmd_vel`.
 
 ## Environment Variables
 - SERIAL_PORT: Path to serial device (default /dev/ttyUSB0)
 - SERIAL_BAUD: Baud rate (default 115200)
+- IMU_TOPIC: ROS topic for the Arduino IMU stream (default /imu/arduino)
 - RMW_IMPLEMENTATION: DDS RMW layer (default rmw_cyclonedds_cpp)
 
 ## Docker Compose Snippet
@@ -20,6 +21,7 @@ services:
     environment:
       SERIAL_PORT: /dev/ttyUSB0
       SERIAL_BAUD: "115200"
+      IMU_TOPIC: /imu/arduino
       RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
     devices:
       - /dev/ttyUSB0:/dev/ttyUSB0
@@ -59,7 +61,7 @@ Inside any other ROS container (same network):
 ```
 source /opt/ros/humble/setup.bash
 ros2 topic echo /wheel_odom
-ros2 topic echo /imu/data
+ros2 topic echo /imu/arduino
 ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0}}" -r 1
 ```
 
@@ -67,6 +69,6 @@ ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0
 | Symptom | Cause | Fix |
 |---------|-------|-----|
 | No topics visible | Different networks | Put all containers on same compose network |
-| /imu/data empty | Serial not open | Check device mapping & permissions |
+| /imu/arduino empty | Serial not open | Check device mapping & permissions |
 | CRC errors climbing | Noise / wrong baud | Confirm 115200 on firmware & cable quality |
 | Discovery delay | Multicast blocked | Avoid host network isolation or custom firewall |

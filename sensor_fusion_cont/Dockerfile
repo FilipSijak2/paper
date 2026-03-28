@@ -9,6 +9,7 @@ RUN set -e; \
         python3-yaml \
         ros-humble-rmw-cyclonedds-cpp \
         ros-humble-rclpy \
+        ros-humble-imu-filter-madgwick \
         ros-humble-robot-localization \
         ros-humble-imu-tools \
         ros-humble-tf2-ros \
@@ -59,7 +60,10 @@ COPY run_sensor_fusion.sh /app/run_sensor_fusion.sh
 RUN chmod +x /app/run_sensor_fusion.sh
 
 # Version tag (can be overridden at run time)
-ENV SF_VERSION_TAG=unset
+ENV SF_VERSION_TAG=unset \
+    SF_IMU_SOURCE=realsense \
+    SF_IMU_INPUT_TOPIC=/camera/realsense/imu \
+    SF_IMU_OUTPUT_TOPIC=/imu/data
 
 # Use wrapper script that ensures workspace is built & sourced before launching
 CMD ["bash", "/app/run_sensor_fusion.sh"]

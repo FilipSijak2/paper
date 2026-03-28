@@ -40,6 +40,7 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     RS_ENABLE_GYRO=true \
     RS_ENABLE_ACCEL=true \
     RS_UNITE_IMU_METHOD=linear_interpolation \
+    RS_BASE_FRAME_ID= \
     RS_DEPTH_PROFILE=640x480x15 \
     RS_COLOR_PROFILE=640x480x15 \
     RS_ALIGN_DEPTH=true \

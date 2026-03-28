@@ -19,11 +19,16 @@ set -u
 : "${RS_ENABLE_GYRO:=true}"
 : "${RS_ENABLE_ACCEL:=true}"
 : "${RS_UNITE_IMU_METHOD:=linear_interpolation}"
+: "${RS_BASE_FRAME_ID:=}"
 : "${RS_DEPTH_PROFILE:=640x480x15}"
 : "${RS_COLOR_PROFILE:=640x480x15}"
 : "${RS_ALIGN_DEPTH:=true}"
 : "${RS_ENABLE_POINTCLOUD:=false}"
 : "${RS_COMPRESSED_JPEG_QUALITY:=40}"
+
+if [ -z "${RS_BASE_FRAME_ID}" ]; then
+  RS_BASE_FRAME_ID="${RS_CAMERA_NAME}_link"
+fi
 
 normalize_unite_imu_method() {
   case "${RS_UNITE_IMU_METHOD}" in
@@ -144,6 +149,7 @@ echo "[realsense] Preflight: enumerating devices..."
 enumerate_realsense | sed 's/^/[realsense]   /' || true
 normalize_unite_imu_method
 echo "[realsense] Using unite_imu_method=${RS_UNITE_IMU_METHOD}"
+echo "[realsense] Using base_frame_id=${RS_BASE_FRAME_ID}"
 
 SELECTED_SERIAL="$(pick_serial_or_fail)"
 
@@ -174,6 +180,7 @@ args=(
   "enable_gyro:=${RS_ENABLE_GYRO}"
   "enable_accel:=${RS_ENABLE_ACCEL}"
   "unite_imu_method:=${RS_UNITE_IMU_METHOD}"
+  "base_frame_id:=${RS_BASE_FRAME_ID}"
   "depth_module.profile:=${RS_DEPTH_PROFILE}"
   "rgb_camera.profile:=${RS_COLOR_PROFILE}"
   "align_depth:=${RS_ALIGN_DEPTH}"
@@ -215,7 +222,10 @@ apply_runtime_compression_tuning() {
     fi
 
     if ros2 node list 2>/dev/null | grep -Fxq -- "${node}"; then
-      if ros2 param set "${node}" jpeg_quality "${RS_COMPRESSED_JPEG_QUALITY}" >/dev/null 2>&1; then
+      # Check jpeg_quality is declared before setting it to avoid a WARN from
+      # the realsense node's rclcpp when image_transport hasn't loaded yet.
+      if ros2 param list "${node}" 2>/dev/null | grep -qF "jpeg_quality" && \
+         ros2 param set "${node}" jpeg_quality "${RS_COMPRESSED_JPEG_QUALITY}" >/dev/null 2>&1; then
         echo "[realsense] Set ${node} jpeg_quality=${RS_COMPRESSED_JPEG_QUALITY} for compressed image transport"
         return 0
       fi

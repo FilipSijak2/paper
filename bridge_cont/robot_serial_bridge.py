@@ -7,7 +7,7 @@ Architecture:
 	ROS 2 Topics ↔ This Bridge ↔ Custom Protocol ↔ Nano ESP32
 
 Published Topics:
-	/imu/data (sensor_msgs/Imu)
+	/imu/arduino (sensor_msgs/Imu, configurable via IMU_TOPIC)
 	/wheel_odom (nav_msgs/Odometry) 
 	/robot_status (std_msgs/String)
     
@@ -89,6 +89,7 @@ class RobotSerialBridge(Node):
 		super().__init__('robot_serial_bridge')
         
 		self.get_logger().info(f'Starting Robot Serial Bridge on {port}@{baud}')
+		self.imu_topic = os.environ.get('IMU_TOPIC', '/imu/arduino')
         
 		# Serial connection
 		self.serial_port = None
@@ -97,7 +98,7 @@ class RobotSerialBridge(Node):
 		self.connect_serial()
         
 		# ROS publishers
-		self.imu_pub = self.create_publisher(Imu, 'imu/data', 10)
+		self.imu_pub = self.create_publisher(Imu, self.imu_topic, 10)
 		self.odom_pub = self.create_publisher(Odometry, 'wheel_odom', 10)
 		self.status_pub = self.create_publisher(String, 'robot_status', 10)
         
@@ -129,7 +130,7 @@ class RobotSerialBridge(Node):
 		# Status reporting
 		self.status_timer = self.create_timer(5.0, self.status_callback)
         
-		self.get_logger().info('Robot Serial Bridge initialized')
+		self.get_logger().info(f'Robot Serial Bridge initialized (IMU topic: {self.imu_topic})')
 
 	def connect_serial(self):
 		"""Connect to serial port with retry logic"""

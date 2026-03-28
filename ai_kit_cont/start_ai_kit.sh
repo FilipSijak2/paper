@@ -85,7 +85,11 @@ fi
 
 if [ "${AI_KIT_RUN_NODE}" = "1" ]; then
   echo "[ai-kit] Starting ROS AI node: ${AI_KIT_NODE}"
-  exec python3 "${AI_KIT_NODE}"
+  # Filter rcutils raw-stderr noise caused by the Humble/Jazzy DDS type-hash
+  # mismatch. These messages bypass the ROS2 logger and cannot be suppressed
+  # via --log-level; they are benign and do not affect topic communication.
+  exec python3 "${AI_KIT_NODE}" --ros-args --log-level rmw_cyclonedds_cpp:=ERROR \
+    2> >(grep -Ev "rcutils_set_error_state|serdata\.cpp|error state is being overwritten|rcutils_reset_error|<<<|>>>" >&2)
 fi
 
 echo "[ai-kit] AI_KIT_RUN_NODE!=1, opening shell."

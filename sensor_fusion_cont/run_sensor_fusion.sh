@@ -11,6 +11,7 @@ PKG_NAME="sensor_fusion_pkg"
 LAUNCH_COMMAND=(ros2 launch ${PKG_NAME} sensor_fusion.launch.py)
 LIBEXEC_DIR=/app/ws/install/lib/${PKG_NAME}
 MAX_LAUNCH_RETRIES=${MAX_LAUNCH_RETRIES:-3}
+SF_IMU_SOURCE=${SF_IMU_SOURCE:-realsense}
 
 red() { echo -e "\033[31m$*\033[0m"; }
 green() { echo -e "\033[32m$*\033[0m"; }
@@ -19,6 +20,7 @@ yellow() { echo -e "\033[33m$*\033[0m"; }
 if [ -f /etc/timezone ]; then echo "[INFO] Container timezone: $(cat /etc/timezone)"; fi
 
 echo "SENSOR_FUSION_IMAGE_TAG=${SF_VERSION_TAG:-unset}"
+echo "SENSOR_FUSION_IMU_SOURCE=${SF_IMU_SOURCE}"
 
 # Prevent 'unbound variable' issues for traced setup scripts under set -u
 : "${AMENT_TRACE_SETUP_FILES:=}"
@@ -96,9 +98,10 @@ while :; do
   fi
   red "[ERROR] ros2 launch exited with code $rc (attempt ${attempt}/${MAX_LAUNCH_RETRIES})"
   if [ $attempt -ge $MAX_LAUNCH_RETRIES ]; then
-    yellow "[WARN] Reached max launch retries; invoking direct python fallback."
-    # Direct fallback: run module entry point without launch system
-    python3 - <<'PYEOF'
+    if [[ "${SF_IMU_SOURCE}" == "arduino" ]]; then
+      yellow "[WARN] Reached max launch retries; invoking direct Arduino fallback."
+      # Direct fallback: run module entry point without launch system
+      python3 - <<'PYEOF'
 import os, rclpy
 from sensor_fusion_pkg.arduino_listener_impl import main
 print('[FALLBACK] Starting direct ArduinoImuNode (no launch)')
@@ -107,7 +110,11 @@ try:
 except KeyboardInterrupt:
     pass
 PYEOF
-    exit $?
+      exit $?
+    fi
+
+    red "[FATAL] Reached max launch retries in RealSense IMU mode; no safe fallback is available."
+    exit $rc
   fi
   attempt=$((attempt+1))
   sleep 2

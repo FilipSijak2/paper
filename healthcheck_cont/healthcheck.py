@@ -31,6 +31,7 @@ DEFAULT_EXPECTED_TOPICS = [
     "/odom",
     "/tf",
     "/tf_static",
+    "/imu/data",
     "/camera/realsense/color/image_raw",
 ]
 

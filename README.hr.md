@@ -17,7 +17,7 @@ Operativni `docker-compose` stack je tipicno u sibling direktoriju `../stack/`, 
 
 | Komponenta | Uloga | Najvazniji ulazi / izlazi |
 | --- | --- | --- |
-| `bridge_cont` | Serijski most prema mikrokontroleru robota | Publisha `/imu/data`, `/wheel_odom`, `/robot_status`; subscriba `/cmd_vel` |
+| `bridge_cont` | Serijski most prema mikrokontroleru robota | Publisha `/imu/arduino`, `/wheel_odom`, `/robot_status`; subscriba `/cmd_vel` |
 | `laser_driver_cont` | ROS 2 driver za RPLidar | Publisha `/scan` |
 | `realsense_cont` | Intel RealSense ROS 2 driver | Objavljuje RGB, depth, camera info i point cloud topice |
 | `slam_cont` | `slam_toolbox`, mapiranje, save/export mape, upis u bazu | Koristi `/scan`, `/tf`, `/odom`, `/imu`; publisha `/map` |
@@ -27,7 +27,7 @@ Operativni `docker-compose` stack je tipicno u sibling direktoriju `../stack/`, 
 | `rosbridge_cont` | ROS 2 -> WebSocket za web klijente | Tipicno port `9090` |
 | `foxglove_bridge_cont` | ROS 2 bridge za Foxglove Studio | Tipicno port `8765` |
 | `ai_kit_cont` | Hailo AI obrada slike ili passthrough overlay | Prima RealSense sliku; publisha AI overlay topice |
-| `sensor_fusion_cont` | ROS 2 paket za dodatni ingest senzora i dijagnostiku | Trenutno publisha `imu/data_raw`, `imu/raw_line`, `/diagnostics` |
+| `sensor_fusion_cont` | ROS 2 paket za IMU ingest i filtriranje | Po defaultu filtrira RealSense IMU u `/imu/data`; u Arduino modu publisha `imu/data_raw`, `imu/raw_line`, `/diagnostics` |
 | `camera_cont` | UDP video ulaz i objava u ROS 2 | Publisha `/camera/image_raw/compressed` i `/camera/camera_info` |
 | `healthcheck_cont` | Provjera stanja kontejnera, portova, uredaja i ROS grafa | Pise health report u logove |
 

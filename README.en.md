@@ -17,7 +17,7 @@ The operational `docker-compose` stack usually lives in the sibling directory `.
 
 | Component | Purpose | Key inputs / outputs |
 | --- | --- | --- |
-| `bridge_cont` | Serial bridge to the robot microcontroller | Publishes `/imu/data`, `/wheel_odom`, `/robot_status`; subscribes to `/cmd_vel` |
+| `bridge_cont` | Serial bridge to the robot microcontroller | Publishes `/imu/arduino`, `/wheel_odom`, `/robot_status`; subscribes to `/cmd_vel` |
 | `laser_driver_cont` | ROS 2 driver for RPLidar | Publishes `/scan` |
 | `realsense_cont` | Intel RealSense ROS 2 driver | Publishes RGB, depth, camera info, and point cloud topics |
 | `slam_cont` | `slam_toolbox`, mapping, map save/export, database insertion | Uses `/scan`, `/tf`, `/odom`, `/imu`; publishes `/map` |
@@ -27,7 +27,7 @@ The operational `docker-compose` stack usually lives in the sibling directory `.
 | `rosbridge_cont` | ROS 2 to WebSocket bridge for web clients | Typically exposes port `9090` |
 | `foxglove_bridge_cont` | ROS 2 bridge for Foxglove Studio | Typically exposes port `8765` |
 | `ai_kit_cont` | Hailo AI image processing or passthrough overlay publishing | Consumes RealSense images and publishes AI overlay topics |
-| `sensor_fusion_cont` | ROS 2 package for additional sensor ingest and diagnostics | Currently publishes `imu/data_raw`, `imu/raw_line`, `/diagnostics` |
+| `sensor_fusion_cont` | ROS 2 package for IMU ingest and filtering | By default filters RealSense IMU into `/imu/data`; in Arduino mode it publishes `imu/data_raw`, `imu/raw_line`, and `/diagnostics` |
 | `camera_cont` | UDP video input and ROS 2 publication | Publishes `/camera/image_raw/compressed` and `/camera/camera_info` |
 | `healthcheck_cont` | Validates containers, ports, devices, and the ROS graph | Writes a health report to logs |
 
