@@ -33,50 +33,90 @@ jobs:
         if: success() || failure()
         shell: bash
         run: |
-          REPORT_FILE="megalinter-reports/megalinter-report.md"
-          {
-            echo ""
-            echo "## MegaLinter Checks"
-            echo ""
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          from pathlib import Path
 
-            if [[ ! -f "$REPORT_FILE" ]]; then
-              echo "- ❌ MegaLinter summary file not found at \`$REPORT_FILE\`"
-              exit 0
-            fi
+          report_file = Path("megalinter-reports/megalinter-report.md")
 
-            found=0
-            while IFS=$'\t' read -r descriptor linter mode files fixed errors warnings elapsed; do
-              found=1
-              if [[ "$errors" =~ ^[0-9]+$ ]] && (( errors > 0 )); then
-                icon="❌"
-              else
-                icon="✅"
-              fi
-              echo "- ${icon} \`${linter}\` (${descriptor}): mode=${mode}, files=${files}, errors=${errors}, warnings=${warnings}, fixed=${fixed}, elapsed=${elapsed}"
-            done < <(
-              awk -F'|' '
-                function trim(value) {
-                  gsub(/^[ \t]+|[ \t]+$/, "", value)
-                  return value
-                }
-                /^\|/ {
-                  descriptor = trim($2)
-                  linter = trim($3)
-                  mode = trim($4)
-                  files = trim($5)
-                  fixed = trim($6)
-                  errors = trim($7)
-                  warnings = trim($8)
-                  elapsed = trim($9)
-                  if (descriptor == "" || descriptor == "Descriptor" || descriptor ~ /^-+$/) {
-                    next
-                  }
-                  print descriptor "\t" linter "\t" mode "\t" files "\t" fixed "\t" errors "\t" warnings "\t" elapsed
-                }
-              ' "$REPORT_FILE"
-            )
+          print()
+          print("## MegaLinter Checks")
+          print()
 
-            if [[ "$found" -eq 0 ]]; then
-              echo "- ❌ Could not parse any linter rows from \`$REPORT_FILE\`"
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
+          if not report_file.exists():
+              print(f"- :x: MegaLinter summary file not found at `{report_file}`")
+              raise SystemExit(0)
+
+          text = report_file.read_text(encoding="utf-8", errors="replace")
+          headers = None
+          rows = []
+          table_seen = False
+
+          def is_separator(cells):
+              compact = "".join(cells).replace("-", "").replace(":", "").strip()
+              return compact == ""
+
+          for raw_line in text.splitlines():
+              line = raw_line.strip()
+              if not line.startswith("|"):
+                  continue
+
+              cells = [cell.strip() for cell in line.strip("|").split("|")]
+              if not cells:
+                  continue
+
+              lowered = [cell.lower() for cell in cells]
+              if "descriptor" in lowered and "linter" in lowered:
+                  headers = lowered
+                  table_seen = True
+                  continue
+
+              if is_separator(cells):
+                  table_seen = True
+                  continue
+
+              if headers is None:
+                  continue
+
+              row = {}
+              for index, header in enumerate(headers):
+                  if index < len(cells):
+                      row[header] = cells[index]
+
+              descriptor = row.get("descriptor", "").strip()
+              linter = row.get("linter", "").strip()
+              if not descriptor or not linter:
+                  continue
+
+              rows.append(row)
+
+          def pick(row, *names):
+              for name in names:
+                  value = row.get(name, "").strip()
+                  if value:
+                      return value
+              return "n/a"
+
+          if rows:
+              for row in rows:
+                  errors = pick(row, "errors")
+                  icon = ":x:" if errors.isdigit() and int(errors) > 0 else ":white_check_mark:"
+                  descriptor = pick(row, "descriptor")
+                  linter = pick(row, "linter")
+                  mode = row.get("mode", "").strip()
+                  files = pick(row, "files")
+                  fixed = pick(row, "fixed")
+                  warnings = pick(row, "warnings")
+                  elapsed = pick(row, "elapsed time", "elapsed", "elapsed_time")
+                  mode_prefix = f"mode={mode}, " if mode else ""
+
+                  print(
+                      f"- {icon} `{linter}` ({descriptor}): "
+                      f"{mode_prefix}files={files}, errors={errors}, "
+                      f"warnings={warnings}, fixed={fixed}, elapsed={elapsed}"
+                  )
+          elif table_seen:
+              print("- :white_check_mark: MegaLinter completed, but no per-linter rows were emitted for this run.")
+              print("- :information_source: This usually means no matching changed files required linting in the current diff.")
+          else:
+              print(f"- :warning: Could not parse structured linter rows from `{report_file}`. See MegaLinter artifacts for details.")
+          PY
