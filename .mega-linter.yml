@@ -1,0 +1,31 @@
+DEFAULT_BRANCH: devel
+VALIDATE_ALL_CODEBASE: false
+CLEAR_REPORT_FOLDER: true
+SHOW_ELAPSED_TIME: true
+FLAVOR_SUGGESTIONS: false
+PRINT_ALPACA: false
+
+ENABLE_LINTERS:
+  - ACTION_ACTIONLINT
+  - BASH_SHELLCHECK
+  - BASH_SHFMT
+  - DOCKERFILE_HADOLINT
+  - YAML_YAMLLINT
+
+# Initial rollout: keep the pipeline useful without blocking on every historic
+# shell/Docker formatting issue on day one. We can tighten this list later.
+ENABLE_ERRORS_LINTERS:
+  - ACTION_ACTIONLINT
+  - YAML_YAMLLINT
+
+EXCLUDED_DIRECTORIES:
+  - .git
+  - .pytest_cache
+  - __pycache__
+  - .venv
+  - .vscode
+  - megalinter-reports
+
+BASH_SHELLCHECK_ARGUMENTS: >-
+  --external-sources
+  --exclude=SC1091

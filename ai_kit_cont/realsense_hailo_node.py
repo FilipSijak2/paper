@@ -25,18 +25,18 @@ from typing import Optional, Tuple
 
 import cv2
 import numpy as np
-import rclpy
-from cv_bridge import CvBridge
-from rclpy.executors import ExternalShutdownException
-from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import CompressedImage, Image
+import rclpy # type: ignore
+from cv_bridge import CvBridge # type: ignore
+from rclpy.executors import ExternalShutdownException # type: ignore
+from rclpy.node import Node # type: ignore
+from rclpy.qos import qos_profile_sensor_data # type: ignore
+from sensor_msgs.msg import CompressedImage, Image # type: ignore
 
 try:
-    import gi
+    import gi # type: ignore
 
     gi.require_version("Gst", "1.0")
-    from gi.repository import Gst
+    from gi.repository import Gst   # type: ignore
 
     GST_AVAILABLE = True
     GST_IMPORT_ERROR = ""
@@ -75,7 +75,7 @@ class HailoGstProcessor:
         if not GST_AVAILABLE:
             raise RuntimeError(f"GStreamer python bindings unavailable: {GST_IMPORT_ERROR}")
 
-        Gst.init(None)
+        Gst.init(None) # type: ignore
         self._logger = logger
         self._fps = max(1, fps)
         self._frame_duration_ns = int(1e9 / self._fps)
@@ -88,27 +88,26 @@ class HailoGstProcessor:
         )
         self._logger.info(f"Using Hailo GST pipeline: {pipeline_desc}")
 
-        self._pipeline = Gst.parse_launch(pipeline_desc)
+        self._pipeline = Gst.parse_launch(pipeline_desc) # type: ignore
         self._appsrc = self._pipeline.get_by_name("ros_src")
         self._appsink = self._pipeline.get_by_name("ros_sink")
         if self._appsrc is None or self._appsink is None:
             raise RuntimeError("Pipeline must contain appsrc name=ros_src and appsink name=ros_sink.")
 
-        caps = Gst.Caps.from_string(
+        caps = Gst.Caps.from_string( # type: ignore
             f"video/x-raw,format=BGR,width={width},height={height},framerate={self._fps}/1"
         )
         self._appsrc.set_property("caps", caps)
         self._appsrc.set_property("is-live", True)
         self._appsrc.set_property("block", True)
-        self._appsrc.set_property("format", Gst.Format.TIME)
-
+        self._appsrc.set_property("format", Gst.Format.TIME) # type: ignore
         self._appsink.set_property("emit-signals", False)
         self._appsink.set_property("sync", False)
         self._appsink.set_property("drop", True)
         self._appsink.set_property("max-buffers", 1)
 
-        state_ret = self._pipeline.set_state(Gst.State.PLAYING)
-        if state_ret not in (Gst.StateChangeReturn.SUCCESS, Gst.StateChangeReturn.ASYNC):
+        state_ret = self._pipeline.set_state(Gst.State.PLAYING) # type: ignore
+        if state_ret not in (Gst.StateChangeReturn.SUCCESS, Gst.StateChangeReturn.ASYNC): # type: ignore
             raise RuntimeError(f"Failed to set pipeline to PLAYING. Return={state_ret}")
 
     def process(self, frame_bgr: np.ndarray, timeout_ms: int = 50) -> Optional[np.ndarray]:
@@ -118,7 +117,7 @@ class HailoGstProcessor:
             frame_bgr = np.ascontiguousarray(frame_bgr)
 
         data = frame_bgr.tobytes()
-        gst_buffer = Gst.Buffer.new_allocate(None, len(data), None)
+        gst_buffer = Gst.Buffer.new_allocate(None, len(data), None) # type: ignore
         gst_buffer.fill(0, data)
         gst_buffer.pts = self._frame_counter * self._frame_duration_ns
         gst_buffer.dts = gst_buffer.pts
@@ -126,7 +125,7 @@ class HailoGstProcessor:
         self._frame_counter += 1
 
         push_ret = self._appsrc.emit("push-buffer", gst_buffer)
-        if push_ret != Gst.FlowReturn.OK:
+        if push_ret != Gst.FlowReturn.OK: # type: ignore
             self._logger.warning(f"Hailo pipeline push-buffer failed: {push_ret}")
             return None
 
@@ -152,7 +151,7 @@ class HailoGstProcessor:
         if buffer is None:
             return None
 
-        ok, map_info = buffer.map(Gst.MapFlags.READ)
+        ok, map_info = buffer.map(Gst.MapFlags.READ) # type: ignore
         if not ok:
             return None
 
@@ -177,7 +176,7 @@ class HailoGstProcessor:
             self._appsrc.emit("end-of-stream")
         except Exception:
             pass
-        self._pipeline.set_state(Gst.State.NULL)
+        self._pipeline.set_state(Gst.State.NULL) # type: ignore
 
 
 class RealSenseHailoNode(Node):

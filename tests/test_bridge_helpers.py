@@ -135,6 +135,48 @@ def test_crc16_ccitt_matches_standard_vector():
     assert bridge.crc16_ccitt(b"123456789") == 0x29B1
 
 
+def test_resolve_runtime_config_prefers_cli_over_env(monkeypatch):
+    bridge = load_bridge_module()
+    monkeypatch.setenv("SERIAL_PORT", "/dev/env")
+    monkeypatch.setenv("SERIAL_BAUD", "57600")
+    monkeypatch.setenv("IMU_TOPIC", "/imu/custom")
+    monkeypatch.setenv("COMMAND_TIMEOUT_MS", "2000")
+    monkeypatch.setenv("WATCHDOG_TIMEOUT_S", "4.5")
+    monkeypatch.setenv("STATUS_PERIOD_S", "7.0")
+    monkeypatch.setenv("SERIAL_RETRY_DELAY_S", "2.0")
+
+    config = bridge.resolve_runtime_config(SimpleNamespace(port="/dev/cli", baud=115200))
+
+    assert config == {
+        "port": "/dev/cli",
+        "baud": 115200,
+        "imu_topic": "/imu/custom",
+        "command_timeout_ms": 2000,
+        "watchdog_timeout_s": 4.5,
+        "status_period_s": 7.0,
+        "serial_retry_delay_s": 2.0,
+    }
+
+
+def test_resolve_runtime_config_falls_back_on_invalid_env(monkeypatch):
+    bridge = load_bridge_module()
+    monkeypatch.delenv("IMU_TOPIC", raising=False)
+    monkeypatch.setenv("SERIAL_BAUD", "not-a-number")
+    monkeypatch.setenv("COMMAND_TIMEOUT_MS", "0")
+    monkeypatch.setenv("WATCHDOG_TIMEOUT_S", "-1")
+    monkeypatch.setenv("STATUS_PERIOD_S", "bad")
+    monkeypatch.setenv("SERIAL_RETRY_DELAY_S", "-2")
+
+    config = bridge.resolve_runtime_config(SimpleNamespace(port=None, baud=None))
+
+    assert config["baud"] == 115200
+    assert config["command_timeout_ms"] == 1200
+    assert config["watchdog_timeout_s"] == 3.0
+    assert config["status_period_s"] == 5.0
+    assert config["serial_retry_delay_s"] == 1.0
+    assert config["imu_topic"] == "/imu/arduino"
+
+
 def test_euler_to_quaternion_identity():
     bridge = load_bridge_module()
     q = bridge.euler_to_quaternion(0.0)
@@ -179,6 +221,10 @@ class FakeLogger:
     def __init__(self):
         self.errors = []
         self.warnings = []
+        self.infos = []
+
+    def info(self, message):
+        self.infos.append(message)
 
     def error(self, message):
         self.errors.append(message)
@@ -318,3 +364,24 @@ def test_status_callback_publishes_bridge_summary():
     assert "TX=7" in status
     assert "CRC_ERR=2" in status
     assert "SYNC_ERR=3" in status
+
+
+def test_connect_serial_failure_initializes_stats(monkeypatch):
+    bridge = load_bridge_module()
+
+    class ExplodingSerial:
+        def __init__(self, *args, **kwargs):
+            raise OSError("serial unavailable")
+
+    monkeypatch.setattr(bridge.serial, "Serial", ExplodingSerial)
+
+    instance = bridge.RobotSerialBridge.__new__(bridge.RobotSerialBridge)
+    instance.port = "/dev/ttyFAIL"
+    instance.baud = 115200
+    instance.serial_port = None
+    instance._logger = FakeLogger()
+    instance.get_logger = lambda: instance._logger
+
+    assert bridge.RobotSerialBridge.connect_serial(instance) is False
+    assert instance.stats["serial_errors"] == 1
+    assert "serial unavailable" in instance._logger.errors[-1]
