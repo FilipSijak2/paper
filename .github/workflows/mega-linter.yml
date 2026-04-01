@@ -18,6 +18,9 @@ jobs:
   lint:
     name: MegaLinter
     runs-on: ubuntu-latest
+    env:
+      VALIDATE_ALL_CODEBASE: ${{ github.event_name == 'pull_request' && 'false' || 'true' }}
+      MEGALINTER_SCOPE_LABEL: ${{ github.event_name == 'pull_request' && 'changed files in the current diff' || 'the entire repository' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,10 +37,64 @@ jobs:
         shell: bash
         run: |
           python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import os
           from pathlib import Path
 
           report_file = Path("megalinter-reports/megalinter-report.md")
+          config_file = Path(".mega-linter.yml")
 
+          def parse_simple_yaml_lists(path):
+              if not path.exists():
+                  return {}
+
+              parsed = {}
+              active_list = None
+
+              for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                  line = raw_line.rstrip()
+                  stripped = line.strip()
+
+                  if not stripped or stripped.startswith("#"):
+                      continue
+
+                  if not line.startswith(" ") and ":" in stripped:
+                      key, value = stripped.split(":", 1)
+                      key = key.strip()
+                      value = value.strip()
+                      if value:
+                          parsed[key] = value
+                          active_list = None
+                      else:
+                          parsed[key] = []
+                          active_list = key
+                      continue
+
+                  if active_list and stripped.startswith("- "):
+                      parsed[active_list].append(stripped[2:].strip())
+                      continue
+
+                  active_list = None
+
+              return parsed
+
+          config = parse_simple_yaml_lists(config_file)
+          enabled_linters = config.get("ENABLE_LINTERS", [])
+          blocking_linters = config.get("ENABLE_ERRORS_LINTERS", [])
+          non_blocking_linters = [
+              linter for linter in enabled_linters if linter not in set(blocking_linters)
+          ]
+          scope_label = os.environ.get("MEGALINTER_SCOPE_LABEL", "configured files")
+
+          print()
+          print("## MegaLinter Configuration")
+          print()
+          print(f"- Validation scope: `{scope_label}`")
+          if enabled_linters:
+              print(f"- Enabled linters: `{', '.join(enabled_linters)}`")
+          if blocking_linters:
+              print(f"- Blocking linters: `{', '.join(blocking_linters)}`")
+          if non_blocking_linters:
+              print(f"- Warning-only linters: `{', '.join(non_blocking_linters)}`")
           print()
           print("## MegaLinter Checks")
           print()
@@ -116,7 +173,7 @@ jobs:
                   )
           elif table_seen:
               print("- :white_check_mark: MegaLinter completed, but no per-linter rows were emitted for this run.")
-              print("- :information_source: This usually means no matching changed files required linting in the current diff.")
+              print(f"- :information_source: This usually means no matching files required linting within {scope_label}.")
           else:
               print(f"- :warning: Could not parse structured linter rows from `{report_file}`. See MegaLinter artifacts for details.")
           PY

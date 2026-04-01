@@ -1,4 +1,6 @@
 DEFAULT_BRANCH: devel
+# Keep the repo default as diff-only; the workflow overrides this to full scans
+# on push/workflow_dispatch while PRs stay fast.
 VALIDATE_ALL_CODEBASE: false
 CLEAR_REPORT_FOLDER: true
 SHOW_ELAPSED_TIME: true
@@ -12,10 +14,13 @@ ENABLE_LINTERS:
   - BASH_SHELLCHECK
   - BASH_SHFMT
   - DOCKERFILE_HADOLINT
+  - JSON_JSONLINT
+  - MARKDOWN_MARKDOWNLINT
+  - PYTHON_RUFF
   - YAML_YAMLLINT
 
-# Initial rollout: keep the pipeline useful without blocking on every historic
-# shell/Docker formatting issue on day one. We can tighten this list later.
+# Keep correctness/configuration checks blocking, while broader code-quality
+# feedback is introduced as warnings first to avoid noisy CI failures.
 ENABLE_ERRORS_LINTERS:
   - ACTION_ACTIONLINT
   - YAML_YAMLLINT
