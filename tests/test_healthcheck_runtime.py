@@ -9,7 +9,7 @@ HEALTHCHECK_PATH = REPO_ROOT / "healthcheck_cont" / "healthcheck.py"
 
 def load_healthcheck_module():
     spec = importlib.util.spec_from_file_location("test_healthcheck_runtime", HEALTHCHECK_PATH)
-    module = importlib.util.module_from_spec(spec)
+    module = importlib.util.module_from_spec(spec) # type: ignore
     assert spec is not None and spec.loader is not None
     spec.loader.exec_module(module)
     return module

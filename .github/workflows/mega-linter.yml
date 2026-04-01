@@ -28,3 +28,55 @@ jobs:
         uses: oxsecurity/megalinter@v9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Append Parsed MegaLinter Summary
+        if: success() || failure()
+        shell: bash
+        run: |
+          REPORT_FILE="megalinter-reports/megalinter-report.md"
+          {
+            echo ""
+            echo "## MegaLinter Checks"
+            echo ""
+
+            if [[ ! -f "$REPORT_FILE" ]]; then
+              echo "- ❌ MegaLinter summary file not found at \`$REPORT_FILE\`"
+              exit 0
+            fi
+
+            found=0
+            while IFS=$'\t' read -r descriptor linter mode files fixed errors warnings elapsed; do
+              found=1
+              if [[ "$errors" =~ ^[0-9]+$ ]] && (( errors > 0 )); then
+                icon="❌"
+              else
+                icon="✅"
+              fi
+              echo "- ${icon} \`${linter}\` (${descriptor}): mode=${mode}, files=${files}, errors=${errors}, warnings=${warnings}, fixed=${fixed}, elapsed=${elapsed}"
+            done < <(
+              awk -F'|' '
+                function trim(value) {
+                  gsub(/^[ \t]+|[ \t]+$/, "", value)
+                  return value
+                }
+                /^\|/ {
+                  descriptor = trim($2)
+                  linter = trim($3)
+                  mode = trim($4)
+                  files = trim($5)
+                  fixed = trim($6)
+                  errors = trim($7)
+                  warnings = trim($8)
+                  elapsed = trim($9)
+                  if (descriptor == "" || descriptor == "Descriptor" || descriptor ~ /^-+$/) {
+                    next
+                  }
+                  print descriptor "\t" linter "\t" mode "\t" files "\t" fixed "\t" errors "\t" warnings "\t" elapsed
+                }
+              ' "$REPORT_FILE"
+            )
+
+            if [[ "$found" -eq 0 ]]; then
+              echo "- ❌ Could not parse any linter rows from \`$REPORT_FILE\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
