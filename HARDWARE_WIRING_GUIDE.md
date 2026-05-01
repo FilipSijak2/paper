@@ -57,7 +57,7 @@ This gives the default address:
 ### Channel use
 
 - `CH0` -> `AS5600 LEFT`
-- `CH1` -> `AS5600 RIGHT`
+- `CH4` -> `AS5600 RIGHT`
 
 ## 3. AS5600 Encoder Connections
 
@@ -79,7 +79,7 @@ If the reading is unstable, the first thing to check is mechanical alignment.
 
 ## 4. DRV8833 Connections
 
-### Logic inputs
+### Logic inputs'
 
 - `AIN1` <- Nano `D5`
 - `AIN2` <- Nano `D6`

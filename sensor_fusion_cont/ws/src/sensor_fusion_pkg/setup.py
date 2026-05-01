@@ -22,7 +22,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'arduino_listener = sensor_fusion_pkg.arduino_listener:main'
+            'arduino_listener = sensor_fusion_pkg.arduino_listener_impl:main'
         ],
     },
 )

@@ -49,7 +49,7 @@ Raspberry Pi / Docker stack
 Current firmware channel mapping:
 
 - `CH0` = left encoder
-- `CH1` = right encoder
+- `CH4` = right encoder
 
 ### Host-side sensors
 

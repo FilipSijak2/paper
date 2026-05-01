@@ -31,7 +31,7 @@ flowchart LR
     NANO -->|"GND"| TCA
 
     TCA -->|"CH0 SDA/SCL"| LENC
-    TCA -->|"CH1 SDA/SCL"| RENC
+    TCA -->|"CH4 SDA/SCL"| RENC
     NANO -->|"3V3 + GND"| LENC
     NANO -->|"3V3 + GND"| RENC
 
@@ -62,7 +62,7 @@ Raspberry Pi
    +-- USB --> Nano ESP32
                   |
                   +-- I2C A4/A5 --> TCA9548A --> CH0 --> AS5600 LEFT
-                  |                         \--> CH1 --> AS5600 RIGHT
+                  |                         \--> CH4 --> AS5600 RIGHT
                   |
                   +-- D5  --> DRV8833 AIN1
                   +-- D6  --> DRV8833 AIN2
@@ -95,7 +95,7 @@ Pi USB GND = Nano GND = TCA GND = AS5600 GND = DRV8833 GND = external supply GND
 
 - `A0`, `A1`, `A2` -> `GND`
 - `CH0` -> lijevi `AS5600`
-- `CH1` -> desni `AS5600`
+- `CH4` -> desni `AS5600`
 
 ### AS5600 LEFT / RIGHT
 

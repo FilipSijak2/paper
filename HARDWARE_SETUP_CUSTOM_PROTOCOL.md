@@ -73,7 +73,7 @@ TCA9548A address:
 TCA9548A CH0 -> AS5600 LEFT
  SDA/SCL     -> SDA/SCL
 
-TCA9548A CH1 -> AS5600 RIGHT
+TCA9548A CH4 -> AS5600 RIGHT
  SDA/SCL     -> SDA/SCL
 
 Both AS5600 boards:
@@ -84,7 +84,7 @@ Both AS5600 boards:
 Current firmware channel assignment:
 
 - `CH0` = left encoder
-- `CH1` = right encoder
+- `CH4` = right encoder
 
 ### Nano ESP32 <-> DRV8833
 
@@ -178,7 +178,7 @@ Purpose:
 
 Size:
 
-- `32 bytes`
+- `38 bytes`
 
 Rate:
 
@@ -245,7 +245,7 @@ The Nano IMU stream is still useful for:
 
 - confirm `TCA9548A` is at `0x70`
 - confirm left encoder is on `CH0`
-- confirm right encoder is on `CH1`
+- confirm right encoder is on `CH4`
 - confirm the magnet is centered above the AS5600
 
 ### Motors do not move

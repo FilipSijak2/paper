@@ -78,30 +78,30 @@ def load_bridge_module():
     class Point:
         pass
 
-    serial_mod.Serial = object
-    serial_mod.EIGHTBITS = 8
-    serial_mod.PARITY_NONE = "N"
-    serial_mod.STOPBITS_ONE = 1
+    setattr(serial_mod, "Serial", object)
+    setattr(serial_mod, "EIGHTBITS", 8)
+    setattr(serial_mod, "PARITY_NONE", "N")
+    setattr(serial_mod, "STOPBITS_ONE", 1)
 
-    rclpy_node.Node = Node
-    rclpy_qos.QoSProfile = QoSProfile
-    rclpy_qos.ReliabilityPolicy = ReliabilityPolicy
-    geometry_msgs_msg.Twist = Twist
-    geometry_msgs_msg.PoseWithCovariance = PoseWithCovariance
-    geometry_msgs_msg.TwistWithCovariance = TwistWithCovariance
-    geometry_msgs_msg.Pose = Pose
-    geometry_msgs_msg.Vector3 = Vector3
-    geometry_msgs_msg.Quaternion = Quaternion
-    geometry_msgs_msg.Point = Point
-    sensor_msgs_msg.Imu = Imu
-    nav_msgs_msg.Odometry = Odometry
-    std_msgs_msg.String = String
-    std_msgs_msg.Header = Header
+    setattr(rclpy_node, "Node", Node)
+    setattr(rclpy_qos, "QoSProfile", QoSProfile)
+    setattr(rclpy_qos, "ReliabilityPolicy", ReliabilityPolicy)
+    setattr(geometry_msgs_msg, "Twist", Twist)
+    setattr(geometry_msgs_msg, "PoseWithCovariance", PoseWithCovariance)
+    setattr(geometry_msgs_msg, "TwistWithCovariance", TwistWithCovariance)
+    setattr(geometry_msgs_msg, "Pose", Pose)
+    setattr(geometry_msgs_msg, "Vector3", Vector3)
+    setattr(geometry_msgs_msg, "Quaternion", Quaternion)
+    setattr(geometry_msgs_msg, "Point", Point)
+    setattr(sensor_msgs_msg, "Imu", Imu)
+    setattr(nav_msgs_msg, "Odometry", Odometry)
+    setattr(std_msgs_msg, "String", String)
+    setattr(std_msgs_msg, "Header", Header)
 
-    geometry_msgs.msg = geometry_msgs_msg
-    sensor_msgs.msg = sensor_msgs_msg
-    nav_msgs.msg = nav_msgs_msg
-    std_msgs.msg = std_msgs_msg
+    setattr(geometry_msgs, "msg", geometry_msgs_msg)
+    setattr(sensor_msgs, "msg", sensor_msgs_msg)
+    setattr(nav_msgs, "msg", nav_msgs_msg)
+    setattr(std_msgs, "msg", std_msgs_msg)
 
     inject("rclpy", rclpy)
     inject("rclpy.node", rclpy_node)
@@ -118,8 +118,8 @@ def load_bridge_module():
 
     try:
         spec = importlib.util.spec_from_file_location("test_robot_serial_bridge", BRIDGE_PATH)
-        module = importlib.util.module_from_spec(spec)
         assert spec is not None and spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
     finally:
@@ -238,6 +238,7 @@ def make_bridge_instance(bridge):
     instance.serial_port = FakeSerialPort()
     instance.stats = {
         "packets_received": 0,
+        "status_packets_received": 0,
         "packets_sent": 0,
         "crc_errors": 0,
         "sync_errors": 0,
@@ -246,6 +247,7 @@ def make_bridge_instance(bridge):
     instance.command_sequence = 0
     instance.last_command_time = 0.0
     instance.last_packet_time = 0.0
+    instance.last_mcu_status = None
     instance.packet_buffer = bytearray()
     instance.status_pub = FakePublisher()
     instance._logger = FakeLogger()
@@ -266,7 +268,7 @@ def test_cmd_vel_callback_builds_packet_with_crc_and_sequence():
     assert instance.stats["packets_sent"] == 1
     assert instance.command_sequence == 1
     packet = instance.serial_port.writes[-1]
-    unpacked = struct.unpack("<LBBHffHL", packet)
+    unpacked = struct.unpack(bridge.COMMAND_PACKET_FORMAT, packet)
     header, version, sequence, timeout_ms, linear_x, angular_z, crc, tail = unpacked
     assert header == bridge.COMMAND_PACKET_HEADER
     assert tail == bridge.COMMAND_PACKET_TAIL
@@ -293,6 +295,21 @@ def test_process_packets_skips_garbage_and_tracks_sync_errors():
     assert instance.stats["sync_errors"] == 1
     assert instance.stats["packets_received"] == 1
     assert instance.packet_buffer == bytearray(b"\x00\x01")
+
+
+def test_process_packets_reads_status_packets():
+    bridge = load_bridge_module()
+    instance = make_bridge_instance(bridge)
+    status_packet = struct.pack("<L", bridge.STATUS_PACKET_HEADER) + bytes(bridge.STATUS_PACKET_SIZE - 4)
+    seen_packets = []
+    instance.parse_status_packet = lambda payload: seen_packets.append(payload) or True
+
+    instance.packet_buffer = bytearray(status_packet)
+    bridge.RobotSerialBridge.process_packets(instance)
+
+    assert seen_packets == [status_packet]
+    assert instance.stats["status_packets_received"] == 1
+    assert instance.packet_buffer == bytearray()
 
 
 def test_parse_sensor_packet_rejects_bad_crc():
@@ -323,11 +340,39 @@ def test_parse_sensor_packet_rejects_bad_crc():
         0,
         bridge.SENSOR_PACKET_TAIL,
     )
-    packet = struct.pack("<LBBHLfffffffffffHBBHL", *values)
+    packet = struct.pack(bridge.SENSOR_PACKET_FORMAT, *values)
     correct_crc = bridge.crc16_ccitt(packet[:-6])
     bad_packet = packet[:-6] + struct.pack("<H", (correct_crc + 1) & 0xFFFF) + packet[-4:]
 
     assert bridge.RobotSerialBridge.parse_sensor_packet(instance, bad_packet) is False
+
+
+def test_parse_status_packet_updates_mcu_status():
+    bridge = load_bridge_module()
+    instance = make_bridge_instance(bridge)
+    raw_status = b"running\x00\x00\x00\x00\x00"
+    packet = struct.pack(
+        bridge.STATUS_PACKET_FORMAT,
+        bridge.STATUS_PACKET_HEADER,
+        bridge.PROTOCOL_VERSION,
+        7,
+        0x001F,
+        12345,
+        88,
+        20,
+        192,
+        raw_status,
+        0,
+        bridge.STATUS_PACKET_TAIL,
+    )
+    crc = bridge.crc16_ccitt(packet[:-6])
+    packet = packet[:-6] + struct.pack("<H", crc) + packet[-4:]
+
+    assert bridge.RobotSerialBridge.parse_status_packet(instance, packet) is True
+    assert instance.last_mcu_status["status_msg"] == "running"
+    assert instance.last_mcu_status["flags"] == 0x001F
+    assert instance.last_mcu_status["loop_rate_hz"] == 20
+    assert instance.last_mcu_status["free_heap_kb"] == 192
 
 
 def test_watchdog_callback_reconnects_when_serial_is_closed(monkeypatch):
@@ -351,6 +396,7 @@ def test_status_callback_publishes_bridge_summary():
     instance.stats.update(
         {
             "packets_received": 12,
+            "status_packets_received": 4,
             "packets_sent": 7,
             "crc_errors": 2,
             "sync_errors": 3,
@@ -361,6 +407,7 @@ def test_status_callback_publishes_bridge_summary():
 
     status = instance.status_pub.messages[-1].data
     assert "RX=12" in status
+    assert "STATUS_RX=4" in status
     assert "TX=7" in status
     assert "CRC_ERR=2" in status
     assert "SYNC_ERR=3" in status

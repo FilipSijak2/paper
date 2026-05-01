@@ -37,20 +37,25 @@ PROTOCOL_VERSION = 1
 
 SENSOR_PACKET_HEADER = 0xDEADBEEF
 SENSOR_PACKET_TAIL = 0xCAFEBABE
-SENSOR_PACKET_SIZE = 66  # sizeof(SensorPacket) with __attribute__((packed))
+SENSOR_PACKET_FORMAT = "<LBBHLfffffffffffHBBHL"
+SENSOR_PACKET_SIZE = struct.calcsize(SENSOR_PACKET_FORMAT)
 
 COMMAND_PACKET_HEADER = 0xFEEDFACE
 COMMAND_PACKET_TAIL = 0xDEADC0DE
-COMMAND_PACKET_SIZE = 22  # sizeof(CommandPacket) with __attribute__((packed))
+COMMAND_PACKET_FORMAT = "<LBBHffHL"
+COMMAND_PACKET_SIZE = struct.calcsize(COMMAND_PACKET_FORMAT)
 
 STATUS_PACKET_HEADER = 0xABCDEF01
 STATUS_PACKET_TAIL = 0x12345678
-STATUS_PACKET_SIZE = 32
+STATUS_PACKET_FORMAT = "<LBBHLLHH12sHL"
+STATUS_PACKET_SIZE = struct.calcsize(STATUS_PACKET_FORMAT)
+PACKET_HEADER_SIZE = struct.calcsize("<L")
 
 
 def _default_stats():
     return {
         "packets_received": 0,
+        "status_packets_received": 0,
         "packets_sent": 0,
         "crc_errors": 0,
         "sync_errors": 0,
@@ -157,6 +162,7 @@ class RobotSerialBridge(Node):
         self.command_sequence = 0
         self.packet_buffer = bytearray()
         self.stats = _default_stats()
+        self.last_mcu_status = None
         self.running = True
 
         self.get_logger().info(
@@ -213,7 +219,7 @@ class RobotSerialBridge(Node):
         try:
             command_timeout_ms = getattr(self, "command_timeout_ms", 1200)
             packet = struct.pack(
-                "<LBBHffHL",
+                COMMAND_PACKET_FORMAT,
                 COMMAND_PACKET_HEADER,
                 PROTOCOL_VERSION,
                 self.command_sequence & 0xFF,
@@ -258,30 +264,55 @@ class RobotSerialBridge(Node):
                 time.sleep(0.1)
 
     def process_packets(self):
-        """Process received packet buffer."""
-        while len(self.packet_buffer) >= SENSOR_PACKET_SIZE:
-            header_pos = self.find_packet_header(SENSOR_PACKET_HEADER)
+        """Process a mixed stream of sensor and status packets."""
+        while len(self.packet_buffer) >= PACKET_HEADER_SIZE:
+            header_pos, packet_kind = self.find_next_packet_header()
 
             if header_pos == -1:
-                if len(self.packet_buffer) > 8:
-                    self.packet_buffer = self.packet_buffer[-8:]
+                if len(self.packet_buffer) > PACKET_HEADER_SIZE - 1:
+                    self.packet_buffer = self.packet_buffer[-(PACKET_HEADER_SIZE - 1):]
                 break
 
             if header_pos > 0:
                 self.packet_buffer = self.packet_buffer[header_pos:]
                 self._bump_stat("sync_errors")
 
-            if len(self.packet_buffer) < SENSOR_PACKET_SIZE:
+            packet_size = SENSOR_PACKET_SIZE if packet_kind == "sensor" else STATUS_PACKET_SIZE
+            if len(self.packet_buffer) < packet_size:
                 break
 
-            packet_data = self.packet_buffer[:SENSOR_PACKET_SIZE]
-            self.packet_buffer = self.packet_buffer[SENSOR_PACKET_SIZE:]
+            packet_data = bytes(self.packet_buffer[:packet_size])
+            if packet_kind == "sensor":
+                parsed_ok = self.parse_sensor_packet(packet_data)
+            else:
+                parsed_ok = self.parse_status_packet(packet_data)
 
-            if self.parse_sensor_packet(packet_data):
-                self._bump_stat("packets_received")
-                self.last_packet_time = time.time()
+            if parsed_ok:
+                self.packet_buffer = self.packet_buffer[packet_size:]
+                if packet_kind == "sensor":
+                    self._bump_stat("packets_received")
+                    self.last_packet_time = time.time()
+                else:
+                    self._bump_stat("status_packets_received")
             else:
                 self._bump_stat("crc_errors")
+                self.packet_buffer = self.packet_buffer[1:]
+
+    def find_next_packet_header(self):
+        """Find the earliest known packet header in the receive buffer."""
+        matches = []
+        for header, packet_kind in (
+            (SENSOR_PACKET_HEADER, "sensor"),
+            (STATUS_PACKET_HEADER, "status"),
+        ):
+            position = self.find_packet_header(header)
+            if position != -1:
+                matches.append((position, packet_kind))
+
+        if not matches:
+            return -1, None
+
+        return min(matches, key=lambda item: item[0])
 
     def find_packet_header(self, header):
         """Find a packet header in the receive buffer."""
@@ -295,7 +326,7 @@ class RobotSerialBridge(Node):
             # header(L) version(B) sequence(B) flags(H) timestamp_ms(L)
             # accel x/y/z (fff) gyro x/y/z (fff) encoders x2 (ff) odom x/y/yaw (fff)
             # battery_mv(H) temperature(B) error_flags(B) crc16(H) tail(L)
-            unpacked = struct.unpack("<LBBHL ffffff ff fff HBB HL", data)
+            unpacked = struct.unpack(SENSOR_PACKET_FORMAT, data)
 
             (
                 header,
@@ -337,6 +368,48 @@ class RobotSerialBridge(Node):
 
         except Exception as exc:
             self.get_logger().error(f"Packet parsing error: {exc}")
+            return False
+
+    def parse_status_packet(self, data):
+        """Parse an MCU status packet and cache it for /robot_status publishing."""
+        try:
+            (
+                header,
+                version,
+                sequence,
+                flags,
+                uptime_ms,
+                loop_count,
+                loop_rate_hz,
+                free_heap_kb,
+                status_msg_raw,
+                crc16,
+                tail,
+            ) = struct.unpack(STATUS_PACKET_FORMAT, data)
+
+            if header != STATUS_PACKET_HEADER or tail != STATUS_PACKET_TAIL:
+                return False
+            if version != PROTOCOL_VERSION:
+                return False
+
+            expected_crc = crc16_ccitt(data[:-6])
+            if crc16 != expected_crc:
+                return False
+
+            status_msg = status_msg_raw.split(b"\0", 1)[0].decode("ascii", errors="ignore") or "unknown"
+            self.last_mcu_status = {
+                "sequence": sequence,
+                "flags": flags,
+                "uptime_ms": uptime_ms,
+                "loop_count": loop_count,
+                "loop_rate_hz": loop_rate_hz,
+                "free_heap_kb": free_heap_kb,
+                "status_msg": status_msg,
+            }
+            return True
+
+        except Exception as exc:
+            self.get_logger().error(f"Status packet parsing error: {exc}")
             return False
 
     def publish_imu(self, timestamp, ax, ay, az, gx, gy, gz):
@@ -397,10 +470,18 @@ class RobotSerialBridge(Node):
         msg = String()
         msg.data = (
             f"Serial Bridge: RX={self.stats['packets_received']} "
+            f"STATUS_RX={self.stats.get('status_packets_received', 0)} "
             f"TX={self.stats['packets_sent']} "
             f"CRC_ERR={self.stats['crc_errors']} "
             f"SYNC_ERR={self.stats['sync_errors']}"
         )
+        if self.last_mcu_status:
+            msg.data += (
+                f" MCU={self.last_mcu_status['status_msg']}"
+                f" FLAGS=0x{self.last_mcu_status['flags']:04X}"
+                f" LOOP_HZ={self.last_mcu_status['loop_rate_hz']}"
+                f" HEAP_KB={self.last_mcu_status['free_heap_kb']}"
+            )
         self.status_pub.publish(msg)
 
     def destroy_node(self):

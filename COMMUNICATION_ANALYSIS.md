@@ -60,7 +60,7 @@ Current sensor bus on Nano:
 - `I2C` on `A4/D21` and `A5/D22`
 - `TCA9548A` at `0x70`
 - `AS5600 LEFT` on `CH0`
-- `AS5600 RIGHT` on `CH1`
+- `AS5600 RIGHT` on `CH4`
 
 The Nano firmware reads both encoders, unwraps their angle, and computes wheel
 odometry locally before sending it to the bridge.
