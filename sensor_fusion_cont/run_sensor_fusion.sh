@@ -8,7 +8,7 @@ set -euo pipefail
 ROS_SETUP=/opt/ros/humble/setup.bash
 OVERLAY_SETUP=/app/ws/install/setup.bash
 PKG_NAME="sensor_fusion_pkg"
-LAUNCH_COMMAND=(ros2 launch ${PKG_NAME} sensor_fusion.launch.py)
+LAUNCH_COMMAND=(ros2 launch "${PKG_NAME}" sensor_fusion.launch.py)
 LIBEXEC_DIR=/app/ws/install/lib/${PKG_NAME}
 MAX_LAUNCH_RETRIES=${MAX_LAUNCH_RETRIES:-3}
 SF_IMU_SOURCE=${SF_IMU_SOURCE:-realsense}
@@ -41,6 +41,7 @@ echo "SENSOR_FUSION_IMU_MODE=${SF_IMU_MODE}"
 : "${AMENT_TRACE_SETUP_FILES:=}"
 : "${COLCON_TRACE:=}"
 set +u
+# shellcheck source=/opt/ros/humble/setup.bash
 source "$ROS_SETUP"
 set -u
 
@@ -52,6 +53,7 @@ else
   # Guard COLCON_TRACE for colcon-generated setup scripts
   : "${COLCON_TRACE:=}"
   set +u
+  # shellcheck source=/dev/null
   source "$OVERLAY_SETUP" || { yellow "[WARN] Failed sourcing overlay, will rebuild"; needs_rebuild=true; }
   set -u
 fi
@@ -70,6 +72,7 @@ if $needs_rebuild; then
   popd >/dev/null
   : "${COLCON_TRACE:=}"
   set +u
+  # shellcheck source=/dev/null
   source "$OVERLAY_SETUP"
   set -u
   if ros2 pkg list | grep -q "^${PKG_NAME}$"; then
@@ -90,7 +93,10 @@ if [[ "${SF_IMU_MODE}" == "arduino" && ! -d "$LIBEXEC_DIR" ]]; then
   rm -rf build install log 2>/dev/null || true
   colcon build --symlink-install --merge-install || { red "[ERROR] Rebuild (libexec fix) failed"; exit 1; }
   popd >/dev/null
-  set +u; source "$OVERLAY_SETUP"; set -u
+  set +u
+  # shellcheck source=/dev/null
+  source "$OVERLAY_SETUP"
+  set -u
   if [ ! -d "$LIBEXEC_DIR" ]; then
     yellow "[WARN] libexec directory still absent after rebuild; Arduino mode will fallback to direct python execution"
   else
@@ -113,7 +119,7 @@ while :; do
     break
   fi
   red "[ERROR] ros2 launch exited with code $rc (attempt ${attempt}/${MAX_LAUNCH_RETRIES})"
-  if [ $attempt -ge $MAX_LAUNCH_RETRIES ]; then
+  if [ "$attempt" -ge "$MAX_LAUNCH_RETRIES" ]; then
     if [[ "${SF_IMU_MODE}" == "arduino" ]]; then
       yellow "[WARN] Reached max launch retries; invoking direct Arduino fallback."
       # Direct fallback: run module entry point without launch system

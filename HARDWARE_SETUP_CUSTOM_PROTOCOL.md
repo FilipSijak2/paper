@@ -35,7 +35,7 @@ There is no active `UNO R4` motor-controller stage in this version.
 - `DRV8833` dual H-bridge motor driver
 - `2x DC geared motors`
 
-### Power
+### Power Wiring
 
 - USB from Raspberry Pi to Nano ESP32
 - separate motor supply for `DRV8833`

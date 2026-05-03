@@ -1,4 +1,5 @@
 FROM ubuntu:22.04
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Avoid any interactive debconf prompts during image build (e.g., locales).
 ENV DEBIAN_FRONTEND=noninteractive

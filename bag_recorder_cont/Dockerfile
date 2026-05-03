@@ -14,8 +14,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Make interactive and non-interactive bash shells immediately usable.
-RUN echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> /root/.bashrc \
-    && echo 'source /opt/ros/${ROS_DISTRO}/setup.bash' >> /etc/bash.bashrc
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc \
+    && echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /etc/bash.bashrc
 
 WORKDIR /app
 

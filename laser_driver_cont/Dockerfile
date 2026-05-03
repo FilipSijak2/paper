@@ -27,18 +27,12 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 # Create workspace
 WORKDIR /ros2_ws
-RUN mkdir src
-
-# Clone rplidar_ros from ros2 branch
-RUN git clone -b ros2 https://github.com/Slamtec/rplidar_ros.git src/rplidar_ros
-
-# Build workspace
-RUN . /opt/ros/humble/setup.sh && colcon build
-
-# Set environment and prompt
-RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
+RUN mkdir src \
+    && git clone -b ros2 https://github.com/Slamtec/rplidar_ros.git src/rplidar_ros \
+    && . /opt/ros/humble/setup.sh && colcon build \
+    && echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc && \
     echo "source /ros2_ws/install/setup.bash" >> /root/.bashrc && \
-    echo "export PS1='\[\033[1;34m\]driver_cont: \[\033[0m\]'" >> /root/.bashrc
+    printf '%s\n' "export PS1='\\[\\033[1;34m\\]driver_cont: \\[\\033[0m\\]'" >> /root/.bashrc
 
 # Start driver; exit with non-zero on failure so Docker can restart the container
 CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash && ros2 launch rplidar_ros rplidar_a1_launch.py"]

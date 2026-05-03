@@ -5,7 +5,6 @@ Demonstrira kako snimiti i čitati mape te slike kamere
 
 from robot_db_api import get_database
 from datetime import datetime
-import io
 
 def example_usage():
     """Primjer korištenja baze podataka"""
@@ -120,7 +119,7 @@ def example_usage():
             print(f"   - {wp['name']} @ ({wp['map_x']:.1f}, {wp['map_y']:.1f}) [{wp['waypoint_type']}]")
         
         # 6. Završavanje sesije
-        print(f"\n6. Završavanje sesije...")
+        print("\n6. Završavanje sesije...")
         db.end_session(session_id, total_distance=12.5)  # 12.5 metara
         print("   Sesija završena\n")
         

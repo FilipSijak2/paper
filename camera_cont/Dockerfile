@@ -3,6 +3,7 @@ FROM ros:humble-ros-base
 # Install required packages
 RUN apt-get update && apt-get install -y \
     python3-opencv \
+    python3-numpy \
     python3-pip \
     gstreamer1.0-tools \
     gstreamer1.0-plugins-base \
@@ -13,8 +14,6 @@ RUN apt-get update && apt-get install -y \
     gstreamer1.0-libav \
     ros-humble-cv-bridge \
     && rm -rf /var/lib/apt/lists/*
-
-RUN pip3 install --no-cache-dir numpy
 
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 ENV ROS_DOMAIN_ID=0

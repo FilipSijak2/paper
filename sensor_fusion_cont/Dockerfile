@@ -32,8 +32,8 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
 ENV TZ=Europe/Zagreb
 
 # Postavi ROS okruzenje
-RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
-RUN echo "export PS1='\[\033[1;34m\]sensor_fusion: \[\033[0m\]'" >> /root/.bashrc
+RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
+    && printf '%s\n' "export PS1='\\[\\033[1;34m\\]sensor_fusion: \\[\\033[0m\\]'" >> /root/.bashrc
 
 # Workspace setup
 WORKDIR /app/ws
@@ -42,13 +42,14 @@ COPY sensor_fusion.yaml /app/sensor_fusion.yaml
 
 # Place config inside package tree so setup.py can install it
 RUN mkdir -p src/sensor_fusion_pkg/config \
-    && cp /app/sensor_fusion.yaml src/sensor_fusion_pkg/config/sensor_fusion.yaml
-
-# Build the workspace (verbose diagnostics)
-RUN bash -c "set -euo pipefail; echo '[DEBUG] Python version:'; python3 --version; echo '[DEBUG] Listing src tree:'; find src -maxdepth 4 -type f -print"
-RUN bash -c "set -e; source /opt/ros/humble/setup.bash; echo '[DEBUG] Running colcon build'; \
+    && cp /app/sensor_fusion.yaml src/sensor_fusion_pkg/config/sensor_fusion.yaml \
+    && bash -c "set -euo pipefail; \
+    echo '[DEBUG] Python version:'; python3 --version; \
+    echo '[DEBUG] Listing src tree:'; find src -maxdepth 4 -type f -print; \
+    source /opt/ros/humble/setup.bash; \
+    echo '[DEBUG] Running colcon build'; \
     colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    || { code=$?; echo '[ERROR] Colcon failed; dumping first 120 lines of each log file:'; if [ -d log ]; then find log -type f -maxdepth 4 -print -exec sed -n '1,120p' {} \; ; fi; exit $code; }"
+    || { rc=$?; echo '[ERROR] Colcon failed; dumping first 120 lines of each log file:'; if [ -d log ]; then find log -maxdepth 4 -type f -print -exec sed -n '1,120p' {} \\; ; fi; exit \"$rc\"; }"
 
 # Runtime wrapper (self-healing build if image tag mismatch or cache issue)
 COPY run_sensor_fusion.sh /app/run_sensor_fusion.sh

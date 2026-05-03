@@ -4,6 +4,9 @@ FROM ros:humble
 RUN apt-get update && apt-get install -y \
     apt-utils \
     python3-pip \
+    python3-psycopg2 \
+    python3-yaml \
+    python3-pil \
     libpq-dev \
     ros-humble-nav2-msgs \
     ros-humble-nav2-map-server \
@@ -26,14 +29,9 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
 
 # Service environment setup (guard against unbound AMENT_TRACE_SETUP_FILES when interactive shell uses set -u)
 ENV AMENT_TRACE_SETUP_FILES=""
-RUN echo ': "${AMENT_TRACE_SETUP_FILES:=}"' >> /root/.bashrc && \
-    echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc
-
-# Set custom prompt (just 'slam_cont:' in blue)
-RUN echo "export PS1='\[\033[1;34m\]slam_cont: \[\033[0m\]'" >> /root/.bashrc
-
-# Install necessary Python dependencies
-RUN pip3 install --no-cache-dir psycopg2 pyyaml pillow
+RUN echo ": \"\${AMENT_TRACE_SETUP_FILES:=}\"" >> /root/.bashrc && \
+    echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc && \
+    printf '%s\n' "export PS1='\\[\\033[1;34m\\]slam_cont: \\[\\033[0m\\]'" >> /root/.bashrc
 
 # Copy Python script into container
 WORKDIR /app

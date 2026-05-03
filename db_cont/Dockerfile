@@ -35,7 +35,7 @@ COPY init-db.sql /docker-entrypoint-initdb.d/
 EXPOSE 5432
 
 # Set custom prompt (just 'db_cont:' in blue)
-RUN echo "export PS1='\[\033[1;34m\]db_cont: \[\033[0m\]'" >> /root/.bashrc
+RUN printf '%s\n' "export PS1='\\[\\033[1;34m\\]db_cont: \\[\\033[0m\\]'" >> /root/.bashrc
 
 # Use default PostgreSQL entrypoint
 CMD ["postgres"]

@@ -238,6 +238,7 @@ apply_runtime_compression_tuning() {
   return 0
 }
 
+# shellcheck disable=SC2329
 terminate() {
   if [[ -n "${RS_PID:-}" ]] && kill -0 "${RS_PID}" 2>/dev/null; then
     kill -TERM "${RS_PID}" 2>/dev/null || true

@@ -64,7 +64,16 @@ check_hardware() {
     else
         print_error "Arduino R4 WiFi not found at /dev/ttyACM0"
         print_status "Available devices:"
-        ls -la /dev/tty* | grep -E "(ACM|USB)" || echo "  No Arduino devices found"
+        found_device=false
+        for dev in /dev/ttyACM* /dev/ttyUSB*; do
+            if [[ -e "$dev" ]]; then
+                found_device=true
+                ls -la "$dev"
+            fi
+        done
+        if [[ "$found_device" == false ]]; then
+            echo "  No Arduino devices found"
+        fi
         exit 1
     fi
     
@@ -72,7 +81,7 @@ check_hardware() {
     if [[ ! -r "/dev/ttyACM0" ]]; then
         print_warning "No read permission on /dev/ttyACM0"
         print_status "Adding user to dialout group..."
-        sudo usermod -a -G dialout $USER
+        sudo usermod -a -G dialout "$USER"
         print_warning "Please log out and back in for group changes to take effect"
     fi
     
@@ -110,7 +119,7 @@ EOF
     fi
     
     # Set proper permissions
-    sudo chown -R $USER:$USER srv/
+    sudo chown -R "$USER":"$USER" srv/
     
     print_success "Directories created"
 }
@@ -162,11 +171,11 @@ health_check() {
     FAILED_SERVICES=()
     
     for service in db micro_ros_agent slam navigation sensor_fusion rosbridge diagnostics; do
-        if docker-compose ps $service | grep -q "Up"; then
+        if docker-compose ps "$service" | grep -q "Up"; then
             print_success "$service is running"
         else
             print_error "$service is not running"
-            FAILED_SERVICES+=($service)
+            FAILED_SERVICES+=("$service")
         fi
     done
     

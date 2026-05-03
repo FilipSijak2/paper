@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-import rclpy, math, sys
+import math
+import sys
+
+import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
@@ -39,11 +42,15 @@ class InitialPosePublisher(Node):
 
 def main():
     if len(sys.argv) < 4:
-        usage(); return 1
+        usage()
+        return 1
     try:
-        x = float(sys.argv[1]); y = float(sys.argv[2]); yaw_deg = float(sys.argv[3])
+        x = float(sys.argv[1])
+        y = float(sys.argv[2])
+        yaw_deg = float(sys.argv[3])
     except ValueError:
-        usage(); return 1
+        usage()
+        return 1
     frame_id = sys.argv[4] if len(sys.argv) > 4 else 'map'
     rclpy.init()
     node = InitialPosePublisher(x, y, yaw_deg, frame_id)

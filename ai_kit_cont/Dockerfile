@@ -1,6 +1,7 @@
 FROM ros:jazzy-ros-base
 
 WORKDIR /root
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 ENV DEBIAN_FRONTEND=noninteractive
 # Hailo runtime (hailort + hailo-tappas-core) is NOT installed in the image.
@@ -11,7 +12,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Ubuntu 24.04 uses DEB822 .sources files; append 'universe' to the Components
 # line if it is missing. Fall back to the legacy sources.list modification for
 # any image that still uses the old format.
-RUN if ls /etc/apt/sources.list.d/*.sources 2>/dev/null | head -1 | grep -q .; then \
+RUN if find /etc/apt/sources.list.d -maxdepth 1 -name '*.sources' -print -quit | grep -q .; then \
   sed -i '/^Components:/ { /universe/! s/$/ universe/ }' /etc/apt/sources.list.d/*.sources; \
   else \
   sed -i 's/^# \(.*universe\)$/\1/' /etc/apt/sources.list 2>/dev/null || true; \

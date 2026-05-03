@@ -30,8 +30,8 @@ WORKDIR /foxglove_bridge
 COPY start_bridge.sh /foxglove_bridge/start_bridge.sh
 RUN chmod +x /foxglove_bridge/start_bridge.sh
 
-RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc && \
-    echo "export PS1='\[\033[1;34m\]foxglove_bridge: \[\033[0m\]'" >> /root/.bashrc
+RUN printf '%s\n' "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc && \
+    printf '%s\n' "export PS1='\\[\\033[1;34m\\]foxglove_bridge: \\[\\033[0m\\]'" >> /root/.bashrc
 
 ENV FOXGLOVE_PORT=8765 \
     FOXGLOVE_ADDRESS=0.0.0.0 \

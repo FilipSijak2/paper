@@ -6,7 +6,8 @@ export AMENT_TRACE_SETUP_FILES="${AMENT_TRACE_SETUP_FILES:-}"
 export AMENT_PYTHON_EXECUTABLE="${AMENT_PYTHON_EXECUTABLE:-}"
 
 set +u
-source /opt/ros/${ROS_DISTRO}/setup.bash
+# shellcheck source=/opt/ros/humble/setup.bash
+source "/opt/ros/${ROS_DISTRO}/setup.bash"
 set -u
 
 ROS_ARGS=(

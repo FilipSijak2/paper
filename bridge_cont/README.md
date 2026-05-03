@@ -92,7 +92,7 @@ ros2 topic pub /cmd_vel geometry_msgs/Twist "{linear: {x: 0.2}, angular: {z: 0.0
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
-|---------|--------------|-----|
+| ------- | ------------ | --- |
 | No topics visible | Bridge not running or DDS discovery issue | Confirm container state and ROS network settings |
 | `/imu/arduino` empty | Serial not open or Nano not sending packets | Check `/dev/ttyACM0`, baud, USB cable, and firmware |
 | `/wheel_odom` missing | Bridge not receiving valid sensor packets | Check serial logs and CRC errors |

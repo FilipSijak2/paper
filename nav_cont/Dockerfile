@@ -41,7 +41,7 @@ RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=Europe/Zagreb
 
 # Set custom prompt (just 'nav_cont:' in blue)
-RUN echo "export PS1='\[\033[1;34m\]nav_cont: \[\033[0m\]'" >> /root/.bashrc
+RUN printf '%s\n' "export PS1='\\[\\033[1;34m\\]nav_cont: \\[\\033[0m\\]'" >> /root/.bashrc
 
 # Provide convenience for interactive shells
 RUN echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc && \

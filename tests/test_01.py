@@ -1,8 +1,6 @@
 import json
 from datetime import datetime
 
-from tests.test_inputs.fixtures import db_no_connect, robot_db_api_module
-
 
 def test_save_map_calls_execute_query(db_no_connect, robot_db_api_module, monkeypatch):
     fixed_uuid = "11111111-1111-1111-1111-111111111111"

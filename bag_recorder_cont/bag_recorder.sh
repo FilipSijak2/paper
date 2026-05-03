@@ -20,7 +20,8 @@ stop_requested=false
 source_ros_environment() {
 	export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
 	set +u
-	source /opt/ros/${ROS_DISTRO}/setup.bash
+	# shellcheck source=/opt/ros/humble/setup.bash
+	source "/opt/ros/${ROS_DISTRO}/setup.bash"
 	set -u
 }
 

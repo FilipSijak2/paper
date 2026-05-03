@@ -72,7 +72,13 @@ else
   if [ ! -f "${PLACE_PGM}" ]; then
     # Create a small 40x40 fully free space map (P5 binary PGM, maxval 255)
     { echo "P5"; echo "40 40"; echo "255"; perl -e 'print chr(255) x (40*40)'; } > "${PLACE_PGM}" 2>/dev/null || {
-      echo "P2" > "${PLACE_PGM}"; echo "40 40" >> "${PLACE_PGM}"; echo "255" >> "${PLACE_PGM}"; yes 255 | head -n $((40*40)) >> "${PLACE_PGM}"; }
+      {
+        echo "P2"
+        echo "40 40"
+        echo "255"
+      } > "${PLACE_PGM}"
+      yes 255 | head -n $((40 * 40)) >> "${PLACE_PGM}"
+    }
   fi
   cat > "${PLACE_YAML}" <<EOF
 image: map.pgm
@@ -109,37 +115,37 @@ if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 fi
 
 echo "[nav_start] Launching Nav2 params=${NAV2_PARAMS_FILE} ${MAP_ARG:+with map arg}" 
-ros2 launch nav2_bringup navigation_launch.py "${MAP_ARG[@]}" params_file:=${NAV2_PARAMS_FILE} "${EXTRA_REMAPS[@]}" &
+ros2 launch nav2_bringup navigation_launch.py "${MAP_ARG[@]}" params_file:="${NAV2_PARAMS_FILE}" "${EXTRA_REMAPS[@]}" &
 NAV2_PID=$!
 
 sleep 5 || true
 
-python3 /app/goal_forwarder.py --ros-args -p goal_topic:=${GOAL_TOPIC} &
+python3 /app/goal_forwarder.py --ros-args -p goal_topic:="${GOAL_TOPIC}" &
 GOAL_FORWARDER_PID=$!
 
 EXTRA_PIDS=()
 if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
   echo "[nav_start] Starting cmd_vel mux (manual_default=${MANUAL_DEFAULT})"
   python3 /app/cmd_vel_mux.py --ros-args \
-    -p auto_topic:=${CMD_VEL_AUTO} \
-    -p joy_topic:=${CMD_VEL_JOY} \
-    -p out_topic:=${CMD_VEL_OUT} \
-    -p manual_default:=${MANUAL_DEFAULT} \
-    -p manual_timeout_s:=${MANUAL_TIMEOUT_S} \
-    -p auto_timeout_s:=${AUTO_TIMEOUT_S} \
-    -p publish_rate_hz:=${MUX_PUBLISH_RATE_HZ} &
+    -p auto_topic:="${CMD_VEL_AUTO}" \
+    -p joy_topic:="${CMD_VEL_JOY}" \
+    -p out_topic:="${CMD_VEL_OUT}" \
+    -p manual_default:="${MANUAL_DEFAULT}" \
+    -p manual_timeout_s:="${MANUAL_TIMEOUT_S}" \
+    -p auto_timeout_s:="${AUTO_TIMEOUT_S}" \
+    -p publish_rate_hz:="${MUX_PUBLISH_RATE_HZ}" &
   EXTRA_PIDS+=("$!")
 fi
 
 if [ "${ENABLE_JOYSTICK}" = "1" ]; then
   if [ -e "${JOYSTICK_DEV}" ]; then
     echo "[nav_start] Starting joystick input: dev=${JOYSTICK_DEV}"
-    ros2 run joy joy_node --ros-args -p dev:=${JOYSTICK_DEV} &
+    ros2 run joy joy_node --ros-args -p dev:="${JOYSTICK_DEV}" &
     EXTRA_PIDS+=("$!")
 
     if [ -f "${TELEOP_CONFIG}" ]; then
       echo "[nav_start] Starting teleop_twist_joy with config ${TELEOP_CONFIG}"
-      ros2 run teleop_twist_joy teleop_node --ros-args --params-file ${TELEOP_CONFIG} -r cmd_vel:=${CMD_VEL_JOY} &
+      ros2 run teleop_twist_joy teleop_node --ros-args --params-file "${TELEOP_CONFIG}" -r cmd_vel:="${CMD_VEL_JOY}" &
       EXTRA_PIDS+=("$!")
     else
       echo "[nav_start][WARN] Teleop config not found: ${TELEOP_CONFIG}"

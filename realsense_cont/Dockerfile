@@ -1,4 +1,5 @@
 FROM ros:humble
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 RUN set -e; \
     apt-get update && apt-get install -y --no-install-recommends \
@@ -12,7 +13,7 @@ RUN set -e; \
 RUN set -e; \
     mkdir -p /etc/apt/keyrings; \
     curl -sSf https://librealsense.realsenseai.com/Debian/librealsenseai.asc | gpg --dearmor > /etc/apt/keyrings/librealsenseai.gpg; \
-    echo "deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] https://librealsense.realsenseai.com/Debian/apt-repo $(. /etc/os-release; echo $VERSION_CODENAME) main" > /etc/apt/sources.list.d/librealsense.list; \
+    echo "deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] https://librealsense.realsenseai.com/Debian/apt-repo $(. /etc/os-release; echo \"${VERSION_CODENAME}\") main" > /etc/apt/sources.list.d/librealsense.list; \
     apt-get update && apt-get install -y --no-install-recommends \
     librealsense2-utils \
     librealsense2-dev \
@@ -20,7 +21,7 @@ RUN set -e; \
     ros-humble-realsense2-camera \
     ros-humble-realsense2-description \
     ros-humble-rmw-cyclonedds-cpp \
-    ros-humble-image-transport-plugins \ 
+    ros-humble-image-transport-plugins \
     && rm -rf /var/lib/apt/lists/*
 
 ENV TZ=Europe/Zagreb
