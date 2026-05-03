@@ -3,14 +3,15 @@ set -eo pipefail
 
 # Source ROS environment (temporarily disable unbound variable check)
 set +u
+# shellcheck disable=SC1091
 source /opt/ros/humble/setup.bash
 set -u
 
 PORT="${SERIAL_PORT:-/dev/ttyUSB0}"
 BAUD="${SERIAL_BAUD:-115200}"
 
-normalize_rmw(){
-	local want="${RMW_IMPLEMENTATION:-}";
+normalize_rmw() {
+	local want="${RMW_IMPLEMENTATION:-}"
 	# If user fat-fingered 'cyclonedx' instead of 'cyclonedds', fix it.
 	if [[ "$want" =~ cyclonedx ]]; then
 		echo "[bridge_cont][WARN] Detected typo in RMW_IMPLEMENTATION='$want' -> correcting to rmw_cyclonedds_cpp" >&2

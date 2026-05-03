@@ -20,7 +20,7 @@ stop_requested=false
 source_ros_environment() {
 	export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
 	set +u
-	# shellcheck source=/opt/ros/humble/setup.bash
+	# shellcheck disable=SC1090,SC1091
 	source "/opt/ros/${ROS_DISTRO}/setup.bash"
 	set -u
 }
@@ -64,11 +64,11 @@ load_topics_file() {
 	fi
 
 	mapfile -t TOPICS < <(
-		sed -n 's/^[[:space:]]*-[[:space:]]*//p' "${TOPICS_FILE}" \
-		| sed 's/[[:space:]]*#.*$//' \
-		| sed 's/\r$//' \
-		| sed 's/[[:space:]]*$//' \
-		| sed '/^$/d'
+		sed -n 's/^[[:space:]]*-[[:space:]]*//p' "${TOPICS_FILE}" |
+			sed 's/[[:space:]]*#.*$//' |
+			sed 's/\r$//' |
+			sed 's/[[:space:]]*$//' |
+			sed '/^$/d'
 	)
 	if [[ ${#TOPICS[@]} -eq 0 ]]; then
 		echo "No topics found in ${TOPICS_FILE}." >&2
@@ -93,7 +93,7 @@ topic_has_publishers() {
 	local count
 	count="$(topic_publisher_count "${topic}")"
 	[[ "${count}" =~ ^[0-9]+$ ]] || count=0
-	(( count > 0 ))
+	((count > 0))
 }
 
 topic_candidates() {
@@ -101,30 +101,30 @@ topic_candidates() {
 	printf '%s\n' "${requested}"
 
 	case "${requested}" in
-		/camera/realsense/*)
-			printf '%s\n' "${requested#/camera}"
-			;;
-		/realsense/*)
-			printf '%s\n' "/camera${requested}"
-			;;
+	/camera/realsense/*)
+		printf '%s\n' "${requested#/camera}"
+		;;
+	/realsense/*)
+		printf '%s\n' "/camera${requested}"
+		;;
 	esac
 
 	case "${requested}" in
-		/odom)
-			printf '%s\n' "/wheel_odom"
-			;;
-		/wheel_odom)
-			printf '%s\n' "/odom"
-			;;
+	/odom)
+		printf '%s\n' "/wheel_odom"
+		;;
+	/wheel_odom)
+		printf '%s\n' "/odom"
+		;;
 	esac
 
 	case "${requested}" in
-		*/image_compressed)
-			printf '%s\n' "${requested%/image_compressed}/image_raw/compressed"
-			;;
-		*/image_raw/compressed)
-			printf '%s\n' "${requested%/image_raw/compressed}/image_compressed"
-			;;
+	*/image_compressed)
+		printf '%s\n' "${requested%/image_compressed}/image_raw/compressed"
+		;;
+	*/image_raw/compressed)
+		printf '%s\n' "${requested%/image_raw/compressed}/image_compressed"
+		;;
 	esac
 }
 
@@ -133,7 +133,7 @@ dedupe_lines() {
 }
 
 dedupe_array() {
-	if (( $# == 0 )); then
+	if (($# == 0)); then
 		return 0
 	fi
 	printf '%s\n' "$@" | dedupe_lines
@@ -183,13 +183,13 @@ refresh_topic_resolution() {
 		fi
 	done
 
-	if (( ${#RESOLVED_TOPICS[@]} > 0 )); then
+	if ((${#RESOLVED_TOPICS[@]} > 0)); then
 		mapfile -t RESOLVED_TOPICS < <(dedupe_array "${RESOLVED_TOPICS[@]}")
 	else
 		RESOLVED_TOPICS=()
 	fi
 
-	if (( ${#ACTIVE_TOPICS[@]} > 0 )); then
+	if ((${#ACTIVE_TOPICS[@]} > 0)); then
 		mapfile -t ACTIVE_TOPICS < <(dedupe_array "${ACTIVE_TOPICS[@]}")
 	else
 		ACTIVE_TOPICS=()
@@ -204,7 +204,7 @@ wait_for_active_topics() {
 	while true; do
 		refresh_topic_resolution
 		active_count=${#ACTIVE_TOPICS[@]}
-		if (( active_count >= MIN_ACTIVE_TOPICS )); then
+		if ((active_count >= MIN_ACTIVE_TOPICS)); then
 			echo "[bag_recorder] Active topics detected (${active_count}):"
 			printf '  - %s\n' "${ACTIVE_TOPICS[@]}"
 			echo "[bag_recorder] Recording topic set:"
@@ -216,7 +216,7 @@ wait_for_active_topics() {
 		echo "[bag_recorder] Configured topics:"
 		printf '  - %s\n' "${TOPICS[@]}"
 
-		if (( SECONDS >= deadline )); then
+		if ((SECONDS >= deadline)); then
 			echo "[bag_recorder][WARN] No active publishers found after ${TOPIC_WAIT_TIMEOUT_S}s." >&2
 			echo "[bag_recorder][WARN] ros2 topic list output at timeout:" >&2
 			ros2 topic list 2>/dev/null | sed 's/^/  - /' >&2 || true
