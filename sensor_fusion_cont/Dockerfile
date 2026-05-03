@@ -46,7 +46,11 @@ RUN mkdir -p src/sensor_fusion_pkg/config \
     && bash -c "set -euo pipefail; \
     echo '[DEBUG] Python version:'; python3 --version; \
     echo '[DEBUG] Listing src tree:'; find src -maxdepth 4 -type f -print; \
+    export AMENT_TRACE_SETUP_FILES=\${AMENT_TRACE_SETUP_FILES:-}; \
+    export AMENT_PYTHON_EXECUTABLE=\${AMENT_PYTHON_EXECUTABLE:-}; \
+    set +u; \
     source /opt/ros/humble/setup.bash; \
+    set -u; \
     echo '[DEBUG] Running colcon build'; \
     colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo \
     || { RC=$?; echo '[ERROR] Colcon failed; dumping first 120 lines of each log file:'; if [ -d log ]; then find log -maxdepth 4 -type f -print -exec sed -n '1,120p' {} \\; ; fi; exit \"$RC\"; }"

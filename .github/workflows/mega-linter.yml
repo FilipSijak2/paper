@@ -23,7 +23,7 @@ jobs:
       MEGALINTER_SCOPE_LABEL: ${{ github.event_name == 'pull_request' && 'changed files in the current diff' || 'the entire repository' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
