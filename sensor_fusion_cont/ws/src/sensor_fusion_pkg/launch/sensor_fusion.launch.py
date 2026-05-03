@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+import os
+
 from launch import LaunchDescription
 from launch_ros.actions import Node
-import os
 
 
 def resolve_imu_source() -> str:
@@ -11,9 +12,22 @@ def resolve_imu_source() -> str:
     return 'arduino'
 
 
+def build_ekf_node() -> Node:
+    ekf_config_path = os.environ.get('SF_EKF_CONFIG', '/app/robot_localization.yaml')
+    return Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='screen',
+        emulate_tty=True,
+        parameters=[ekf_config_path],
+    )
+
+
 def generate_launch_description():
     config_path = os.environ.get('SF_CONFIG', '/app/sensor_fusion.yaml')
     imu_source = resolve_imu_source()
+    ekf_node = build_ekf_node()
 
     if imu_source == 'realsense':
         input_topic = os.environ.get('SF_IMU_INPUT_TOPIC', '/camera/realsense/imu')
@@ -33,9 +47,12 @@ def generate_launch_description():
                     ('imu/data_raw', input_topic),
                     ('imu/data', output_topic),
                 ],
-            )
+            ),
+            ekf_node,
         ])
 
+    raw_topic = os.environ.get('SF_IMU_RAW_TOPIC', '/imu/data_raw')
+    output_topic = os.environ.get('SF_IMU_OUTPUT_TOPIC', '/imu/data')
     return LaunchDescription([
         Node(
             package='sensor_fusion_pkg',
@@ -45,5 +62,21 @@ def generate_launch_description():
             emulate_tty=True,
             parameters=[{'config_file': config_path}],
             arguments=[]
-        )
+        ),
+        Node(
+            package='imu_filter_madgwick',
+            executable='imu_filter_madgwick_node',
+            name='arduino_imu_filter',
+            output='screen',
+            emulate_tty=True,
+            parameters=[{
+                'use_mag': False,
+                'publish_tf': False,
+            }],
+            remappings=[
+                ('imu/data_raw', raw_topic),
+                ('imu/data', output_topic),
+            ],
+        ),
+        ekf_node,
     ])

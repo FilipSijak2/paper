@@ -39,6 +39,10 @@ if [ -n "${MAP_FILE}" ] && [ ! -f "${MAP_FILE}" ]; then
 	echo "[nav_start][WARN] MAP_FILE set but not found: ${MAP_FILE}. Falling back to auto-resolve."
 	MAP_FILE=""
 fi
+if [ -n "${MAP_FILE}" ] && [ -f "${MAP_FILE}" ] && [ ! -s "${MAP_FILE}" ]; then
+	echo "[nav_start][WARN] MAP_FILE is empty: ${MAP_FILE}. Falling back to auto-resolve."
+	MAP_FILE=""
+fi
 
 # Lightweight resolution (kept, but non-blocking):
 if [ -z "${MAP_FILE}" ]; then
