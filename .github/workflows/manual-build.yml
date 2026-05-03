@@ -65,7 +65,7 @@ jobs:
             exit 1
           fi
           echo "Matrix: $matrix"
-          echo "matrix=$matrix" >> $GITHUB_OUTPUT
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   manual-build:
     name: Build & Push selected containers
@@ -91,9 +91,9 @@ jobs:
           set -e
           OWNER_LC=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
           BASE='${{ matrix.base }}'
-          IMAGE_REPO=${OWNER_LC}/${BASE}
-          echo "image_repo=$IMAGE_REPO" >> $GITHUB_OUTPUT
-          echo "base_name=$BASE" >> $GITHUB_OUTPUT
+          IMAGE_REPO="${OWNER_LC}/${BASE}"
+          echo "image_repo=$IMAGE_REPO" >> "$GITHUB_OUTPUT"
+          echo "base_name=$BASE" >> "$GITHUB_OUTPUT"
 
       - name: Determine version tag
         id: version
@@ -101,25 +101,25 @@ jobs:
           set -e
           CUSTOM='${{ github.event.inputs.custom_tag }}'
           if [ -n "$CUSTOM" ]; then
-            CLEAN=$(echo "$CUSTOM" | sed 's/[^a-zA-Z0-9_.-]/-/g')
+            CLEAN="${CUSTOM//[^[:alnum:]_.-]/-}"
             if ! echo "$CLEAN" | grep -qE '^[a-zA-Z0-9]'; then
               CLEAN="v$CLEAN"
             fi
             echo "Using custom version tag: $CLEAN"
-            echo "version_tag=$CLEAN" >> $GITHUB_OUTPUT
+            echo "version_tag=$CLEAN" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           MSG=$(git log -1 --pretty=%s || echo '')
           echo "Commit message: $MSG"
-          VERSION=$(echo "$MSG" | grep -oE 'v[0-9]+(\.[0-9]+)*\.[Rr][Cc][0-9]+' | tail -n1 | tr 'A-Z' 'a-z' || true)
+          VERSION=$(echo "$MSG" | grep -oE 'v[0-9]+(\.[0-9]+)*\.[Rr][Cc][0-9]+' | tail -n1 | tr '[:upper:]' '[:lower:]' || true)
           if [ -z "$VERSION" ]; then
             echo "No vX(.Y)*.rcN pattern found; falling back to short SHA";
             VERSION="dev-$(git rev-parse --short HEAD)"
           fi
-          CLEAN=$(echo "$VERSION" | sed 's/[^a-z0-9_.-]/-/g')
+          CLEAN="${VERSION//[^a-z0-9_.-]/-}"
           if ! echo "$CLEAN" | grep -qE '^[a-z0-9]'; then CLEAN="v$CLEAN"; fi
           echo "Using version tag: $CLEAN"
-          echo "version_tag=$CLEAN" >> $GITHUB_OUTPUT
+          echo "version_tag=$CLEAN" >> "$GITHUB_OUTPUT"
 
       - name: Connect to Tailscale (if key)
         env:
@@ -133,7 +133,7 @@ jobs:
           echo "Installing Tailscale..."
           curl -fsSL https://tailscale.com/install.sh | sh
           echo "Bringing up Tailscale tunnel..."
-          sudo tailscale up --authkey "$TAILSCALE_KEY" --hostname gh-run-${GITHUB_RUN_ID} --accept-routes --ssh --timeout 40s || {
+          sudo tailscale up --authkey "$TAILSCALE_KEY" --hostname "gh-run-${GITHUB_RUN_ID}" --accept-routes --ssh --timeout 40s || {
             echo "Tailscale up failed" >&2;
             sudo tailscale status || true
             exit 1
@@ -157,8 +157,8 @@ jobs:
             echo "No port detected in registry host. Defaulting to :5000 -> $CORE"
           fi
           echo "Using normalized registry host: $CORE (original: $ORIG)"
-          echo "REGISTRY_HOST_EFFECTIVE=$CORE" >> $GITHUB_ENV
-          echo "registry_host=$CORE" >> $GITHUB_OUTPUT
+          echo "REGISTRY_HOST_EFFECTIVE=$CORE" >> "$GITHUB_ENV"
+          echo "registry_host=$CORE" >> "$GITHUB_OUTPUT"
           if [[ "$ORIG" == http://* || "$ORIG" == https://* ]]; then
             echo "Warning: Do not include protocol scheme in BANANAPI_REGISTRY_HOST secret. It was stripped." >&2
           fi
@@ -214,9 +214,11 @@ jobs:
           if [ "${INSECURE,,}" = "true" ]; then
             echo "Configuring insecure registry $REGISTRY_HOST"
             if [ -f /etc/docker/daemon.json ]; then
-              sudo jq --arg h "$REGISTRY_HOST" '. + {"insecure-registries": ((."insecure-registries" // []) + [$h])}' /etc/docker/daemon.json > tmp.d && sudo mv tmp.d /etc/docker/daemon.json || echo '{"insecure-registries":["'$REGISTRY_HOST'"]}' | sudo tee /etc/docker/daemon.json
+              if ! sudo jq --arg h "$REGISTRY_HOST" '. + {"insecure-registries": ((."insecure-registries" // []) + [$h])}' /etc/docker/daemon.json | sudo tee /etc/docker/daemon.json > /dev/null; then
+                printf '{"insecure-registries":["%s"]}\n' "$REGISTRY_HOST" | sudo tee /etc/docker/daemon.json > /dev/null
+              fi
             else
-              echo '{"insecure-registries":["'$REGISTRY_HOST'"]}' | sudo tee /etc/docker/daemon.json
+              printf '{"insecure-registries":["%s"]}\n' "$REGISTRY_HOST" | sudo tee /etc/docker/daemon.json > /dev/null
             fi
             sudo systemctl restart docker || sudo service docker restart || true
             sleep 2
@@ -341,18 +343,18 @@ jobs:
             'application/vnd.oci.image.index.v1+json'
           )
           fetched=false
-          AUTH=""
+          AUTH_ARGS=()
           if [ -n "$REGISTRY_USERNAME" ] && [ -n "$REGISTRY_PASSWORD" ]; then
-            AUTH="-u $REGISTRY_USERNAME:$REGISTRY_PASSWORD"
+            AUTH_ARGS=(-u "$REGISTRY_USERNAME:$REGISTRY_PASSWORD")
           fi
           for a in "${ACCEPT_LIST[@]}"; do
             echo "Attempt with Accept: $a";
-            STATUS=$(curl -s -o manifest.json -w '%{http_code}' -H "Accept: $a" $AUTH "$URL" || echo 000)
+            STATUS=$(curl -s -o manifest.json -w '%{http_code}' -H "Accept: $a" "${AUTH_ARGS[@]}" "$URL" || echo 000)
             if [ "$STATUS" = 200 ]; then
               fetched=true; break; fi
             if [ "$STATUS" = 401 ]; then
               echo "Received 401 Unauthorized while fetching manifest (Accept: $a).";
-              if [ -z "$AUTH" ]; then
+              if [ ${#AUTH_ARGS[@]} -eq 0 ]; then
                 echo "No credentials supplied. Provide BANANAPI_REGISTRY_USER/PASS secrets to enable verification.";
               fi
             fi
@@ -366,7 +368,7 @@ jobs:
               exit 0
             fi
             echo "[WARN] Manifest fetch failed status=$STATUS; continuing without hard failure." >&2
-            curl -i $AUTH "$URL" || true
+            curl -i "${AUTH_ARGS[@]}" "$URL" || true
             exit 0
           fi
           echo '--- Manifest summary ---'
@@ -381,18 +383,18 @@ jobs:
                 DIGEST=$(jq -r ".manifests[$i].digest" manifest.json)
                 MT=$(jq -r ".manifests[$i].mediaType" manifest.json)
                 echo "Fetching sub-manifest $i digest=$DIGEST mediaType=$MT";
-                curl -s -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' "http://$HOST/v2/$REPO/manifests/$DIGEST" -o sub.json || true
+                curl -s -H 'Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' "${AUTH_ARGS[@]}" "http://$HOST/v2/$REPO/manifests/$DIGEST" -o sub.json || true
                 PART=$(jq '[.layers[].size] | add' sub.json 2>/dev/null || echo 0)
                 echo "  -> layers total size: $PART bytes"
                 TOTAL=$((TOTAL + PART))
               done
               echo "Aggregate image (all platform manifests) size: $TOTAL bytes";
-              echo "Aggregate Size (bytes): $TOTAL" >> $GITHUB_STEP_SUMMARY
+              echo "Aggregate Size (bytes): $TOTAL" >> "$GITHUB_STEP_SUMMARY"
             else
               jq '{schemaVersion, mediaType, layerCount: (.layers|length), layers: (.layers[] | {size, mediaType})}' manifest.json | head -n 120
               SIZE=$(jq '[.layers[].size] | add' manifest.json 2>/dev/null || echo 0)
               echo "Single-manifest total size: $SIZE bytes";
-              echo "Image Size (bytes): $SIZE" >> $GITHUB_STEP_SUMMARY
+              echo "Image Size (bytes): $SIZE" >> "$GITHUB_STEP_SUMMARY"
             fi
           else
             grep -E 'schemaVersion|mediaType' manifest.json || true
@@ -412,7 +414,7 @@ jobs:
               echo "[WARN] Unknown manifest mediaType: $MTYPE" >&2
               ;;
           esac
-          echo "Manifest mediaType: $MTYPE" >> $GITHUB_STEP_SUMMARY
+          echo "Manifest mediaType: $MTYPE" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Discord Notification
         if: always()
@@ -451,7 +453,9 @@ jobs:
 
       - name: Summary
         run: |
-          echo '## Manual Build Summary' >> $GITHUB_STEP_SUMMARY
-          echo "Directory: ${{ matrix.dir }}" >> $GITHUB_STEP_SUMMARY
-          echo "Repository: ${{ steps.meta.outputs.image_repo }}" >> $GITHUB_STEP_SUMMARY
-          echo "Tag: ${{ steps.meta.outputs.base_name }}-${{ steps.version.outputs.version_tag }}" >> $GITHUB_STEP_SUMMARY
+          {
+            echo '## Manual Build Summary'
+            echo "Directory: ${{ matrix.dir }}"
+            echo "Repository: ${{ steps.meta.outputs.image_repo }}"
+            echo "Tag: ${{ steps.meta.outputs.base_name }}-${{ steps.version.outputs.version_tag }}"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,7 +1,7 @@
 teleop_twist_joy:
   ros__parameters:
     enable_button: 5       # RB (F710 X-mode default)
-    enable_turbo_button: 4 # LB
+    enable_turbo_button: 4  # LB
     axis_linear:
       x: 1                 # left stick vertical
     scale_linear:

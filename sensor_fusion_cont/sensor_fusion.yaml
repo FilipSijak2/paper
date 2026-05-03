@@ -14,7 +14,7 @@ imu:
   publish_rate_hz: 30.0
   covariance_orientation: [0.0025, 0, 0, 0, 0.0025, 0, 0, 0, 0.0025]
   covariance_angular_velocity: [0.01, 0, 0, 0, 0.01, 0, 0, 0, 0.01]
-  covariance_linear_acceleration: [0.04,0,0,0,0.04,0,0,0,0.04]
+  covariance_linear_acceleration: [0.04, 0, 0, 0, 0.04, 0, 0, 0, 0.04]
 
 logging:
   level: INFO
