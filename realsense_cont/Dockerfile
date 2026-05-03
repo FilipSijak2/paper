@@ -11,9 +11,11 @@ RUN set -e; \
 
 # Install librealsense from RealSense apt repo (userspace libs + tools)
 RUN set -e; \
+    . /etc/os-release; \
+    codename="${VERSION_CODENAME}"; \
     mkdir -p /etc/apt/keyrings; \
     curl -sSf https://librealsense.realsenseai.com/Debian/librealsenseai.asc | gpg --dearmor > /etc/apt/keyrings/librealsenseai.gpg; \
-    echo "deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] https://librealsense.realsenseai.com/Debian/apt-repo $(. /etc/os-release; echo \"${VERSION_CODENAME}\") main" > /etc/apt/sources.list.d/librealsense.list; \
+    printf 'deb [signed-by=/etc/apt/keyrings/librealsenseai.gpg] https://librealsense.realsenseai.com/Debian/apt-repo %s main\n' "$codename" > /etc/apt/sources.list.d/librealsense.list; \
     apt-get update && apt-get install -y --no-install-recommends \
     librealsense2-utils \
     librealsense2-dev \

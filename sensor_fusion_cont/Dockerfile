@@ -49,7 +49,7 @@ RUN mkdir -p src/sensor_fusion_pkg/config \
     source /opt/ros/humble/setup.bash; \
     echo '[DEBUG] Running colcon build'; \
     colcon build --symlink-install --event-handlers console_cohesion+ console_direct+ --merge-install --cmake-args -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-    || { rc=$?; echo '[ERROR] Colcon failed; dumping first 120 lines of each log file:'; if [ -d log ]; then find log -maxdepth 4 -type f -print -exec sed -n '1,120p' {} \\; ; fi; exit \"$rc\"; }"
+    || { RC=$?; echo '[ERROR] Colcon failed; dumping first 120 lines of each log file:'; if [ -d log ]; then find log -maxdepth 4 -type f -print -exec sed -n '1,120p' {} \\; ; fi; exit \"$RC\"; }"
 
 # Runtime wrapper (self-healing build if image tag mismatch or cache issue)
 COPY run_sensor_fusion.sh /app/run_sensor_fusion.sh
