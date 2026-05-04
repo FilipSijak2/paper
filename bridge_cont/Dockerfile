@@ -8,7 +8,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     python3-lgpio \
     ros-humble-rmw-cyclonedds-cpp \
-    && python3 -m pip install --no-cache-dir --break-system-packages rpi-lgpio \
+    && (apt-cache show python3-rpi-lgpio >/dev/null 2>&1 \
+        && apt-get install -y --no-install-recommends python3-rpi-lgpio \
+        || (python3 -m pip help install | grep -q -- '--break-system-packages' \
+            && python3 -m pip install --no-cache-dir --break-system-packages rpi-lgpio \
+            || python3 -m pip install --no-cache-dir rpi-lgpio)) \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.
