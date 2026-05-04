@@ -18,6 +18,7 @@ import math
 import os
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import rclpy
 from geometry_msgs.msg import Point, Quaternion, Twist
@@ -26,6 +27,35 @@ from rclpy.node import Node
 from std_msgs.msg import String
 
 try:
+    if "RPI_LGPIO_REVISION" not in os.environ:
+        revision_paths = (
+            Path("/proc/device-tree/system/linux,revision"),
+            Path("/sys/firmware/devicetree/base/system/linux,revision"),
+        )
+        for revision_path in revision_paths:
+            try:
+                revision_raw = revision_path.read_bytes()
+            except OSError:
+                continue
+            if len(revision_raw) >= 4:
+                revision_value = int.from_bytes(revision_raw[:4], byteorder="big", signed=False)
+                if revision_value > 0:
+                    os.environ["RPI_LGPIO_REVISION"] = f"{revision_value:x}"
+                    break
+    if "RPI_LGPIO_REVISION" not in os.environ:
+        try:
+            for cpuinfo_line in Path("/proc/cpuinfo").read_text(encoding="utf-8", errors="ignore").splitlines():
+                if not cpuinfo_line.lower().startswith("revision"):
+                    continue
+                _, revision_text = cpuinfo_line.split(":", 1)
+                revision_text = revision_text.strip().lower().lstrip("0x")
+                if revision_text:
+                    int(revision_text, 16)
+                    os.environ["RPI_LGPIO_REVISION"] = revision_text
+                    break
+        except OSError:
+            pass
+
     import RPi.GPIO as GPIO
 except Exception as exc:  # pragma: no cover - handled at runtime on non-RPi hosts
     GPIO = None
