@@ -23,6 +23,20 @@ Raspberry Pi / Docker stack
   +-- slam_cont / nav_cont / rosbridge / foxglove / database
 ```
 
+Alternative control chain now supported in software:
+
+```text
+Raspberry Pi / Docker stack
+  |
+  +-- robot_bridge (BRIDGE_MODE=rpi_direct) <-> DRV8833 <-> motors
+  |                                    |
+  |                                    \-> TCA9548A -> AS5600 LEFT / RIGHT
+  |
+  +-- laser_driver -> /scan
+  +-- realsense_cont -> sensor_fusion_cont -> /imu/data
+  +-- slam_cont / nav_cont / rosbridge / foxglove / database
+```
+
 ## 2. Hardware Architecture
 
 ### Active controller
@@ -120,6 +134,8 @@ RealSense
 - `/wheel_odom`
 - `/imu/arduino`
 - `/robot_status`
+
+In `rpi_direct` mode, `/imu/arduino` is not published by `robot_bridge`.
 
 ### Mapping and navigation topics
 

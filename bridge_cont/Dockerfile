@@ -4,8 +4,10 @@ FROM ros:humble
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-colorlog \
     python3-serial \
+    python3-smbus2 \
     python3-pip \
     ros-humble-rmw-cyclonedds-cpp \
+    && (apt-get install -y --no-install-recommends python3-rpi.gpio || echo "Skipping python3-rpi.gpio on this architecture") \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.
@@ -31,12 +33,14 @@ WORKDIR /app
 
 # Copy bridge script (local copy placed in this directory)
 COPY robot_serial_bridge.py /app/robot_serial_bridge.py
+COPY robot_rpi_direct_bridge.py /app/robot_rpi_direct_bridge.py
 COPY run_bridge.sh /app/run_bridge.sh
 RUN chmod +x /app/run_bridge.sh
 
 # Default env (can be overridden in compose)
 ENV SERIAL_PORT=/dev/ttyUSB0 \
     SERIAL_BAUD=115200 \
+    BRIDGE_MODE=serial_legacy \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     AMENT_TRACE_SETUP_FILES=""
 

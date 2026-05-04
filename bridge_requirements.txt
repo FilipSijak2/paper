@@ -13,5 +13,9 @@ std-msgs>=4.0.0
 # Serial communication
 pyserial>=3.5
 
+# Direct RPi hardware mode (I2C + GPIO)
+smbus2>=0.4.3
+RPi.GPIO>=0.7.1; platform_machine == "armv7l" or platform_machine == "aarch64"
+
 # Optional: For enhanced logging and debugging
 colorlog>=6.0.0

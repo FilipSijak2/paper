@@ -28,6 +28,20 @@ Physical robot:
                            +-- GPIO -> DRV8833 -> LEFT / RIGHT motor
 ```
 
+Supported alternative (software mode switch):
+
+```text
+Raspberry Pi / Docker stack
+  |
+  +-- robot_bridge (BRIDGE_MODE=rpi_direct)
+  |      |
+  |      +-- /cmd_vel      -> RPi GPIO -> DRV8833
+  |      +-- /wheel_odom   <- RPi I2C (TCA9548A -> AS5600 x2)
+  |      +-- /robot_status <- RPi direct bridge
+  |
+  +-- realsense_cont -> sensor_fusion_cont -> /imu/data
+```
+
 ## Active Communication Layers
 
 ### 1. Raspberry Pi <-> Nano ESP32
@@ -48,6 +62,8 @@ Published ROS topics from the bridge:
 - `/wheel_odom`
 - `/imu/arduino`
 - `/robot_status`
+
+In `BRIDGE_MODE=rpi_direct`, `/imu/arduino` is not published.
 
 Subscribed ROS topics:
 
@@ -144,6 +160,14 @@ The simplest and most consistent current setup is:
 2. `robot_bridge` talks to the Nano over USB serial.
 3. Nano reads encoders and optional onboard IMU.
 4. Nano directly drives the `DRV8833`.
+5. RealSense remains the default source for `/imu/data`.
+
+Alternative model (no Nano):
+
+1. Raspberry Pi runs the Docker stack.
+2. `robot_bridge` runs with `BRIDGE_MODE=rpi_direct`.
+3. RPi directly drives `DRV8833` via GPIO.
+4. RPi reads both `AS5600` encoders through `TCA9548A`.
 5. RealSense remains the default source for `/imu/data`.
 
 ## Practical Checklist

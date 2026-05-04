@@ -9,6 +9,7 @@ set -u
 
 PORT="${SERIAL_PORT:-/dev/ttyUSB0}"
 BAUD="${SERIAL_BAUD:-115200}"
+MODE="${BRIDGE_MODE:-serial_legacy}"
 
 normalize_rmw() {
 	local want="${RMW_IMPLEMENTATION:-}"
@@ -32,5 +33,17 @@ normalize_rmw() {
 
 normalize_rmw
 
-echo "[bridge_cont] Starting robot_serial_bridge on ${PORT}@${BAUD} (RMW=${RMW_IMPLEMENTATION:-unset})"
-exec python3 /app/robot_serial_bridge.py --port "${PORT}" --baud "${BAUD}"
+case "${MODE}" in
+serial | serial_legacy | nano_legacy)
+	echo "[bridge_cont] Starting robot_serial_bridge on ${PORT}@${BAUD} (RMW=${RMW_IMPLEMENTATION:-unset})"
+	exec python3 /app/robot_serial_bridge.py --port "${PORT}" --baud "${BAUD}"
+	;;
+rpi_direct | direct)
+	echo "[bridge_cont] Starting robot_rpi_direct_bridge (RMW=${RMW_IMPLEMENTATION:-unset})"
+	exec python3 /app/robot_rpi_direct_bridge.py
+	;;
+*)
+	echo "[bridge_cont][ERROR] Unknown BRIDGE_MODE='${MODE}'. Use 'serial_legacy' or 'rpi_direct'." >&2
+	exit 1
+	;;
+esac

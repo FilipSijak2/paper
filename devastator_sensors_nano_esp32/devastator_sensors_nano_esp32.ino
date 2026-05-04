@@ -224,7 +224,8 @@ void setup() {
   delay(400);
   LOG_PRINTLN(F("Nano ESP32 single-controller firmware"));
 
-  Wire.begin();
+  // Force Nano ESP32 I2C to the expected Nano pins (A4=SDA, A5=SCL).
+  Wire.begin(A4, A5);
 
   pinMode(DRV_AIN1_PIN, OUTPUT);
   pinMode(DRV_AIN2_PIN, OUTPUT);
