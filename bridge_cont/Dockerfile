@@ -6,8 +6,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-serial \
     python3-smbus2 \
     python3-pip \
+    python3-lgpio \
     ros-humble-rmw-cyclonedds-cpp \
-    && (apt-get install -y --no-install-recommends python3-rpi.gpio || echo "Skipping python3-rpi.gpio on this architecture") \
+    && python3 -m pip install --no-cache-dir --break-system-packages rpi-lgpio \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.

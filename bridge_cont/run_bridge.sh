@@ -25,7 +25,7 @@ normalize_rmw() {
 		return
 	fi
 	# Validate library exists; if not, fallback
-	if [[ ! -e "/opt/ros/humble/lib/librmw_${RMW_IMPLEMENTATION}.so" && ! -e "/opt/ros/humble/lib/${RMW_IMPLEMENTATION}/librmw_${RMW_IMPLEMENTATION}.so" ]]; then
+	if [[ ! -e "/opt/ros/humble/lib/lib${RMW_IMPLEMENTATION}.so" && ! -e "/opt/ros/humble/lib/${RMW_IMPLEMENTATION}/lib${RMW_IMPLEMENTATION}.so" ]]; then
 		echo "[bridge_cont][WARN] RMW implementation '$RMW_IMPLEMENTATION' not installed; falling back to rmw_cyclonedds_cpp" >&2
 		export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 	fi

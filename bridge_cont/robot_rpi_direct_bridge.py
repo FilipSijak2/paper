@@ -27,8 +27,11 @@ from std_msgs.msg import String
 
 try:
     import RPi.GPIO as GPIO
-except Exception:  # pragma: no cover - handled at runtime on non-RPi hosts
+except Exception as exc:  # pragma: no cover - handled at runtime on non-RPi hosts
     GPIO = None
+    GPIO_IMPORT_ERROR = exc
+else:
+    GPIO_IMPORT_ERROR = None
 
 try:
     from smbus2 import SMBus
@@ -193,7 +196,11 @@ class RobotRpiDirectBridge(Node):
         if SMBus is None:
             raise RuntimeError("smbus2 is not available. Install python3-smbus2.")
         if GPIO is None:
-            raise RuntimeError("RPi.GPIO is not available. Install python3-rpi.gpio or rpi-lgpio.")
+            detail = f" Import error: {GPIO_IMPORT_ERROR}" if GPIO_IMPORT_ERROR else ""
+            raise RuntimeError(
+                "RPi.GPIO is not available. Install rpi-lgpio (preferred on Pi 5) or python3-rpi.gpio."
+                " If using Pi 5 set RPI_LGPIO_CHIP=4." + detail
+            )
 
         self.i2c_bus_id = i2c_bus
         self.mux_addr = mux_addr

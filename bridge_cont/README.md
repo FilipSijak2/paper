@@ -81,6 +81,7 @@ Default environment:
 - `RIGHT_MOTOR_INVERTED` (`0`/`1`)
 - `LEFT_ENCODER_INVERTED` (`0`/`1`)
 - `RIGHT_ENCODER_INVERTED` (`0`/`1`)
+- `RPI_LGPIO_CHIP` (optional, recommended `4` on Raspberry Pi 5)
 
 ## Docker Compose Examples
 
@@ -128,7 +129,7 @@ services:
       RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
     devices:
       - /dev/i2c-1:/dev/i2c-1
-      - /dev/gpiomem:/dev/gpiomem
+      - /dev/gpiochip4:/dev/gpiochip4
 ```
 
 ## Data Flow
