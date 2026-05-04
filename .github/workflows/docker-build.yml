@@ -87,12 +87,14 @@ jobs:
           json='{"include":['
           first=true
           for dir in "${unique_dirs[@]}"; do
-            base="${dir%_cont}"; [ -z "$base" ] && base="$dir"
+            name="$(basename "$dir")"
+            base="${name%_cont}"; [ -z "$base" ] && base="$name"
+            image="$name"
             if [ "$first" = true ]; then
-              json+='{"dir":"'$dir'","base":"'$base'"}'
+              json+='{"dir":"'$dir'","base":"'$base'","image":"'$image'"}'
               first=false
             else
-              json+=',{"dir":"'$dir'","base":"'$base'"}'
+              json+=',{"dir":"'$dir'","base":"'$base'","image":"'$image'"}'
             fi
           done
           json+=']}'
