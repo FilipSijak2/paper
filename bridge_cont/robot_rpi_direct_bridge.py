@@ -39,7 +39,7 @@ except Exception:  # pragma: no cover - handled at runtime on hosts missing smbu
     SMBus = None
 
 
-REG_STATUS = 0x0B
+REG_STATUS = 0x0B # Bit 5 (0b00100000) indicates a new angle sample is ready
 REG_RAW_ANGLE = 0x0C
 
 SENSOR_FLAG_ENC_LEFT_OK = 1 << 1
