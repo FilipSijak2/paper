@@ -107,6 +107,8 @@ def test_resolve_runtime_config_uses_env(monkeypatch):
     monkeypatch.setenv("RIGHT_MUX_CHANNEL", "6")
     monkeypatch.setenv("WHEEL_RADIUS_M", "0.05")
     monkeypatch.setenv("WHEEL_BASE_M", "0.25")
+    monkeypatch.setenv("ENCODERS_ENABLED", "0")
+    monkeypatch.setenv("OPEN_LOOP_ODOM_FROM_CMD", "1")
 
     config = module.resolve_runtime_config(SimpleNamespace(i2c_bus=None))
 
@@ -117,6 +119,8 @@ def test_resolve_runtime_config_uses_env(monkeypatch):
     assert config["right_mux_channel"] == 6
     assert config["wheel_radius"] == 0.05
     assert config["wheel_base"] == 0.25
+    assert config["encoders_enabled"] is False
+    assert config["open_loop_odom_from_cmd"] is True
 
 
 def test_unwrap_raw_handles_wraparound():
@@ -142,3 +146,11 @@ def test_compute_wheel_commands_matches_expected_mapping():
     left_i, right_i = module.compute_wheel_commands(0.5, 1.0, 0.2, left_inverted=True, right_inverted=True)
     assert left_i == -0.4
     assert right_i == -0.6
+
+
+def test_integrate_pose_updates_position_and_heading():
+    module = load_direct_bridge_module()
+    x, y, yaw = module.integrate_pose(0.0, 0.0, 0.0, linear_velocity=1.0, angular_velocity=0.0, dt_s=0.5)
+    assert x == 0.5
+    assert y == 0.0
+    assert yaw == 0.0

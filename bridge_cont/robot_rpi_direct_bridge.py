@@ -140,6 +140,15 @@ def euler_to_quaternion(yaw, pitch=0.0, roll=0.0):
     return q
 
 
+def integrate_pose(x_pose, y_pose, yaw, linear_velocity, angular_velocity, dt_s):
+    if dt_s <= 0.0:
+        return x_pose, y_pose, yaw
+    next_yaw = yaw + (angular_velocity * dt_s)
+    next_x = x_pose + (linear_velocity * dt_s * math.cos(next_yaw))
+    next_y = y_pose + (linear_velocity * dt_s * math.sin(next_yaw))
+    return next_x, next_y, next_yaw
+
+
 def unwrap_raw(raw, state):
     if not state.initialized:
         state.initialized = True
@@ -177,8 +186,8 @@ def resolve_runtime_config(args):
         "i2c_bus": args.i2c_bus if args.i2c_bus is not None else _env_int("I2C_BUS", 1, minimum=0),
         "mux_addr": _env_int("I2C_MUX_ADDR", 0x70, minimum=0),
         "as5600_addr": _env_int("AS5600_ADDR", 0x36, minimum=0),
-        "left_mux_channel": _env_int("LEFT_MUX_CHANNEL", 0, minimum=0),
-        "right_mux_channel": _env_int("RIGHT_MUX_CHANNEL", 4, minimum=0),
+        "left_mux_channel": _env_int("LEFT_MUX_CHANNEL", 0, minimum=-1),
+        "right_mux_channel": _env_int("RIGHT_MUX_CHANNEL", 4, minimum=-1),
         "wheel_radius": _env_float("WHEEL_RADIUS_M", 0.033, minimum=0.0001),
         "wheel_base": _env_float("WHEEL_BASE_M", 0.20, minimum=0.0001),
         "control_period_s": _env_float("CONTROL_PERIOD_S", 0.02, minimum=0.001),
@@ -194,6 +203,8 @@ def resolve_runtime_config(args):
         "right_motor_inverted": _env_bool("RIGHT_MOTOR_INVERTED", False),
         "left_encoder_inverted": _env_bool("LEFT_ENCODER_INVERTED", False),
         "right_encoder_inverted": _env_bool("RIGHT_ENCODER_INVERTED", False),
+        "encoders_enabled": _env_bool("ENCODERS_ENABLED", True),
+        "open_loop_odom_from_cmd": _env_bool("OPEN_LOOP_ODOM_FROM_CMD", False),
     }
 
 
@@ -220,17 +231,21 @@ class RobotRpiDirectBridge(Node):
         right_motor_inverted=False,
         left_encoder_inverted=False,
         right_encoder_inverted=False,
+        encoders_enabled=True,
+        open_loop_odom_from_cmd=False,
     ):
         super().__init__("robot_rpi_direct_bridge")
 
-        if SMBus is None:
-            raise RuntimeError("smbus2 is not available. Install python3-smbus2.")
         if GPIO is None:
             detail = f" Import error: {GPIO_IMPORT_ERROR}" if GPIO_IMPORT_ERROR else ""
             raise RuntimeError(
                 "RPi.GPIO is not available. Install rpi-lgpio (preferred on Pi 5) or python3-rpi.gpio."
                 " If using Pi 5 set RPI_LGPIO_CHIP=4." + detail
             )
+        self.encoders_enabled = bool(encoders_enabled and left_mux_channel >= 0 and right_mux_channel >= 0)
+        self.open_loop_odom_from_cmd = bool(open_loop_odom_from_cmd or not self.encoders_enabled)
+        if self.encoders_enabled and SMBus is None:
+            raise RuntimeError("smbus2 is not available. Install python3-smbus2.")
 
         self.i2c_bus_id = i2c_bus
         self.mux_addr = mux_addr
@@ -256,7 +271,7 @@ class RobotRpiDirectBridge(Node):
         self.left_encoder_inverted = left_encoder_inverted
         self.right_encoder_inverted = right_encoder_inverted
 
-        self.bus = SMBus(self.i2c_bus_id)
+        self.bus = SMBus(self.i2c_bus_id) if self.encoders_enabled else None
 
         self.left_unwrap = UnwrapState()
         self.right_unwrap = UnwrapState()
@@ -286,6 +301,7 @@ class RobotRpiDirectBridge(Node):
             "i2c_errors": 0,
             "cmd_timeouts": 0,
             "motor_updates": 0,
+            "open_loop_updates": 0,
         }
 
         self.odom_pub = self.create_publisher(Odometry, "wheel_odom", 10)
@@ -300,7 +316,9 @@ class RobotRpiDirectBridge(Node):
         self.get_logger().info(
             "Starting RPi direct bridge "
             f"(I2C bus={self.i2c_bus_id}, mux=0x{self.mux_addr:02X}, "
-            f"AS5600=0x{self.as5600_addr:02X}, control_period={self.control_period_s:.3f}s)"
+            f"AS5600=0x{self.as5600_addr:02X}, control_period={self.control_period_s:.3f}s, "
+            f"encoders_enabled={self.encoders_enabled}, "
+            f"odom_source={'open_loop_cmd_vel' if self.open_loop_odom_from_cmd else 'encoders'})"
         )
 
     def _init_gpio(self):
@@ -376,6 +394,14 @@ class RobotRpiDirectBridge(Node):
         return True, angle
 
     def read_encoders(self):
+        if not self.encoders_enabled:
+            self.left_encoder_sample_ok = False
+            self.right_encoder_sample_ok = False
+            self.sensor_flags &= ~SENSOR_FLAG_ENC_LEFT_OK
+            self.sensor_flags &= ~SENSOR_FLAG_ENC_RIGHT_OK
+            self.error_flags &= ~ERROR_FLAG_ENC_FAIL
+            return
+
         self.prev_left_angle = self.left_angle
         self.prev_right_angle = self.right_angle
 
@@ -424,7 +450,7 @@ class RobotRpiDirectBridge(Node):
             self.right_encoder_sample_ok = False
             self.get_logger().warn(f"Encoder read failed: {exc}")
 
-    def update_odometry(self):
+    def update_odometry_from_encoders(self):
         if not (self.left_encoder_sample_ok and self.right_encoder_sample_ok):
             return
 
@@ -456,6 +482,35 @@ class RobotRpiDirectBridge(Node):
         msg.twist.covariance[35] = 0.1
 
         self.odom_pub.publish(msg)
+
+    def update_odometry_open_loop(self):
+        self.x_pose, self.y_pose, self.yaw = integrate_pose(
+            self.x_pose,
+            self.y_pose,
+            self.yaw,
+            self.cmd_linear,
+            self.cmd_angular,
+            self.control_period_s,
+        )
+
+        msg = Odometry()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = "odom"
+        msg.child_frame_id = "base_link"
+        msg.pose.pose.position = Point(x=self.x_pose, y=self.y_pose, z=0.0)
+        msg.pose.pose.orientation = euler_to_quaternion(self.yaw)
+        msg.twist.twist.linear.x = self.cmd_linear
+        msg.twist.twist.angular.z = self.cmd_angular
+
+        # Open-loop odometry is intentionally less trusted than encoder odometry.
+        msg.pose.covariance[0] = 0.5
+        msg.pose.covariance[7] = 0.5
+        msg.pose.covariance[35] = 0.5
+        msg.twist.covariance[0] = 0.5
+        msg.twist.covariance[35] = 0.5
+
+        self.odom_pub.publish(msg)
+        self.stats["open_loop_updates"] += 1
 
     def cmd_vel_callback(self, msg):
         self.cmd_linear = msg.linear.x
@@ -491,8 +546,16 @@ class RobotRpiDirectBridge(Node):
         )
         self._set_motor_output(left_cmd, right_cmd)
 
-        self.read_encoders()
-        self.update_odometry()
+        if self.open_loop_odom_from_cmd:
+            self.left_encoder_sample_ok = False
+            self.right_encoder_sample_ok = False
+            self.sensor_flags &= ~SENSOR_FLAG_ENC_LEFT_OK
+            self.sensor_flags &= ~SENSOR_FLAG_ENC_RIGHT_OK
+            self.error_flags &= ~ERROR_FLAG_ENC_FAIL
+            self.update_odometry_open_loop()
+        else:
+            self.read_encoders()
+            self.update_odometry_from_encoders()
 
     def status_callback(self):
         msg = String()
@@ -504,6 +567,9 @@ class RobotRpiDirectBridge(Node):
             f"ENC_FAIL={self.stats['encoder_failures']} "
             f"I2C_ERR={self.stats['i2c_errors']} "
             f"CMD_TO={self.stats['cmd_timeouts']} "
+            f"OPEN_LOOP_UPD={self.stats['open_loop_updates']} "
+            f"ENC_EN={1 if self.encoders_enabled else 0} "
+            f"ODOM_SRC={'OPEN_LOOP' if self.open_loop_odom_from_cmd else 'ENC'} "
             f"FLAGS=0x{self.sensor_flags:04X} "
             f"ERR=0x{self.error_flags:02X}"
         )

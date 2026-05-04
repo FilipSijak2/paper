@@ -82,6 +82,14 @@ Default environment:
 - `LEFT_ENCODER_INVERTED` (`0`/`1`)
 - `RIGHT_ENCODER_INVERTED` (`0`/`1`)
 - `RPI_LGPIO_CHIP` (optional, recommended `4` on Raspberry Pi 5)
+- `ENCODERS_ENABLED` (`1`/`0`, default `1`)
+- `OPEN_LOOP_ODOM_FROM_CMD` (`1`/`0`, default `0`, auto-enabled when encoders are disabled)
+
+No-encoder fallback mode:
+
+- set `ENCODERS_ENABLED=0`
+- keep motor pins configured
+- bridge still publishes `/wheel_odom` from integrated `/cmd_vel` (open-loop estimate)
 
 ## Docker Compose Examples
 
@@ -124,6 +132,8 @@ services:
       DRV_AIN2_PIN: "23"
       DRV_BIN1_PIN: "19"
       DRV_BIN2_PIN: "24"
+      ENCODERS_ENABLED: "0"
+      OPEN_LOOP_ODOM_FROM_CMD: "1"
       WHEEL_RADIUS_M: "0.033"
       WHEEL_BASE_M: "0.20"
       RMW_IMPLEMENTATION: rmw_cyclonedds_cpp
