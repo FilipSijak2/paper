@@ -1,5 +1,8 @@
 FROM ros:humble
 
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ARG RPI_LGPIO_VERSION=0.6
+
 # Install dependencies (pyserial for serial comms, optional colorlog)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-colorlog \
@@ -11,8 +14,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && (apt-cache show python3-rpi-lgpio >/dev/null 2>&1 \
         && apt-get install -y --no-install-recommends python3-rpi-lgpio \
         || (python3 -m pip help install | grep -q -- '--break-system-packages' \
-            && python3 -m pip install --no-cache-dir --break-system-packages rpi-lgpio \
-            || python3 -m pip install --no-cache-dir rpi-lgpio)) \
+            && python3 -m pip install --no-cache-dir --break-system-packages rpi-lgpio=="${RPI_LGPIO_VERSION}" \
+            || python3 -m pip install --no-cache-dir rpi-lgpio=="${RPI_LGPIO_VERSION}")) \
     && rm -rf /var/lib/apt/lists/*
 
 # Optional: install editors (nano) only when explicitly requested.

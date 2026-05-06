@@ -144,7 +144,7 @@ services:
 
 ## Data Flow
 
-### `serial_legacy`
+### Data Flow: `serial_legacy`
 
 ```text
 /cmd_vel
@@ -159,7 +159,7 @@ Nano ESP32
   -> /robot_status
 ```
 
-### `rpi_direct`
+### Data Flow: `rpi_direct`
 
 ```text
 /cmd_vel

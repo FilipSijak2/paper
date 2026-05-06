@@ -459,4 +459,3 @@ jobs:
             echo "Repository: ${{ steps.meta.outputs.image_repo }}"
             echo "Tag: ${{ steps.meta.outputs.base_name }}-${{ steps.version.outputs.version_tag }}"
           } >> "$GITHUB_STEP_SUMMARY"
-
