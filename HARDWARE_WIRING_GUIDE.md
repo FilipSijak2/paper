@@ -36,6 +36,7 @@ Common GND ----------> RPi + DRV8833 + TCA9548A + AS5600
 - `RPi pin 16 (GPIO23)` -> `DRV8833 AIN2`
 - `RPi pin 35 (GPIO19)` -> `DRV8833 BIN1`
 - `RPi pin 18 (GPIO24)` -> `DRV8833 BIN2`
+- `RPi pin 11 (GPIO17)` -> `DRV8833 SLP` (recommended)
 
 These match `bridge_cont/robot_rpi_direct_bridge.py` defaults and
 `stack/config/bridge_rpi_direct.env`.
@@ -107,11 +108,17 @@ Right motor:
 - `VM` / `VIN` <- external motor supply positive
 - `GND` <- external motor supply negative and common system ground
 
-### Optional control pins
+### Control pins
 
 If breakout exposes `nSLEEP` / `SLP` / `STBY`:
 
-- hold at `HIGH` (direct 3V3 or controlled GPIO if needed)
+- this must be `HIGH` or outputs stay disabled (AOUT/BOUT remain 0 V)
+- preferred wiring: `SLP` -> `RPi GPIO17` (`DRV_SLEEP_PIN=17`)
+- alternative wiring: `SLP` -> direct `3V3` (`DRV_SLEEP_PIN=-1`)
+
+If breakout exposes `AS` / `BS` (AISEN/BISEN):
+
+- keep both tied to `GND` (unless you intentionally implement current sensing)
 
 `nFAULT` is optional for basic motion.
 
@@ -140,6 +147,8 @@ Without common ground, PWM direction control and I2C behavior are unreliable.
 
 - `BRIDGE_MODE=rpi_direct` -> use this wiring
 - `BRIDGE_MODE=serial_legacy` -> use Nano ESP32 bridge wiring
+- if `SLP` is on GPIO, set `DRV_SLEEP_PIN` to that BCM pin (recommended `17`)
+- if `SLP` is hardwired to `3V3`, set `DRV_SLEEP_PIN=-1`
 
 If encoders are temporarily unavailable, software fallback can run with:
 

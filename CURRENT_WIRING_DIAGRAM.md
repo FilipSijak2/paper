@@ -5,6 +5,7 @@ Ovo je trenutna aktivna arhitektura:
 - `Raspberry Pi -> DRV8833 -> lijevi i desni motor`
 - `Raspberry Pi -> TCA9548A -> AS5600 LEFT + AS5600 RIGHT`
 - motori imaju vanjsko napajanje
+- na nasem DRV8833 modulu `SLP` mora biti `HIGH` (inace su izlazi ugaseni)
 - Nano ESP32 je `legacy` i nije potreban u normalnom radu
 
 ## Vizualizacija
@@ -33,7 +34,7 @@ flowchart LR
     RPI -->|"GPIO23 -> AIN2"| DRV
     RPI -->|"GPIO19 -> BIN1"| DRV
     RPI -->|"GPIO24 -> BIN2"| DRV
-    RPI -->|"3V3 -> nSLEEP only if needed"| DRV
+    RPI -->|"GPIO17 (ili 3V3) -> SLP"| DRV
 
     DRV -->|"AOUT1/AOUT2"| LM
     DRV -->|"BOUT1/BOUT2"| RM
@@ -59,6 +60,7 @@ Raspberry Pi 5
    +-- GPIO23 --> DRV8833 AIN2
    +-- GPIO19 --> DRV8833 BIN1
    +-- GPIO24 --> DRV8833 BIN2
+   +-- GPIO17 (ili 3V3) --> DRV8833 SLP
    |
    +-- 3V3/GND --> TCA9548A + AS5600
 
@@ -80,6 +82,7 @@ RPi GND = TCA GND = AS5600 GND = DRV8833 GND = external supply GND
 - `pin 16 (GPIO23)` -> `DRV8833 AIN2`
 - `pin 35 (GPIO19)` -> `DRV8833 BIN1`
 - `pin 18 (GPIO24)` -> `DRV8833 BIN2`
+- `pin 11 (GPIO17)` -> `DRV8833 SLP` (preporuceno za software kontrolu)
 
 ### TCA9548A
 
@@ -104,7 +107,9 @@ RPi GND = TCA GND = AS5600 GND = DRV8833 GND = external supply GND
 - `BOUT1/BOUT2` -> desni motor
 - `VM` ili `VIN` -> vanjsko napajanje motora
 - `GND` -> zajednicka masa
-- `nSLEEP` / `SLP` drzi na `HIGH` (ili direktno 3V3 ako nije na breakoutu vec pull-up)
+- `SLP` mora biti `HIGH` (na nasoj plocici bez toga nema napona na `AOUT/BOUT`)
+- varijanta A (always-on): `SLP` direktno na `RPi 3V3`
+- varijanta B (preporuceno): `SLP` na `RPi GPIO17` i `DRV_SLEEP_PIN=17`
 - `nFAULT` nije potreban za osnovni rad
 
 ## Napajanje
@@ -120,6 +125,11 @@ Za ovu shemu mora biti:
 - `BRIDGE_MODE=rpi_direct`
 - `BRIDGE_I2C_DEVICE=/dev/i2c-1`
 - `BRIDGE_GPIOMEM_DEVICE=/dev/gpiochip4` (Pi 5)
+- `DRV_SLEEP_PIN=17` ako je `SLP` spojen na GPIO17
+
+Ako je `SLP` spojen direktno na `3V3` (always-on):
+
+- `DRV_SLEEP_PIN=-1`
 
 Ako su enkoderi privremeno iskljuceni:
 
