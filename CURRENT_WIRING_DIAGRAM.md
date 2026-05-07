@@ -1,20 +1,18 @@
-# Nano-only shema ozicenja
+# Trenutna shema ozicenja (`rpi_direct`)
 
-Ovo je odabrana pojednostavljena arhitektura:
+Ovo je trenutna aktivna arhitektura:
 
-- `Raspberry Pi / robot_bridge -> USB -> Arduino Nano ESP32`
-- `Nano ESP32 -> DRV8833 -> lijevi i desni motor`
-- `Nano ESP32 -> TCA9548A -> AS5600 LEFT + AS5600 RIGHT`
-
-`UNO R4` vise nije potreban u ovoj varijanti.
+- `Raspberry Pi -> DRV8833 -> lijevi i desni motor`
+- `Raspberry Pi -> TCA9548A -> AS5600 LEFT + AS5600 RIGHT`
+- motori imaju vanjsko napajanje
+- Nano ESP32 je `legacy` i nije potreban u normalnom radu
 
 ## Vizualizacija
 
 ```mermaid
 flowchart LR
-    PI["Raspberry Pi / ROS stack<br/>robot_bridge<br/>USB serial /dev/ttyACM0<br/>115200"]
-    NANO["Arduino Nano ESP32<br/>glavni kontroler"]
-    TCA["TCA9548A<br/>A0=A1=A2=GND"]
+    RPI["Raspberry Pi 5<br/>robot_bridge (rpi_direct)<br/>I2C + GPIO"]
+    TCA["TCA9548A<br/>A0=A1=A2=GND<br/>addr 0x70"]
     LENC["AS5600 LEFT"]
     RENC["AS5600 RIGHT"]
     DRV["DRV8833"]
@@ -23,30 +21,25 @@ flowchart LR
     EXT["External motor supply"]
     CGND(("Common GND"))
 
-    PI <-->|USB data + 5V| NANO
-
-    NANO -->|"A4 / D21 SDA"| TCA
-    NANO -->|"A5 / D22 SCL"| TCA
-    NANO -->|"3V3"| TCA
-    NANO -->|"GND"| TCA
+    RPI -->|"GPIO2 SDA1 + GPIO3 SCL1"| TCA
+    RPI -->|"3V3 + GND"| TCA
 
     TCA -->|"CH0 SDA/SCL"| LENC
     TCA -->|"CH4 SDA/SCL"| RENC
-    NANO -->|"3V3 + GND"| LENC
-    NANO -->|"3V3 + GND"| RENC
+    RPI -->|"3V3 + GND"| LENC
+    RPI -->|"3V3 + GND"| RENC
 
-    NANO -->|"D5 -> AIN1"| DRV
-    NANO -->|"D6 -> AIN2"| DRV
-    NANO -->|"D9 -> BIN1"| DRV
-    NANO -->|"D10 -> BIN2"| DRV
-    NANO -->|"3V3 -> nSLEEP only if needed"| DRV
+    RPI -->|"GPIO18 -> AIN1"| DRV
+    RPI -->|"GPIO23 -> AIN2"| DRV
+    RPI -->|"GPIO19 -> BIN1"| DRV
+    RPI -->|"GPIO24 -> BIN2"| DRV
+    RPI -->|"3V3 -> nSLEEP only if needed"| DRV
 
     DRV -->|"AOUT1/AOUT2"| LM
     DRV -->|"BOUT1/BOUT2"| RM
-
     EXT -->|"VM / VIN +"| DRV
 
-    NANO --- CGND
+    RPI --- CGND
     TCA --- CGND
     LENC --- CGND
     RENC --- CGND
@@ -57,97 +50,93 @@ flowchart LR
 ## ASCII pregled
 
 ```text
-Raspberry Pi
+Raspberry Pi 5
    |
-   +-- USB --> Nano ESP32
-                  |
-                  +-- I2C A4/A5 --> TCA9548A --> CH0 --> AS5600 LEFT
-                  |                         \--> CH4 --> AS5600 RIGHT
-                  |
-                  +-- D5  --> DRV8833 AIN1
-                  +-- D6  --> DRV8833 AIN2
-                  +-- D9  --> DRV8833 BIN1
-                  +-- D10 --> DRV8833 BIN2
-                  |
-                  +-- 3V3/GND --> senzori
+   +-- I2C GPIO2/GPIO3 --> TCA9548A --> CH0 --> AS5600 LEFT
+   |                                   \--> CH4 --> AS5600 RIGHT
+   |
+   +-- GPIO18 --> DRV8833 AIN1
+   +-- GPIO23 --> DRV8833 AIN2
+   +-- GPIO19 --> DRV8833 BIN1
+   +-- GPIO24 --> DRV8833 BIN2
+   |
+   +-- 3V3/GND --> TCA9548A + AS5600
 
 External motor supply --> DRV8833 VM/VIN
 
 Sve mase moraju biti zajednicke:
-Pi USB GND = Nano GND = TCA GND = AS5600 GND = DRV8833 GND = external supply GND
+RPi GND = TCA GND = AS5600 GND = DRV8833 GND = external supply GND
 ```
 
 ## Preporuceni pinout
 
-### Nano ESP32
+### Raspberry Pi
 
-- USB-C <-> Raspberry Pi
-- `A4 / D21` -> `TCA9548A SDA`
-- `A5 / D22` -> `TCA9548A SCL`
-- `3V3` -> `TCA9548A VCC`
-- `GND` -> `TCA9548A GND`
-- `D5` -> `DRV8833 AIN1`
-- `D6` -> `DRV8833 AIN2`
-- `D9` -> `DRV8833 BIN1`
-- `D10` -> `DRV8833 BIN2`
+- `pin 1 (3V3)` -> `TCA9548A VCC`
+- `pin 6 (GND)` -> `TCA9548A GND`
+- `pin 3 (GPIO2 / SDA1)` -> `TCA9548A SDA`
+- `pin 5 (GPIO3 / SCL1)` -> `TCA9548A SCL`
+- `pin 12 (GPIO18)` -> `DRV8833 AIN1`
+- `pin 16 (GPIO23)` -> `DRV8833 AIN2`
+- `pin 35 (GPIO19)` -> `DRV8833 BIN1`
+- `pin 18 (GPIO24)` -> `DRV8833 BIN2`
 
 ### TCA9548A
 
 - `A0`, `A1`, `A2` -> `GND`
+- `RESET` -> `3V3` (drzi HIGH)
 - `CH0` -> lijevi `AS5600`
 - `CH4` -> desni `AS5600`
 
 ### AS5600 LEFT / RIGHT
 
-- `VCC` -> `Nano 3V3`
+- `VCC` -> `RPi 3V3`
 - `GND` -> zajednicka masa
 - `SDA/SCL` -> preko `TCA9548A`
 
 ### DRV8833
 
-- `AIN1` <- `Nano D5`
-- `AIN2` <- `Nano D6`
-- `BIN1` <- `Nano D9`
-- `BIN2` <- `Nano D10`
+- `AIN1` <- `RPi GPIO18`
+- `AIN2` <- `RPi GPIO23`
+- `BIN1` <- `RPi GPIO19`
+- `BIN2` <- `RPi GPIO24`
 - `AOUT1/AOUT2` -> lijevi motor
 - `BOUT1/BOUT2` -> desni motor
 - `VM` ili `VIN` -> vanjsko napajanje motora
 - `GND` -> zajednicka masa
-- `nSLEEP` / `SLP`
-  - ako je na modulu vec pull-upan, ostavi kako jest
-  - ako nije, vezi na `HIGH` da driver bude aktivan
+- `nSLEEP` / `SLP` drzi na `HIGH` (ili direktno 3V3 ako nije na breakoutu vec pull-up)
 - `nFAULT` nije potreban za osnovni rad
 
 ## Napajanje
 
-Buck converter ti nije potreban ako vrijedi ovo:
+- logika (`RPi`, `TCA9548A`, `AS5600`) radi na `3V3`
+- `DRV8833 VM/VIN` i motori idu na vanjsko napajanje
+- bez zajednicke mase sustav nece biti stabilan
 
-- Nano ESP32 dobiva napajanje preko USB-a s Raspberry Pi-a
-- DRV8833 i motori dobivaju vanjsko napajanje
-- sve mase su povezane zajedno
+## Software mapiranje
 
-U ovoj varijanti nema vise zasebnog napajanja za `UNO`, jer `UNO` vise nije u sustavu.
+Za ovu shemu mora biti:
 
-## Sto se mijenja u firmwareu
+- `BRIDGE_MODE=rpi_direct`
+- `BRIDGE_I2C_DEVICE=/dev/i2c-1`
+- `BRIDGE_GPIOMEM_DEVICE=/dev/gpiochip4` (Pi 5)
 
-U `Nano-only` varijanti Nano radi sve:
+Ako su enkoderi privremeno iskljuceni:
 
-- prima `cmd_vel` preko USB protokola
-- cita IMU
-- cita oba `AS5600` enkodera
-- racuna odometriju
-- direktno upravlja `DRV8833`
+- `ENCODERS_ENABLED=0`
+- `OPEN_LOOP_ODOM_FROM_CMD=1`
 
-Time se izbacuje:
+To ostavlja voznju aktivnom, ali odometrija postaje open-loop procjena.
 
-- `Nano <-> UNO` UART veza
-- `UNO R4` firmware iz glavnog toka rada
-- dodatno olicenje i dodatna tocka kvara
+## Legacy (Nano) napomena
 
-## Stack utjecaj
+Ako zelis vratiti stari nacin:
 
-Na Raspberry Pi strani skoro nista ne moras mijenjati:
+- `BRIDGE_MODE=serial_legacy`
+- RPi <-> Nano USB serial
+- Nano opet preuzima citanje enkodera i upravljanje motorima
 
-- `robot_bridge` i dalje ide na Nano preko `/dev/ttyACM0`
-- ROS topici ostaju isti
-- mijenja se samo firmware i fizicko ozicenje na robotu
+Detalji su u:
+
+- `HARDWARE_WIRING_GUIDE.md`
+- `bridge_cont/README.md`

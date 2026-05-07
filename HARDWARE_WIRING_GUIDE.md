@@ -1,54 +1,60 @@
 # Hardware Wiring Guide
 
-This guide describes the recommended wiring for the current `Nano-only`
-implementation.
+This guide describes the recommended wiring for the current
+`rpi_direct` implementation (Raspberry Pi drives motors and reads encoders
+directly). Legacy `serial_legacy` (Nano ESP32 bridge) is documented at the end.
 
-## System Overview
-
-Current hardware topology:
+## System Overview (Recommended: `rpi_direct`)
 
 ```text
-Raspberry Pi
+Raspberry Pi 5
    |
-   +-- USB --> Nano ESP32
-                  |
-                  +-- I2C --> TCA9548A --> AS5600 LEFT
-                  |                   \-> AS5600 RIGHT
-                  |
-                  +-- GPIO --> DRV8833 --> LEFT motor
-                  |                    \-> RIGHT motor
-                  |
-                  \-- optional IMU on I2C
+   +-- I2C1 (GPIO2/GPIO3) --> TCA9548A --> CH0 --> AS5600 LEFT
+   |                                      \-> CH4 --> AS5600 RIGHT
+   |
+   +-- GPIO PWM/dir -------> DRV8833 -----> LEFT motor
+   |                                     \-> RIGHT motor
+   |
+   \-- USB (optional sensors only, not required for motor/encoder bridge)
+
+External motor PSU ---> DRV8833 VM/VIN
+Common GND ----------> RPi + DRV8833 + TCA9548A + AS5600
 ```
 
-## 1. Nano ESP32 Connections
+## 1. Raspberry Pi Header Connections
 
-### USB
+### I2C to TCA9548A
 
-- `Nano USB-C <-> Raspberry Pi USB`
-- carries serial data and Nano logic power
+- `RPi pin 1 (3V3)` -> `TCA9548A VCC`
+- `RPi pin 6 (GND)` -> `TCA9548A GND`
+- `RPi pin 3 (GPIO2 / SDA1)` -> `TCA9548A SDA`
+- `RPi pin 5 (GPIO3 / SCL1)` -> `TCA9548A SCL`
 
-### I2C bus
+### Motor control to DRV8833 (BCM numbering)
 
-- `A4 / D21` -> `SDA`
-- `A5 / D22` -> `SCL`
-- `3V3` -> sensor power rail
-- `GND` -> sensor ground rail
+- `RPi pin 12 (GPIO18)` -> `DRV8833 AIN1`
+- `RPi pin 16 (GPIO23)` -> `DRV8833 AIN2`
+- `RPi pin 35 (GPIO19)` -> `DRV8833 BIN1`
+- `RPi pin 18 (GPIO24)` -> `DRV8833 BIN2`
+
+These match `bridge_cont/robot_rpi_direct_bridge.py` defaults and
+`stack/config/bridge_rpi_direct.env`.
 
 ## 2. TCA9548A Connections
 
 ### Main side
 
-- `SDA` <- Nano `A4 / D21`
-- `SCL` <- Nano `A5 / D22`
-- `VCC` <- Nano `3V3`
-- `GND` <- Nano `GND`
+- `SDA` <- Raspberry Pi `GPIO2 / SDA1`
+- `SCL` <- Raspberry Pi `GPIO3 / SCL1`
+- `VCC` <- Raspberry Pi `3V3`
+- `GND` <- Raspberry Pi `GND`
 
 ### Address pins
 
 - `A0` -> `GND`
 - `A1` -> `GND`
 - `A2` -> `GND`
+- `RESET` -> `3V3` (must stay HIGH)
 
 This gives the default address:
 
@@ -61,100 +67,97 @@ This gives the default address:
 
 ## 3. AS5600 Encoder Connections
 
-Each AS5600 uses:
+Each AS5600:
 
-- `VCC` -> Nano `3V3`
+- `VCC` -> `3V3`
 - `GND` -> common ground
-- `SDA/SCL` -> through its assigned TCA9548A channel
+- `SDA/SCL` -> through assigned TCA9548A channel (`CH0` or `CH4`)
 
-### Mechanical note
+Mechanical notes:
 
-Each AS5600 needs:
+- use diametrically magnetized magnet
+- center magnet above sensor
+- keep small stable air gap
 
-- a diametrically magnetized magnet
-- the magnet centered above the sensor
-- a small air gap
-
-If the reading is unstable, the first thing to check is mechanical alignment.
+If readings are unstable, check mechanics first, then wiring/pin labels.
 
 ## 4. DRV8833 Connections
 
-### Logic inputs'
+### Logic inputs
 
-- `AIN1` <- Nano `D5`
-- `AIN2` <- Nano `D6`
-- `BIN1` <- Nano `D9`
-- `BIN2` <- Nano `D10`
+- `AIN1` <- `RPi GPIO18`
+- `AIN2` <- `RPi GPIO23`
+- `BIN1` <- `RPi GPIO19`
+- `BIN2` <- `RPi GPIO24`
 
 ### Motor outputs
 
-For the left motor:
+Left motor:
 
-- one motor wire -> `AOUT1`
-- the other motor wire -> `AOUT2`
+- one wire -> `AOUT1`
+- second wire -> `AOUT2`
 
-For the right motor:
+Right motor:
 
-- one motor wire -> `BOUT1`
-- the other motor wire -> `BOUT2`
+- one wire -> `BOUT1`
+- second wire -> `BOUT2`
 
 ### Power
 
-- `VM` or `VIN` <- external motor supply positive
+- `VM` / `VIN` <- external motor supply positive
 - `GND` <- external motor supply negative and common system ground
 
 ### Optional control pins
 
-If your breakout exposes `nSLEEP`, `SLP`, or `STBY`:
+If breakout exposes `nSLEEP` / `SLP` / `STBY`:
 
-- keep it at `HIGH`
+- hold at `HIGH` (direct 3V3 or controlled GPIO if needed)
 
-If your breakout already has a pull-up for that pin, no extra wire is needed.
+`nFAULT` is optional for basic motion.
 
-`nFAULT` is optional and not required for basic operation.
+## 5. Power and Grounding Rules
 
-## 5. Power Distribution
+Logic rail:
 
-### Logic side
+- Raspberry Pi `3V3` feeds TCA9548A and AS5600 boards
 
-- Raspberry Pi USB powers the Nano
-- Nano `3V3` powers `TCA9548A` and `AS5600` boards
+Motor rail:
 
-### Motor side
+- external supply feeds DRV8833 `VM/VIN`
 
-- external supply powers `DRV8833 VM`
-- motors are powered through `DRV8833`
+Critical rule:
 
-### Ground rule
+- all grounds must be common
+- Raspberry Pi GND
+- TCA9548A GND
+- AS5600 GND
+- DRV8833 GND
+- motor PSU negative
 
-All grounds must be connected together:
+Without common ground, PWM direction control and I2C behavior are unreliable.
 
-- Raspberry Pi USB ground
-- Nano ground
-- TCA9548A ground
-- AS5600 ground
-- DRV8833 ground
-- external motor supply ground
+## 6. Software Mode Mapping
 
-## 6. Practical Notes
+- `BRIDGE_MODE=rpi_direct` -> use this wiring
+- `BRIDGE_MODE=serial_legacy` -> use Nano ESP32 bridge wiring
 
-### Buck converter
+If encoders are temporarily unavailable, software fallback can run with:
 
-A buck converter is not required if:
+- `ENCODERS_ENABLED=0`
+- `OPEN_LOOP_ODOM_FROM_CMD=1`
 
-- Nano is powered by Raspberry Pi USB
-- DRV8833 uses its own external motor supply
+in `stack/config/bridge_rpi_direct.env`. Motors still work, odometry becomes
+open-loop estimate.
 
-### Motor direction
+## 7. Legacy Nano Wiring (Optional)
 
-If a motor spins opposite to what you expect:
+Use only if intentionally running `serial_legacy` mode:
 
-- swap the two motor wires on that side
+- `Raspberry Pi USB <-> Nano ESP32 USB-C`
+- Nano controls DRV8833 pins directly
+- Nano reads TCA9548A + AS5600 on Nano I2C pins
 
-### Current implementation references
-
-This guide matches:
+Legacy references:
 
 - `CURRENT_WIRING_DIAGRAM.md`
 - `devastator_sensors_nano_esp32/devastator_sensors_nano_esp32.ino`
-- `../stack/docker-compose.yaml`
