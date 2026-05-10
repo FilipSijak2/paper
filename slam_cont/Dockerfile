@@ -11,11 +11,20 @@ RUN apt-get update && apt-get install -y \
     ros-humble-nav2-msgs \
     ros-humble-nav2-map-server \
     ros-humble-slam-toolbox \
-    ros-humble-rf2o-laser-odometry \
     ros-humble-rmw-cyclonedds-cpp \
     ros-humble-rosbag2-storage-mcap \
     imagemagick \
+    git \
     && rm -rf /var/lib/apt/lists/*
+
+# Build rf2o_laser_odometry from source (no arm64 binary available for Humble)
+RUN mkdir -p /opt/rf2o_ws/src \
+    && cd /opt/rf2o_ws/src \
+    && git clone --depth 1 https://github.com/MAPIRlab/rf2o_laser_odometry.git \
+    && cd /opt/rf2o_ws \
+    && . /opt/ros/humble/setup.sh \
+    && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release \
+    && rm -rf build log
 
 # Optional: install editors (nano) only when explicitly requested.
 # Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
@@ -32,6 +41,7 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
 ENV AMENT_TRACE_SETUP_FILES=""
 RUN echo ": \"\${AMENT_TRACE_SETUP_FILES:=}\"" >> /root/.bashrc && \
     echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc && \
+    echo 'source /opt/rf2o_ws/install/setup.bash' >> /root/.bashrc && \
     printf '%s\n' "export PS1='\\[\\033[1;34m\\]slam_cont: \\[\\033[0m\\]'" >> /root/.bashrc
 
 # Copy Python script into container
@@ -42,4 +52,4 @@ RUN chmod +x /app/run_mapping.sh
 
 # Unique operation mode: always runs slam_manager (slam_toolbox for localization),
 # while mapping + recording can be manually started with the command: bash /app/run_mapping.sh
-CMD ["bash", "-c", ": \"${AMENT_TRACE_SETUP_FILES:=}\"; source /opt/ros/humble/setup.bash && python3 /app/slam_manager.py"]
+CMD ["bash", "-c", ": \"${AMENT_TRACE_SETUP_FILES:=}\"; source /opt/ros/humble/setup.bash && source /opt/rf2o_ws/install/setup.bash && python3 /app/slam_manager.py"]
