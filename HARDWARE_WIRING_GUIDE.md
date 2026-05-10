@@ -90,6 +90,7 @@ If readings are unstable, check mechanics first, then wiring/pin labels.
 - `AIN2` <- `RPi GPIO23`
 - `BIN1` <- `RPi GPIO19`
 - `BIN2` <- `RPi GPIO24`
+- `SLP` <- `RPi GPIO17`
 
 ### Motor outputs
 
