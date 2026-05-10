@@ -132,10 +132,31 @@ class SlamManager(Node):
                 ]
             )
 
-        self.start_rf2o()
+        if self._should_start_rf2o():
+            self.start_rf2o()
+        else:
+            self.get_logger().info(
+                "rf2o_laser_odometry preskočen (START_RF2O=auto + ENCODERS_ENABLED=1). "
+                "Koristi se wheel odometry + EKF. Postavi START_RF2O=1 za ručno pokretanje."
+            )
+
+    def _should_start_rf2o(self) -> bool:
+        """Decide whether to start rf2o based on START_RF2O and ENCODERS_ENABLED env vars.
+
+        START_RF2O=0    -> never start (encoders working, save ~15% CPU on one core)
+        START_RF2O=1    -> always start
+        START_RF2O=auto -> start only if ENCODERS_ENABLED=0 (default: off when encoders present)
+        """
+        mode = os.environ.get("START_RF2O", "auto").strip().lower()
+        if mode == "0":
+            return False
+        if mode == "1":
+            return True
+        # auto: only start if encoders are disabled
+        encoders = os.environ.get("ENCODERS_ENABLED", "1").strip()
+        return encoders == "0"
 
     def start_rf2o(self):
-        """Start rf2o_laser_odometry as a wheel_odom replacement (laser scan matching)."""
         rf2o_cmd = [
             "ros2", "run", "rf2o_laser_odometry", "rf2o_laser_odometry_node",
             "--ros-args",

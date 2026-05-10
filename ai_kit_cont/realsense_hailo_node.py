@@ -30,7 +30,15 @@ from cv_bridge import CvBridge # type: ignore
 from rclpy.executors import ExternalShutdownException # type: ignore
 from rclpy.node import Node # type: ignore
 from rclpy.qos import qos_profile_sensor_data # type: ignore
-from sensor_msgs.msg import CompressedImage, Image # type: ignore
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image, PointCloud2, PointField # type: ignore
+from std_msgs.msg import Header # type: ignore
+
+try:
+    from vision_msgs.msg import Detection2D, Detection2DArray, ObjectHypothesisWithPose # type: ignore
+    VISION_MSGS_AVAILABLE = True
+except ImportError:
+    VISION_MSGS_AVAILABLE = False
+    Detection2DArray = None
 
 try:
     import gi # type: ignore
@@ -196,12 +204,45 @@ class RealSenseHailoNode(Node):
         self._publish_raw_overlay = _env_bool("AI_PUBLISH_RAW_OVERLAY", True)
         self._pipeline_template = os.getenv("HAILO_GST_PIPELINE", "").strip()
 
+        # Depth / camera-info state (populated by subscriptions below)
+        self._depth_image: Optional[np.ndarray] = None
+        self._camera_info: Optional[CameraInfo] = None
+        self._depth_lock = threading.Lock()
+
+        self._depth_topic = os.getenv(
+            "RS_DEPTH_TOPIC", "/realsense/aligned_depth_to_color/image_raw"
+        )
+        self._camera_info_topic = os.getenv(
+            "RS_CAMERA_INFO_TOPIC", "/realsense/color/camera_info"
+        )
+        self._obstacles_topic = os.getenv("AI_OBSTACLES_TOPIC", "/ai_kit/obstacles")
+        self._detections_topic = os.getenv("AI_DETECTIONS_TOPIC", "/ai_kit/detections")
+
         self._overlay_pub = None
         if self._publish_raw_overlay:
             self._overlay_pub = self.create_publisher(Image, self._overlay_topic, 10)
         self._overlay_compressed_pub = self.create_publisher(
             CompressedImage, self._overlay_compressed_topic, 10
         )
+
+        # Obstacle PointCloud2 — fed into Nav2 local costmap as an observation source.
+        # Populated from depth backprojection around Hailo-detected bounding boxes.
+        # Topic must match nav2_params.yaml local_costmap pointcloud observation source.
+        self._obstacles_pub = self.create_publisher(PointCloud2, self._obstacles_topic, 10)
+
+        # Detection2DArray — semantic object detections from Hailo NPU.
+        # Populated when HAILO_GST_PIPELINE is set and a compatible postprocessor
+        # (e.g. hailofilter + JSON metadata sink) is included in the pipeline.
+        if VISION_MSGS_AVAILABLE:
+            self._detections_pub = self.create_publisher(
+                Detection2DArray, self._detections_topic, 10
+            )
+        else:
+            self._detections_pub = None
+            self.get_logger().warning(
+                "vision_msgs not available; /ai_kit/detections will not be published. "
+                "Install ros-humble-vision-msgs in the ai_kit Dockerfile."
+            )
 
         self._frame_queue: "queue.Queue[Tuple[np.ndarray, object, str]]" = queue.Queue(
             maxsize=self._queue_size
@@ -216,6 +257,13 @@ class RealSenseHailoNode(Node):
 
         self._sub = self.create_subscription(
             Image, self._image_topic, self._image_callback, qos_profile_sensor_data
+        )
+        self._depth_sub = self.create_subscription(
+            Image, self._depth_topic, self._depth_callback, qos_profile_sensor_data
+        )
+        self._info_sub = self.create_subscription(
+            CameraInfo, self._camera_info_topic, self._camera_info_callback,
+            qos_profile_sensor_data
         )
 
         if self._pipeline_template:
@@ -234,8 +282,30 @@ class RealSenseHailoNode(Node):
 
         self.get_logger().info(
             f"Subscribed to {self._image_topic}, publishing overlay to "
-            f"{self._overlay_topic} and {self._overlay_compressed_topic}."
+            f"{self._overlay_topic} and {self._overlay_compressed_topic}. "
+            f"Depth: {self._depth_topic} | Obstacles: {self._obstacles_topic} | "
+            f"Detections: {self._detections_topic if VISION_MSGS_AVAILABLE else 'disabled (no vision_msgs)'}"
         )
+
+    def _depth_callback(self, msg: Image) -> None:
+        """Cache the latest aligned depth frame for backprojection in the inference thread."""
+        try:
+            depth = self._bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
+            with self._depth_lock:
+                self._depth_image = depth.copy()
+        except Exception as exc:
+            self.get_logger().warning(f"Failed to convert depth image: {exc}", throttle_duration_sec=5.0)
+
+    def _camera_info_callback(self, msg: CameraInfo) -> None:
+        """Cache camera intrinsics once (they don't change at runtime)."""
+        if self._camera_info is None:
+            self._camera_info = msg
+            self.get_logger().info(
+                f"Camera intrinsics received: fx={msg.k[0]:.1f} fy={msg.k[4]:.1f} "
+                f"cx={msg.k[2]:.1f} cy={msg.k[5]:.1f}"
+            )
+            # Unsubscribe after first message — intrinsics are static
+            self.destroy_subscription(self._info_sub)
 
     def _image_callback(self, msg: Image) -> None:
         now = time.monotonic()
@@ -304,6 +374,132 @@ class RealSenseHailoNode(Node):
                         output_bgr = processed
 
             self._publish_overlay(output_bgr, stamp, frame_id)
+
+            # Publish detection results and obstacle PointCloud2.
+            # bboxes_norm is a list of (x1, y1, x2, y2) in [0,1] normalised coords,
+            # populated by a Hailo postprocessor when HAILO_GST_PIPELINE is configured
+            # with a metadata-capable hailofilter. In passthrough mode it stays empty.
+            bboxes_norm: list = []  # TODO: extract from GStreamer buffer metadata
+            self._publish_detections(bboxes_norm, stamp, frame_id, frame_bgr.shape)
+            self._publish_obstacle_cloud(bboxes_norm, stamp, frame_id, frame_bgr.shape)
+
+    def _publish_detections(
+        self,
+        bboxes_norm: list,
+        stamp,
+        frame_id: str,
+        frame_shape: tuple,
+    ) -> None:
+        """Publish Detection2DArray from normalised bounding boxes.
+
+        Each entry in bboxes_norm must be (x1, y1, x2, y2, score, class_id) normalised [0,1].
+        The list is empty until a Hailo GStreamer postprocessor is configured that writes
+        detection metadata into the GStreamer buffer (hailofilter + JSON/protobuf sink).
+        """
+        if self._detections_pub is None or not VISION_MSGS_AVAILABLE:
+            return
+
+        msg = Detection2DArray()
+        msg.header.stamp = stamp
+        msg.header.frame_id = frame_id
+        h, w = frame_shape[:2]
+
+        for bbox in bboxes_norm:
+            x1n, y1n, x2n, y2n = bbox[0], bbox[1], bbox[2], bbox[3]
+            score = bbox[4] if len(bbox) > 4 else 1.0
+            class_id = str(int(bbox[5])) if len(bbox) > 5 else "unknown"
+
+            det = Detection2D()
+            det.header.stamp = stamp
+            det.header.frame_id = frame_id
+            det.bbox.center.position.x = float((x1n + x2n) / 2.0 * w)
+            det.bbox.center.position.y = float((y1n + y2n) / 2.0 * h)
+            det.bbox.size_x = float((x2n - x1n) * w)
+            det.bbox.size_y = float((y2n - y1n) * h)
+
+            hyp = ObjectHypothesisWithPose()
+            hyp.hypothesis.class_id = class_id
+            hyp.hypothesis.score = float(score)
+            det.results.append(hyp)
+            msg.detections.append(det)
+
+        self._detections_pub.publish(msg)
+
+    def _publish_obstacle_cloud(
+        self,
+        bboxes_norm: list,
+        stamp,
+        frame_id: str,
+        frame_shape: tuple,
+    ) -> None:
+        """Backproject depth pixels inside detected bounding boxes to a 3D PointCloud2.
+
+        When bboxes_norm is empty (passthrough / no Hailo) no points are published so
+        the costmap is not polluted with spurious data. 3D obstacle detection in that
+        case is handled by the raw pointcloud from /realsense/depth/color/points.
+        """
+        if not bboxes_norm:
+            return
+
+        with self._depth_lock:
+            depth = self._depth_image
+        info = self._camera_info
+        if depth is None or info is None:
+            return
+
+        fx, fy = info.k[0], info.k[4]
+        cx, cy = info.k[2], info.k[5]
+        if fx < 1e-6 or fy < 1e-6:
+            return
+
+        h, w = frame_shape[:2]
+        points: list = []
+
+        for bbox in bboxes_norm:
+            x1 = max(0, int(bbox[0] * w))
+            y1 = max(0, int(bbox[1] * h))
+            x2 = min(w, int(bbox[2] * w))
+            y2 = min(h, int(bbox[3] * h))
+
+            roi = depth[y1:y2, x1:x2]
+            # Stride 4 to subsample — we only need a rough obstacle cloud
+            ys, xs = np.mgrid[y1:y2:4, x1:x2:4]
+            ds = roi[::4, ::4].astype(np.float32) * 1e-3  # mm → m
+
+            valid = (ds > 0.1) & (ds < 6.0)
+            if not np.any(valid):
+                continue
+
+            zs = ds[valid]
+            us = xs[valid].astype(np.float32)
+            vs = ys[valid].astype(np.float32)
+            xs3 = (us - cx) * zs / fx
+            ys3 = (vs - cy) * zs / fy
+
+            for xp, yp, zp in zip(xs3, ys3, zs):
+                points.append((float(xp), float(yp), float(zp)))
+
+        if not points:
+            return
+
+        arr = np.array(points, dtype=np.float32)
+        data = arr.tobytes()
+        cloud = PointCloud2(
+            header=Header(stamp=stamp, frame_id=frame_id),
+            height=1,
+            width=len(points),
+            is_dense=True,
+            is_bigendian=False,
+            point_step=12,
+            row_step=12 * len(points),
+            fields=[
+                PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+                PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+                PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+            ],
+            data=data,
+        )
+        self._obstacles_pub.publish(cloud)
 
     def _publish_overlay(self, frame_bgr: np.ndarray, stamp, frame_id: str) -> None:
         if self._overlay_pub is not None:

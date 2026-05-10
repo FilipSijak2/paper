@@ -62,7 +62,8 @@ RUN apt-get update -o Acquire::Retries=3 && \
   ros-jazzy-cv-bridge \
   ros-jazzy-image-transport \
   ros-jazzy-image-transport-plugins \
-  ros-jazzy-compressed-image-transport && \
+  ros-jazzy-compressed-image-transport \
+  ros-jazzy-vision-msgs && \
   rm -rf /var/lib/apt/lists/*
 
 # NOTE: hailo-tappas-core is NOT installed during image build.

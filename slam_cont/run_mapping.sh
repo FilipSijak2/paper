@@ -256,8 +256,9 @@ start_slam() {
 }
 
 EXISTING_SLAM_PID=""
-if pgrep -f "slam_toolbox.*online_async_launch.py" >/dev/null 2>&1; then
-	EXISTING_SLAM_PID=$(pgrep -f "slam_toolbox.*online_async_launch.py" | head -n1)
+# Match both async_slam_toolbox_node (started by slam_manager.py) and online_async_launch.py
+if pgrep -f "async_slam_toolbox_node|slam_toolbox.*online_async_launch" >/dev/null 2>&1; then
+	EXISTING_SLAM_PID=$(pgrep -f "async_slam_toolbox_node|slam_toolbox.*online_async_launch" | head -n1)
 	if [[ "$FORCE_NEW_SLAM" == "1" ]]; then
 		warn "FORCE_NEW_SLAM=1 -> killing existing slam_toolbox (pid ${EXISTING_SLAM_PID}) to relaunch with params"
 		kill "$EXISTING_SLAM_PID" || true

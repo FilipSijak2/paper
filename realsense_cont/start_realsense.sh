@@ -182,9 +182,9 @@ args=(
 	"enable_accel:=${RS_ENABLE_ACCEL}"
 	"unite_imu_method:=${RS_UNITE_IMU_METHOD}"
 	"base_frame_id:=${RS_BASE_FRAME_ID}"
-	"depth_module.profile:=${RS_DEPTH_PROFILE}"
-	"rgb_camera.profile:=${RS_COLOR_PROFILE}"
-	"align_depth:=${RS_ALIGN_DEPTH}"
+	"depth_module.depth_profile:=${RS_DEPTH_PROFILE}"
+	"rgb_camera.color_profile:=${RS_COLOR_PROFILE}"
+	"align_depth.enable:=${RS_ALIGN_DEPTH}"
 	"pointcloud.enable:=${RS_ENABLE_POINTCLOUD}"
 )
 

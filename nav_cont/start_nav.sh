@@ -34,6 +34,7 @@ set -euo pipefail
 : "${AUTO_TIMEOUT_S:=0.7}"
 : "${MUX_PUBLISH_RATE_HZ:=20.0}"
 : "${MANUAL_SPEED_SCALE:=1.0}"
+: "${MANUAL_ANGULAR_SCALE:=1.0}"
 
 # If MAP_FILE is set but missing, fall back to auto-resolution.
 if [ -n "${MAP_FILE}" ] && [ ! -f "${MAP_FILE}" ]; then
@@ -154,7 +155,8 @@ if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 		-p manual_timeout_s:="${MANUAL_TIMEOUT_S}" \
 		-p auto_timeout_s:="${AUTO_TIMEOUT_S}" \
 		-p publish_rate_hz:="${MUX_PUBLISH_RATE_HZ}" \
-		-p manual_speed_scale:="${MANUAL_SPEED_SCALE}" &
+		-p manual_speed_scale:="${MANUAL_SPEED_SCALE}" \
+		-p manual_angular_scale:="${MANUAL_ANGULAR_SCALE}" &
 	EXTRA_PIDS+=("$!")
 fi
 
