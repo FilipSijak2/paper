@@ -125,6 +125,7 @@ def make_mux(module, *, now_ns: int = 0):
     mux.manual_mode = False
     mux.manual_timeout_s = 0.5
     mux.auto_timeout_s = 0.7
+    mux.manual_speed_scale = 1.0
     mux.last_auto = None
     mux.last_auto_time = None
     mux.last_joy = None

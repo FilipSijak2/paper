@@ -139,13 +139,20 @@ def test_unwrap_raw_handles_wraparound():
 def test_compute_wheel_commands_matches_expected_mapping():
     module = load_direct_bridge_module()
 
-    left, right = module.compute_wheel_commands(0.5, 1.0, 0.2)
-    assert left == 0.4
-    assert right == 0.6
+    # max_linear_vel=1.0, max_angular_vel=1.0: lin=0.5, ang=1.0 -> left=-0.5, right=1.0 (clamped)
+    left, right = module.compute_wheel_commands(0.5, 1.0, 1.0, 1.0)
+    assert left == -0.5
+    assert right == 1.0
 
-    left_i, right_i = module.compute_wheel_commands(0.5, 1.0, 0.2, left_inverted=True, right_inverted=True)
-    assert left_i == -0.4
-    assert right_i == -0.6
+    # pure linear, no angular: left == right == normalised linear
+    left2, right2 = module.compute_wheel_commands(0.5, 0.0, 1.0, 1.0)
+    assert left2 == 0.5
+    assert right2 == 0.5
+
+    # inversion flags flip signs
+    left_i, right_i = module.compute_wheel_commands(0.5, 0.0, 1.0, 1.0, left_inverted=True, right_inverted=True)
+    assert left_i == -0.5
+    assert right_i == -0.5
 
 
 def test_integrate_pose_updates_position_and_heading():
