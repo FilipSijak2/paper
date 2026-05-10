@@ -12,12 +12,12 @@ RUN apt-get update && apt-get install -y \
 # Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
 ARG INSTALL_EDITORS=true
 RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
-            echo "Installing editors (nano) for debugging..." && \
-            apt-get update && apt-get install -y --no-install-recommends nano && \
-            rm -rf /var/lib/apt/lists/*; \
-        else \
-            echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
-        fi
+    echo "Installing editors (nano) for debugging..." && \
+    apt-get update && apt-get install -y --no-install-recommends nano && \
+    rm -rf /var/lib/apt/lists/*; \
+    else \
+    echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
+    fi
 
 RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=Europe/Zagreb
@@ -35,4 +35,4 @@ RUN mkdir src \
     printf '%s\n' "export PS1='\\[\\033[1;34m\\]driver_cont: \\[\\033[0m\\]'" >> /root/.bashrc
 
 # Start driver; exit with non-zero on failure so Docker can restart the container
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash && ros2 launch rplidar_ros rplidar_a1_launch.py"]
+CMD ["bash", "-c", "echo '============================================================' && echo '[laser_driver_cont] CONTAINER START  '$(date -u '+%Y-%m-%dT%H:%M:%SZ') && echo '============================================================' && source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash && ros2 launch rplidar_ros rplidar_a1_launch.py"]

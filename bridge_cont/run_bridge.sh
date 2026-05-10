@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -eo pipefail
 
+echo "============================================================"
+echo "[bridge_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+echo "============================================================"
+
 # Source ROS environment (temporarily disable unbound variable check)
 set +u
 # shellcheck disable=SC1091

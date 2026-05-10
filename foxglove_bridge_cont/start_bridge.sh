@@ -1,6 +1,10 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "============================================================"
+echo "[foxglove_bridge_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+echo "============================================================"
+
 # Avoid nounset failures inside ROS setup scripts.
 export AMENT_TRACE_SETUP_FILES="${AMENT_TRACE_SETUP_FILES:-}"
 export AMENT_PYTHON_EXECUTABLE="${AMENT_PYTHON_EXECUTABLE:-}"

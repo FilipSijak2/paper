@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "============================================================"
+echo "[nav_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+echo "============================================================"
+
 # Simplified Nav2 start script (reverted from strict map gating version).
 # Goals:
 #  - Allow Nav2 to start even if no map file is currently chosen.

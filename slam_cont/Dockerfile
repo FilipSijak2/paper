@@ -52,4 +52,4 @@ RUN chmod +x /app/run_mapping.sh
 
 # Unique operation mode: always runs slam_manager (slam_toolbox for localization),
 # while mapping + recording can be manually started with the command: bash /app/run_mapping.sh
-CMD ["bash", "-c", ": \"${AMENT_TRACE_SETUP_FILES:=}\"; source /opt/ros/humble/setup.bash && source /opt/rf2o_ws/install/setup.bash && python3 /app/slam_manager.py"]
+CMD ["bash", "-c", "echo '============================================================' && echo '[slam_cont] CONTAINER START  '$(date -u '+%Y-%m-%dT%H:%M:%SZ') && echo '============================================================' && : \"${AMENT_TRACE_SETUP_FILES:=}\"; source /opt/ros/humble/setup.bash && source /opt/rf2o_ws/install/setup.bash && python3 /app/slam_manager.py"]

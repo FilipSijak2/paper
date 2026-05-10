@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "============================================================"
+echo "[bag_recorder_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+echo "============================================================"
+
 ROS_DISTRO=${ROS_DISTRO:-humble}
 TOPICS_FILE=${TOPICS_FILE:-/config/recorded_topics.yaml}
 BAG_OUTPUT_DIR=${BAG_OUTPUT_DIR:-/bags}

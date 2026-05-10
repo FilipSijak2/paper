@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "============================================================"
+echo "[sensor_fusion_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+echo "============================================================"
+
 # Purpose: Ensure the sensor_fusion workspace is built and the package is discoverable
 # before launching the ROS 2 launch file. Provides self-healing if the install
 # directory is missing or the package index can't find sensor_fusion_pkg.

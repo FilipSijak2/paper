@@ -268,6 +268,10 @@ def check_ros_topics(fh, expected_topics: List[str]) -> bool:
 
 
 def main() -> int:
+    print("=" * 60, flush=True)
+    print(f"[healthcheck_cont] CONTAINER START  {datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')}", flush=True)
+    print("=" * 60, flush=True)
+
     log_dir = os.environ.get("LOG_DIR", "/logs")
     os.makedirs(log_dir, exist_ok=True)
 

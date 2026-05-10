@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+echo "============================================================"
+echo "[ai_kit_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+echo "============================================================"
+
 set +u
 # shellcheck disable=SC1091
 source /opt/ros/jazzy/setup.bash
