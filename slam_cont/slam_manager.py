@@ -13,6 +13,7 @@ class SlamManager(Node):
     def __init__(self):
         super().__init__("slam_manager")
         self.process = None
+        self.rf2o_process = None
         self.static_tf_processes = []
         self.create_timer(2.0, self.monitor_processes)
         self.get_logger().info("SlamManager started (bez automatskog spremanja mape).")
@@ -131,6 +132,25 @@ class SlamManager(Node):
                 ]
             )
 
+        self.start_rf2o()
+
+    def start_rf2o(self):
+        """Start rf2o_laser_odometry as a wheel_odom replacement (laser scan matching)."""
+        rf2o_cmd = [
+            "ros2", "run", "rf2o_laser_odometry", "rf2o_laser_odometry_node",
+            "--ros-args",
+            "-r", "laser_scan:=/scan",
+            "-p", "base_frame_id:=base_link",
+            "-p", "odom_frame_id:=odom",
+            "-p", "publish_tf:=false",
+            "-p", "freq:=10.0",
+        ]
+        self.get_logger().info("Pokrecem rf2o_laser_odometry kao zamjenu za wheel_odom...")
+        try:
+            self.rf2o_process = subprocess.Popen(rf2o_cmd)
+        except FileNotFoundError:
+            self.get_logger().error("rf2o_laser_odometry_node nije pronadjen - provjeri Dockerfile!")
+
     def monitor_processes(self):
         """Best-effort health logging for slam_toolbox and helper TF publishers."""
         if self.process is not None:
@@ -138,6 +158,13 @@ class SlamManager(Node):
             if return_code is not None:
                 self.get_logger().error(f"slam_toolbox exited unexpectedly with code {return_code}")
                 self.process = None
+
+        if self.rf2o_process is not None:
+            rc = self.rf2o_process.poll()
+            if rc is not None:
+                self.get_logger().error(f"rf2o_laser_odometry izasao neocekivano s kodom {rc}, restartujem...")
+                self.rf2o_process = None
+                self.start_rf2o()
 
         alive_static_tf = []
         for child, proc in getattr(self, "static_tf_processes", []):
@@ -150,7 +177,18 @@ class SlamManager(Node):
         self.static_tf_processes = alive_static_tf
 
     def stop_slam_toolbox(self):
-        """Stop slam_toolbox and helper TF publishers."""
+        """Stop slam_toolbox, rf2o and helper TF publishers."""
+        if self.rf2o_process:
+            if self.rf2o_process.poll() is None:
+                self.get_logger().info("Zaustavljam rf2o_laser_odometry...")
+                self.rf2o_process.terminate()
+                try:
+                    self.rf2o_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.rf2o_process.kill()
+                    self.rf2o_process.wait(timeout=3)
+            self.rf2o_process = None
+
         if self.process:
             if self.process.poll() is None:
                 self.get_logger().info("Zaustavljam slam_toolbox...")

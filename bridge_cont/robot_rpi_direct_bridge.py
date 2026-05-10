@@ -169,9 +169,19 @@ def raw_counts_to_radians(counts):
     return float(counts) * (2.0 * math.pi / 4096.0)
 
 
-def compute_wheel_commands(cmd_linear, cmd_angular, wheel_base, left_inverted=False, right_inverted=False):
-    left_speed = cmd_linear - (cmd_angular * wheel_base / 2.0)
-    right_speed = cmd_linear + (cmd_angular * wheel_base / 2.0)
+def compute_wheel_commands(
+    cmd_linear, cmd_angular,
+    max_linear_vel, max_angular_vel,
+    left_inverted=False, right_inverted=False,
+):
+    # Normalise SI cmd_vel to [-1, 1] independently for each axis, then mix.
+    # Using wheel_base/2 directly gave only ~10% duty at typical angular_z
+    # values (e.g. 1 rad/s * 0.10 m = 0.10), making rotation too weak.
+    lin = cmd_linear  / max_linear_vel  if max_linear_vel  > 0.0 else 0.0
+    ang = cmd_angular / max_angular_vel if max_angular_vel > 0.0 else 0.0
+
+    left_speed  = lin - ang
+    right_speed = lin + ang
 
     if left_inverted:
         left_speed = -left_speed
@@ -205,6 +215,8 @@ def resolve_runtime_config(args):
         "right_encoder_inverted": _env_bool("RIGHT_ENCODER_INVERTED", False),
         "encoders_enabled": _env_bool("ENCODERS_ENABLED", True),
         "open_loop_odom_from_cmd": _env_bool("OPEN_LOOP_ODOM_FROM_CMD", False),
+        "max_linear_vel": _env_float("MAX_LINEAR_VEL", 0.5, minimum=0.01),
+        "max_angular_vel": _env_float("MAX_ANGULAR_VEL", 3.0, minimum=0.01),
     }
 
 
@@ -233,6 +245,8 @@ class RobotRpiDirectBridge(Node):
         right_encoder_inverted=False,
         encoders_enabled=True,
         open_loop_odom_from_cmd=False,
+        max_linear_vel=0.5,
+        max_angular_vel=3.0,
     ):
         super().__init__("robot_rpi_direct_bridge")
 
@@ -270,6 +284,8 @@ class RobotRpiDirectBridge(Node):
         self.right_motor_inverted = right_motor_inverted
         self.left_encoder_inverted = left_encoder_inverted
         self.right_encoder_inverted = right_encoder_inverted
+        self.max_linear_vel = float(max_linear_vel)
+        self.max_angular_vel = float(max_angular_vel)
 
         self.bus = SMBus(self.i2c_bus_id) if self.encoders_enabled else None
 
@@ -540,7 +556,8 @@ class RobotRpiDirectBridge(Node):
         left_cmd, right_cmd = compute_wheel_commands(
             self.cmd_linear,
             self.cmd_angular,
-            self.wheel_base,
+            self.max_linear_vel,
+            self.max_angular_vel,
             left_inverted=self.left_motor_inverted,
             right_inverted=self.right_motor_inverted,
         )

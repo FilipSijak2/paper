@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-nav2-msgs \
     ros-humble-nav2-map-server \
     ros-humble-slam-toolbox \
+    ros-humble-rf2o-laser-odometry \
     ros-humble-rmw-cyclonedds-cpp \
     ros-humble-rosbag2-storage-mcap \
     imagemagick \
@@ -20,12 +21,12 @@ RUN apt-get update && apt-get install -y \
 # Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
 ARG INSTALL_EDITORS=true
 RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
-            echo "Installing editors (nano) for debugging..." && \
-            apt-get update && apt-get install -y --no-install-recommends nano && \
-            rm -rf /var/lib/apt/lists/*; \
-        else \
-            echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
-        fi
+    echo "Installing editors (nano) for debugging..." && \
+    apt-get update && apt-get install -y --no-install-recommends nano && \
+    rm -rf /var/lib/apt/lists/*; \
+    else \
+    echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
+    fi
 
 # Service environment setup (guard against unbound AMENT_TRACE_SETUP_FILES when interactive shell uses set -u)
 ENV AMENT_TRACE_SETUP_FILES=""

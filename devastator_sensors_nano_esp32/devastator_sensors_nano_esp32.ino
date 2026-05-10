@@ -179,6 +179,12 @@ const uint32_t STATUS_PERIOD_MS = 2000;
 const float WHEEL_RADIUS = 0.033f;
 const float WHEEL_BASE = 0.20f;
 
+// Maximum physical velocities - used to normalise cmd_vel to [-1, 1] PWM range.
+// cmd_vel arrives in SI units (m/s, rad/s); raw WHEEL_BASE/2 scaling gave only
+// ~10% PWM for typical angular_z values, making rotation too weak.
+const float MAX_LINEAR_VEL  = 0.5f;   // m/s  - tune to robot top speed
+const float MAX_ANGULAR_VEL = 3.0f;   // rad/s - tune to robot top turn rate
+
 static const int DRV_AIN1_PIN = 5;
 static const int DRV_AIN2_PIN = 6;
 static const int DRV_BIN1_PIN = 9;
@@ -548,8 +554,13 @@ void stop_motors() {
 }
 
 void update_motor_control() {
-  float left_speed = cmd_linear - (cmd_angular * WHEEL_BASE / 2.0f);
-  float right_speed = cmd_linear + (cmd_angular * WHEEL_BASE / 2.0f);
+  // Normalise SI cmd_vel to [-1, 1] independently for linear and angular,
+  // then combine into per-wheel duty cycle (differential drive).
+  const float lin = cmd_linear  / MAX_LINEAR_VEL;
+  const float ang = cmd_angular / MAX_ANGULAR_VEL;
+
+  float left_speed  = lin - ang;
+  float right_speed = lin + ang;
 
   if (LEFT_MOTOR_INVERTED) {
     left_speed = -left_speed;

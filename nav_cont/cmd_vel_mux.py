@@ -18,6 +18,7 @@ class CmdVelMux(Node):
         self.manual_timeout_s = self.declare_parameter('manual_timeout_s', 0.5).get_parameter_value().double_value
         self.auto_timeout_s = self.declare_parameter('auto_timeout_s', 0.7).get_parameter_value().double_value
         self.publish_rate_hz = self.declare_parameter('publish_rate_hz', 20.0).get_parameter_value().double_value
+        self.manual_speed_scale = max(0.0, min(1.0, self.declare_parameter('manual_speed_scale', 1.0).get_parameter_value().double_value))
 
         self.manual_mode = self.manual_default
         self.last_auto = None
@@ -41,7 +42,7 @@ class CmdVelMux(Node):
         self.get_logger().info(
             f"CmdVelMux started auto={self.auto_topic} joy={self.joy_topic} out={self.out_topic} "
             f"manual_default={self.manual_default} auto_timeout_s={self.auto_timeout_s} "
-            f"manual_timeout_s={self.manual_timeout_s}"
+            f"manual_timeout_s={self.manual_timeout_s} manual_speed_scale={self.manual_speed_scale}"
         )
         self._publish_mode()
 
@@ -76,7 +77,11 @@ class CmdVelMux(Node):
             if self.last_joy is not None and self.last_joy_time is not None:
                 age = (now - self.last_joy_time).nanoseconds / 1e9
                 if age <= self.manual_timeout_s:
-                    out = self.last_joy
+                    scaled = Twist()
+                    scaled.linear.x = self.last_joy.linear.x * self.manual_speed_scale
+                    scaled.linear.y = self.last_joy.linear.y * self.manual_speed_scale
+                    scaled.angular.z = self.last_joy.angular.z * self.manual_speed_scale
+                    out = scaled
                 else:
                     if not self._joy_stale_warned:
                         self.get_logger().warn(
