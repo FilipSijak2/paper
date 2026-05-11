@@ -80,10 +80,10 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Set up QEMU (ARM emulation)
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Prepare metadata
         id: meta
@@ -236,7 +236,7 @@ jobs:
             echo "Login failed after retries" >&2; exit 1; fi
 
       - name: Build & Push (BananaPi)
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ${{ matrix.dir }}
           file: ${{ matrix.dir }}/Dockerfile
