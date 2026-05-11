@@ -245,9 +245,17 @@ start_slam() {
 		fi
 		if [[ "$USE_DIRECT_SLAM" == "1" ]]; then
 			# Direct execution avoids extra layers & makes parameter application explicit.
-			# Force mode:=mapping regardless of what slam_params.yaml says (it may be set
-			# to localization for the normal nav stack; mapping sessions always need mapping).
-			ros2 run slam_toolbox async_slam_toolbox_node --ros-args --params-file "$SLAM_PARAMS_FILE" -p mode:=mapping &
+			# In ROS2 Humble, --params-file takes precedence over -p when both are given.
+			# Use a second --params-file override to reliably force mode=mapping regardless
+			# of what slam_params.yaml says (it may be set to localization for normal nav).
+			_MAPPING_OVERRIDE=$(mktemp /tmp/slam_mapping_override_XXXXXX.yaml)
+			printf 'slam_toolbox:\n  ros__parameters:\n    mode: mapping\n    map_file_name: ""\n' > "$_MAPPING_OVERRIDE"
+			ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
+				--params-file "$SLAM_PARAMS_FILE" \
+				--params-file "$_MAPPING_OVERRIDE" &
+			_MAPPING_OVERRIDE_PID=$!
+			sleep 0.5
+			rm -f "$_MAPPING_OVERRIDE"
 		else
 			ros2 launch slam_toolbox online_async_launch.py params_file:="$SLAM_PARAMS_FILE" &
 		fi
@@ -537,14 +545,32 @@ cleanup() {
 		kill "${BAG_PID}"
 		wait "${BAG_PID}" 2>/dev/null
 	fi
+	# Save map and serialize pose graph BEFORE killing slam_toolbox so the services are reachable.
+	save_live_map "$MAP_OUTPUT_BASE" || warn "Live SaveMap skipped/failed (non-fatal)"
+	# Serialize pose graph for localization mode (requires mapping node still running).
+	# Serialize to BOTH live/ and final/ so select_map.sh can find it regardless of which path it checks.
+	mkdir -p "$FINAL_DIR"
+	info "Serializing pose graph for localization (targets: ${MAP_OUTPUT_BASE}, ${FINAL_DIR}/map)"
+	if wait_for_service "/slam_toolbox/serialize_pose_graph" 8; then
+		_serialize_ok=0
+		timeout 15s ros2 service call /slam_toolbox/serialize_pose_graph \
+			slam_toolbox/srv/SerializePoseGraph "{filename: {data: '${MAP_OUTPUT_BASE}'}}" \
+			&& _serialize_ok=1 || warn "serialize_pose_graph (live) call failed"
+		if [[ $_serialize_ok -eq 1 ]]; then
+			# Copy to final/ so select_map.sh finds it there
+			cp -f "${MAP_OUTPUT_BASE}.posegraph" "${FINAL_DIR}/map.posegraph" 2>/dev/null || true
+			cp -f "${MAP_OUTPUT_BASE}.data"      "${FINAL_DIR}/map.data"      2>/dev/null || true
+			info "Pose graph copied to final: ${FINAL_DIR}/map.posegraph"
+		fi
+	else
+		warn "serialize_pose_graph service not available – localization mode will not have a pose graph"
+	fi
 	if [[ -n "${SLAM_PID:-}" ]] && kill -0 "${SLAM_PID}" 2>/dev/null; then
 		kill "${SLAM_PID}"
 		wait "${SLAM_PID}" 2>/dev/null
 	else
 		info "Leaving existing slam_toolbox (pid ${EXISTING_SLAM_PID}) to be stopped externally if desired."
 	fi
-	# First attempt to save current live map (only if slam_toolbox service reachable within timeout)
-	save_live_map "$MAP_OUTPUT_BASE" || warn "Live SaveMap skipped/failed (non-fatal)"
 
 	# Optional replay bag to regenerate consistent final map (if enabled)
 	# Detect bag presence using metadata.yaml to avoid glob race
@@ -628,21 +654,6 @@ cleanup() {
 	fi
 	if kill -0 $PLAY_PID 2>/dev/null; then kill $PLAY_PID; fi
 	if kill -0 $REPLAY_SLAM_PID 2>/dev/null; then kill $REPLAY_SLAM_PID; fi
-
-	# Serialize pose graph for slam_toolbox localization mode.
-	# localization_slam_toolbox_node requires .posegraph + .data files (not just .yaml/.pgm).
-	# This must be called while the mapping slam_toolbox instance is still alive.
-	info "Serializing pose graph for localization (target: ${FINAL_BASE})"
-	if wait_for_service "/slam_toolbox/serialize_pose_graph" 8; then
-		if ! timeout 15s ros2 service call /slam_toolbox/serialize_pose_graph \
-			slam_toolbox/srv/SerializePoseGraph "{filename: {data: '${FINAL_BASE}'}}"; then
-			warn "serialize_pose_graph call failed – localization mode will not have a pose graph"
-		else
-			info "Pose graph serialized: ${FINAL_BASE}.posegraph"
-		fi
-	else
-		warn "serialize_pose_graph service not available – localization mode will not have a pose graph"
-	fi
 
 	# Insert YAML to DB
 	YAML_FILE="${FINAL_BASE}.yaml"

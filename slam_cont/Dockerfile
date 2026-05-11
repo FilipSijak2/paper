@@ -23,8 +23,8 @@ RUN git clone --depth 1 https://github.com/MAPIRlab/rf2o_laser_odometry.git
 
 WORKDIR /opt/rf2o_ws
 RUN . /opt/ros/humble/setup.sh \
-    && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release \
-    && rm -rf build log
+    && colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release \
+    && rm -rf build log src
 
 # Optional: install editors (nano) only when explicitly requested.
 # Use at build time: docker build --build-arg INSTALL_EDITORS=true -t your_tag .
