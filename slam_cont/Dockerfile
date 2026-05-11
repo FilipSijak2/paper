@@ -18,11 +18,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Build rf2o_laser_odometry from source (no arm64 binary available for Humble)
-RUN mkdir -p /opt/rf2o_ws/src \
-    && cd /opt/rf2o_ws/src \
-    && git clone --depth 1 https://github.com/MAPIRlab/rf2o_laser_odometry.git \
-    && cd /opt/rf2o_ws \
-    && . /opt/ros/humble/setup.sh \
+WORKDIR /opt/rf2o_ws/src
+RUN git clone --depth 1 https://github.com/MAPIRlab/rf2o_laser_odometry.git
+
+WORKDIR /opt/rf2o_ws
+RUN . /opt/ros/humble/setup.sh \
     && colcon build --symlink-install --cmake-args -DCMAKE_BUILD_TYPE=Release \
     && rm -rf build log
 
