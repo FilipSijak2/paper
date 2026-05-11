@@ -153,6 +153,18 @@ fi
 SESSION_TS=$(date +%Y%m%d-%H%M%S)
 SESSION_TS_UTC=$(date -u +%Y%m%d-%H%M%S)
 
+# Interactive map name prompt (only when no --name given and stdin is a TTY)
+if [[ -z "$CUSTOM_NAME" ]] && [[ -t 0 ]]; then
+	echo -n "[run_mapping] Enter map name (press Enter for automatic name '${NAME_PREFIX}N'): " >&2
+	read -r _user_map_name </dev/tty || true
+	if [[ -n "$_user_map_name" ]]; then
+		CUSTOM_NAME="$_user_map_name"
+		info "Map name: $CUSTOM_NAME"
+	else
+		info "Using automatic incremental name (${NAME_PREFIX}N)"
+	fi
+fi
+
 # Determine human-friendly SESSION_ID
 SESSION_INDEX=""
 if [[ -n "$CUSTOM_NAME" ]]; then
