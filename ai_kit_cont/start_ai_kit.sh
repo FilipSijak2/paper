@@ -53,8 +53,9 @@ if [ ! -f "${RESOURCES_STAMP}" ]; then
 	echo "[ai-kit] Resources downloaded."
 fi
 
-: "${RS_IMAGE_TOPIC:=/realsense/color/image_raw}"
-: "${RS_CAMERA_INFO_TOPIC:=/realsense/color/camera_info}"
+: "${RS_IMAGE_TOPIC:=/camera/realsense/color/image_raw}"
+: "${RS_DEPTH_TOPIC:=/camera/realsense/aligned_depth_to_color/image_raw}"
+: "${RS_CAMERA_INFO_TOPIC:=/camera/realsense/color/camera_info}"
 : "${RS_WAIT_TIMEOUT:=30}"
 : "${AI_KIT_RUN_NODE:=1}"
 : "${AI_KIT_NODE:=/app/realsense_hailo_node.py}"

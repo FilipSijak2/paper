@@ -30,24 +30,31 @@ class SlamManager(Node):
         elif not rmw:
             os.environ["RMW_IMPLEMENTATION"] = "rmw_cyclonedds_cpp"
 
-        slam_params = "/app/slam_params.yaml"
-        cmd = (
-            [
-                "ros2",
-                "run",
-                "slam_toolbox",
-                "async_slam_toolbox_node",
-                "--ros-args",
-                "--params-file",
-                slam_params,
-            ]
-            if os.path.exists(slam_params)
-            else ["ros2", "launch", "slam_toolbox", "online_async_launch.py"]
-        )
+        start_slam_toolbox = os.environ.get("START_SLAM_TOOLBOX", "1").strip().lower()
+        if start_slam_toolbox not in ("0", "false", "no", "off"):
+            slam_params = "/app/slam_params.yaml"
+            cmd = (
+                [
+                    "ros2",
+                    "run",
+                    "slam_toolbox",
+                    "async_slam_toolbox_node",
+                    "--ros-args",
+                    "--params-file",
+                    slam_params,
+                ]
+                if os.path.exists(slam_params)
+                else ["ros2", "launch", "slam_toolbox", "online_async_launch.py"]
+            )
 
-        self.get_logger().info(f"Pokrecem slam_toolbox (cmd={' '.join(cmd)})")
-        # Inherit stdout/stderr so slam_toolbox logs stay visible in `docker logs`.
-        self.process = subprocess.Popen(cmd)
+            self.get_logger().info(f"Pokrecem slam_toolbox (cmd={' '.join(cmd)})")
+            # Inherit stdout/stderr so slam_toolbox logs stay visible in `docker logs`.
+            self.process = subprocess.Popen(cmd)
+        else:
+            self.get_logger().info(
+                "START_SLAM_TOOLBOX=0 -> slam_toolbox preskocen; "
+                "slam_cont i dalje objavljuje static TF/rf2o pomocne procese."
+            )
 
         if os.environ.get("PUBLISH_LASER_STATIC_TF", "0") == "1":
             laser_parent = os.environ.get("LASER_PARENT_FRAME", "base_link")
@@ -123,7 +130,7 @@ class SlamManager(Node):
             except Exception as exc:
                 self.get_logger().warn(f"Ne mogu procitati static TF YAML {static_tf_file}: {exc}")
 
-        if os.environ.get("DUMP_SLAM_PARAMS", "1") == "1":
+        if self.process is not None and os.environ.get("DUMP_SLAM_PARAMS", "1") == "1":
             subprocess.Popen(
                 [
                     "bash",

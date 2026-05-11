@@ -56,6 +56,7 @@ ENV FORCE_MAP_WAIT=1
 
 # Copy start script (added via patch) and make executable
 COPY start_nav.sh /app/start_nav.sh
+COPY robot_nav_launch.py /app/robot_nav_launch.py
 RUN chmod +x /app/start_nav.sh
 
 # Entry: start nav2 bringup + goal forwarder + optional move script

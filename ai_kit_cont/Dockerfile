@@ -83,6 +83,7 @@ RUN chmod +x /app/start_ai_kit.sh /app/realsense_hailo_node.py
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
   ROS_DOMAIN_ID=0 \
   RS_IMAGE_TOPIC=/camera/realsense/color/image_raw \
+  RS_DEPTH_TOPIC=/camera/realsense/aligned_depth_to_color/image_raw \
   RS_CAMERA_INFO_TOPIC=/camera/realsense/color/camera_info \
   RS_WAIT_TIMEOUT=30 \
   AI_KIT_REQUIRE_HAILO=1 \

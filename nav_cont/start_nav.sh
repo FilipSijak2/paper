@@ -26,6 +26,8 @@ echo "============================================================"
 : "${NAV2_PARAMS_FILE:=/app/nav2_params.yaml}"
 : "${GOAL_TOPIC:=/move_base_simple/goal}"
 : "${FORCE_MAP_WAIT:=0}"
+: "${NAV2_LAUNCH_FILE:=/app/robot_nav_launch.py}"
+: "${NAV2_USE_AMCL:=true}"
 : "${ENABLE_CMD_VEL_MUX:=1}"
 : "${ENABLE_JOYSTICK:=1}"
 : "${JOYSTICK_DEV:=/dev/input/js0}"
@@ -134,13 +136,24 @@ if [ -n "${MAP_FILE}" ] && [ -f "${MAP_FILE}" ]; then
 	MAP_ARG+=("map:=${MAP_FILE}")
 fi
 
-EXTRA_REMAPS=()
+NAV_CMD_VEL_OUT="${CMD_VEL_OUT}"
 if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
-	EXTRA_REMAPS+=("cmd_vel:=${CMD_VEL_AUTO}")
+	NAV_CMD_VEL_OUT="${CMD_VEL_AUTO}"
 fi
 
-echo "[nav_start] Launching Nav2 params=${NAV2_PARAMS_FILE} ${MAP_ARG:+with map arg}"
-ros2 launch nav2_bringup navigation_launch.py "${MAP_ARG[@]}" params_file:="${NAV2_PARAMS_FILE}" "${EXTRA_REMAPS[@]}" &
+echo "[nav_start] Launching Nav2 params=${NAV2_PARAMS_FILE} ${MAP_ARG:+with map arg} use_amcl=${NAV2_USE_AMCL} cmd_vel_out=${NAV_CMD_VEL_OUT}"
+if [ -f "${NAV2_LAUNCH_FILE}" ]; then
+	ros2 launch "${NAV2_LAUNCH_FILE}" \
+		"${MAP_ARG[@]}" \
+		params_file:="${NAV2_PARAMS_FILE}" \
+		cmd_vel_out:="${NAV_CMD_VEL_OUT}" \
+		use_amcl:="${NAV2_USE_AMCL}" \
+		use_composition:=False \
+		autostart:=true &
+else
+	echo "[nav_start][WARN] Custom launch file missing (${NAV2_LAUNCH_FILE}); falling back to nav2_bringup/navigation_launch.py"
+	ros2 launch nav2_bringup navigation_launch.py params_file:="${NAV2_PARAMS_FILE}" &
+fi
 NAV2_PID=$!
 
 sleep 5 || true

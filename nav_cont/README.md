@@ -12,7 +12,8 @@ Navigacijski kontejner (`ROS 2 Humble + Nav2`) za autonomno kretanje robota po m
 
 1. Nav2 bringup
 
-- Starta `navigation_launch.py` sa `nav2_params.yaml`.
+- Starta `/app/robot_nav_launch.py`, koji koristi Nav2 `bringup_launch.py`
+  za map_server + AMCL + navigation.
 - Ucitava mapu preko `MAP_FILE` (ili automatski trazi mapu preko `MAP_SESSION`, `active`, `latest`).
 - Ako mapa ne postoji, generira privremenu placeholder mapu da stack moze dignuti servise.
 
@@ -27,7 +28,8 @@ Navigacijski kontejner (`ROS 2 Humble + Nav2`) za autonomno kretanje robota po m
 - Nav2 planira prema costmapu i dinamicki replana kad se okolina promijeni.
 - Prepreke ulaze iz:
 - `/scan` (LaserScan)
-- `/realsense/depth/color/points` (PointCloud2)
+- `/camera/realsense/depth/color/points` (PointCloud2)
+- `/ai_kit/obstacles` (PointCloud2, za buduce semanticke prepreke)
 - Ako postoji prolaz, robot pokusava obici prepreku i nastaviti prema goalu.
 
 1. Signalizacija anomalije / blokade

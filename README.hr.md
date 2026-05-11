@@ -147,7 +147,8 @@ Instalirani su `ros-humble-navigation2`, `ros-humble-nav2-bringup`,
 
 Funkcionalnosti:
 
-- `start_nav.sh` pokrece `nav2_bringup navigation_launch.py` s
+- `start_nav.sh` pokrece `/app/robot_nav_launch.py`, koji koristi Nav2
+  `bringup_launch.py` s
   `nav2_params.yaml`.
 - Mapa se bira preko `MAP_FILE`, `MAP_SESSION`, `active` ili `latest`; ako
   mapa ne postoji, generira se mala placeholder mapa da se stack moze podici.
@@ -159,7 +160,7 @@ Funkcionalnosti:
   `teleop_twist_joy`; Logitech F710 mapping je u `teleop_f710.yaml`.
 - `nav2_params.yaml` koristi AMCL, DWB local planner, Navfn global planner,
   velocity smoother i costmap slojeve za `/scan` i RealSense pointcloud
-  `/realsense/depth/color/points`.
+  `/camera/realsense/depth/color/points`.
 - Publisha anomalije/blokade na `/navigation/anomaly_on_path` i detalje na
   `/navigation/anomaly_detail`.
 

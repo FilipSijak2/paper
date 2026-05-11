@@ -186,7 +186,7 @@ local_costmap:
         z_voxels: 16
         max_obstacle_height: 2.0
         mark_threshold: 0
-        observation_sources: scan pointcloud
+        observation_sources: scan camera_pointcloud ai_obstacles
         scan:
           topic: /scan
           max_obstacle_height: 2.0
@@ -197,10 +197,21 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-        pointcloud:
-          topic: /realsense/depth/color/points
+        camera_pointcloud:
+          topic: /camera/realsense/depth/color/points
           max_obstacle_height: 2.0
-          min_obstacle_height: 0.02
+          min_obstacle_height: 0.05
+          clearing: true
+          marking: true
+          data_type: PointCloud2
+          raytrace_max_range: 3.0
+          raytrace_min_range: 0.05
+          obstacle_max_range: 2.5
+          obstacle_min_range: 0.05
+        ai_obstacles:
+          topic: /ai_kit/obstacles
+          max_obstacle_height: 2.0
+          min_obstacle_height: 0.05
           clearing: true
           marking: true
           data_type: PointCloud2
@@ -226,7 +237,7 @@ global_costmap:
       obstacle_layer:
         plugin: nav2_costmap_2d::ObstacleLayer
         enabled: true
-        observation_sources: scan pointcloud
+        observation_sources: scan ai_obstacles
         scan:
           topic: /scan
           max_obstacle_height: 2.0
@@ -237,10 +248,10 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
-        pointcloud:
-          topic: /realsense/depth/color/points
+        ai_obstacles:
+          topic: /ai_kit/obstacles
           max_obstacle_height: 2.0
-          min_obstacle_height: 0.02
+          min_obstacle_height: 0.05
           clearing: true
           marking: true
           data_type: PointCloud2

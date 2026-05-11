@@ -192,7 +192,7 @@ class RealSenseHailoNode(Node):
         super().__init__("realsense_hailo_node")
         self._bridge = CvBridge()
 
-        self._image_topic = os.getenv("RS_IMAGE_TOPIC", "/realsense/color/image_raw")
+        self._image_topic = os.getenv("RS_IMAGE_TOPIC", "/camera/realsense/color/image_raw")
         self._overlay_topic = os.getenv("AI_OVERLAY_TOPIC", "/ai_kit/image_overlay")
         self._overlay_compressed_topic = os.getenv(
             "AI_OVERLAY_COMPRESSED_TOPIC", "/ai_kit/image_overlay/compressed"
@@ -210,10 +210,10 @@ class RealSenseHailoNode(Node):
         self._depth_lock = threading.Lock()
 
         self._depth_topic = os.getenv(
-            "RS_DEPTH_TOPIC", "/realsense/aligned_depth_to_color/image_raw"
+            "RS_DEPTH_TOPIC", "/camera/realsense/aligned_depth_to_color/image_raw"
         )
         self._camera_info_topic = os.getenv(
-            "RS_CAMERA_INFO_TOPIC", "/realsense/color/camera_info"
+            "RS_CAMERA_INFO_TOPIC", "/camera/realsense/color/camera_info"
         )
         self._obstacles_topic = os.getenv("AI_OBSTACLES_TOPIC", "/ai_kit/obstacles")
         self._detections_topic = os.getenv("AI_DETECTIONS_TOPIC", "/ai_kit/detections")
@@ -436,7 +436,7 @@ class RealSenseHailoNode(Node):
 
         When bboxes_norm is empty (passthrough / no Hailo) no points are published so
         the costmap is not polluted with spurious data. 3D obstacle detection in that
-        case is handled by the raw pointcloud from /realsense/depth/color/points.
+        case is handled by the raw pointcloud from /camera/realsense/depth/color/points.
         """
         if not bboxes_norm:
             return

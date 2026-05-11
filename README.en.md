@@ -152,7 +152,8 @@ It installs `ros-humble-navigation2`, `ros-humble-nav2-bringup`,
 
 Functionality:
 
-- `start_nav.sh` starts `nav2_bringup navigation_launch.py` with
+- `start_nav.sh` starts `/app/robot_nav_launch.py`, which uses Nav2
+  `bringup_launch.py` with
   `nav2_params.yaml`.
 - The map is selected through `MAP_FILE`, `MAP_SESSION`, `active`, or
   `latest`; if no map exists, a small placeholder map is generated so the
@@ -166,7 +167,7 @@ Functionality:
   `teleop_twist_joy`; Logitech F710 mapping is in `teleop_f710.yaml`.
 - `nav2_params.yaml` uses AMCL, the DWB local planner, the Navfn global
   planner, velocity smoothing, and costmap sources from `/scan` plus the
-  RealSense pointcloud `/realsense/depth/color/points`.
+  RealSense pointcloud `/camera/realsense/depth/color/points`.
 - Publishes blockage/anomaly state on `/navigation/anomaly_on_path` and
   details on `/navigation/anomaly_detail`.
 

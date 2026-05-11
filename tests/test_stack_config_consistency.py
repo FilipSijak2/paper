@@ -7,7 +7,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STACK_ROOT = REPO_ROOT.parent / "stack"
-RECORDED_TOPICS_PATH = STACK_ROOT / "config" / "recorded_topics.yaml"
+RECORDED_TOPICS_PATH = STACK_ROOT / "config" / "containers" / "recorded_topics.yaml"
 BRIDGE_PATH = REPO_ROOT / "bridge_cont" / "robot_serial_bridge.py"
 HEALTHCHECK_PATH = REPO_ROOT / "healthcheck_cont" / "healthcheck.py"
 
