@@ -5,25 +5,14 @@ repository and the sibling runtime stack in `../stack/`.
 
 ## 1. Current High-Level Model
 
-The project is a ROS 2 Humble based robot stack orchestrated with Docker
-Compose on the host side, with a single active robot microcontroller on the
-hardware side.
+The project is a ROS 2 based robot stack orchestrated with Docker Compose on
+the host side. The active runtime in `../stack/.env` is currently
+`BRIDGE_MODE=rpi_direct`, so the Raspberry Pi drives the motor driver
+directly. Encoder hardware is present in the wiring, but the current stack has
+`ENCODERS_ENABLED=0`, so runtime odometry relies on open-loop bridge odometry
+and rf2o laser odometry.
 
 Current control chain:
-
-```text
-Raspberry Pi / Docker stack
-  |
-  +-- robot_bridge <-> Nano ESP32 <-> DRV8833 <-> motors
-  |                    |
-  |                    \-> TCA9548A -> AS5600 LEFT / RIGHT
-  |
-  +-- laser_driver -> /scan
-  +-- realsense_cont -> sensor_fusion_cont -> /imu/data
-  +-- slam_cont / nav_cont / rosbridge / foxglove / database
-```
-
-Alternative control chain now supported in software:
 
 ```text
 Raspberry Pi / Docker stack
@@ -37,12 +26,34 @@ Raspberry Pi / Docker stack
   +-- slam_cont / nav_cont / rosbridge / foxglove / database
 ```
 
+Legacy serial control chain still supported in software:
+
+```text
+Raspberry Pi / Docker stack
+  |
+  +-- robot_bridge (BRIDGE_MODE=serial_legacy) <-> Nano ESP32 <-> DRV8833 <-> motors
+  |                                                     |
+  |                                                     \-> TCA9548A -> AS5600 LEFT / RIGHT
+  |
+  +-- laser_driver -> /scan
+  +-- realsense_cont -> sensor_fusion_cont -> /imu/data
+  +-- slam_cont / nav_cont / rosbridge / foxglove / database
+```
+
 ## 2. Hardware Architecture
 
-### Active controller
+### Active controller path
+
+- `Raspberry Pi 5`
+  - runs the Docker stack
+  - `robot_bridge` drives `DRV8833` through GPIO PWM
+  - encoder I2C wiring is available, but current config disables encoder reads
+
+### Legacy controller path
 
 - `Arduino Nano ESP32`
-  - receives motion commands over USB serial
+  - supported by `BRIDGE_MODE=serial_legacy`
+  - receives motion commands over USB serial when that mode is used
   - reads wheel encoders
   - optionally reads onboard IMU
   - computes wheel odometry
@@ -52,7 +63,8 @@ Raspberry Pi / Docker stack
 
 - `DRV8833`
   - dual H-bridge
-  - wired directly to Nano GPIO
+  - in the active stack, wired to Raspberry Pi GPIO
+  - in serial legacy mode, wired to Nano GPIO
   - powered from an external motor supply
 
 ### Encoder stage
@@ -60,7 +72,7 @@ Raspberry Pi / Docker stack
 - `TCA9548A`
 - `2x AS5600`
 
-Current firmware channel mapping:
+Current channel mapping:
 
 - `CH0` = left encoder
 - `CH4` = right encoder
@@ -80,10 +92,13 @@ Current runtime stack in `../stack/docker-compose.yaml` includes at least:
 - `nav_cont`
 - `sensor_fusion_cont`
 - `realsense_cont`
+- `ai_kit_cont`
 - `rosbridge_websocket`
 - `foxglove_bridge`
 - `database_cont`
 - `bag_recorder_cont`
+- `bag_browser_cont`
+- `container_log_collector_cont`
 - `healthcheck_cont`
 
 ## 4. Main Data Flows
@@ -93,7 +108,7 @@ Current runtime stack in `../stack/docker-compose.yaml` includes at least:
 ```text
 /cmd_vel
   -> robot_bridge
-  -> Nano ESP32
+  -> Raspberry Pi GPIO PWM
   -> DRV8833
   -> motors
 ```
@@ -101,12 +116,16 @@ Current runtime stack in `../stack/docker-compose.yaml` includes at least:
 ### Robot feedback
 
 ```text
-Nano ESP32
+Raspberry Pi I2C
+  -> TCA9548A
+  -> AS5600 LEFT / RIGHT
   -> robot_bridge
   -> /wheel_odom
-  -> /imu/arduino
   -> /robot_status
 ```
+
+In `serial_legacy` mode, the Nano publishes the same `/wheel_odom` and
+`/robot_status` feedback through the bridge, plus `/imu/arduino`.
 
 ### Default IMU path for navigation and SLAM
 
@@ -132,10 +151,10 @@ RealSense
 
 - `/cmd_vel`
 - `/wheel_odom`
-- `/imu/arduino`
 - `/robot_status`
 
-In `rpi_direct` mode, `/imu/arduino` is not published by `robot_bridge`.
+In active `rpi_direct` mode, `/imu/arduino` is not published by
+`robot_bridge`. It exists only in serial legacy mode.
 
 ### Mapping and navigation topics
 
@@ -149,7 +168,7 @@ In `rpi_direct` mode, `/imu/arduino` is not published by `robot_bridge`.
 
 ### `/wheel_odom` vs `/odom`
 
-The current serial bridge publishes:
+The robot bridge publishes:
 
 - `/wheel_odom`
 
@@ -160,15 +179,25 @@ Some legacy configs and older documents still mention:
 When documenting the current implementation, `/wheel_odom` is the correct
 bridge output topic. If a consumer expects `/odom`, use a remap or adapter.
 
+### EKF odometry input
+
+The active stack now has `ENCODERS_ENABLED=0` in both
+`bridge_rpi_direct.env` and `slam_cont.env`. That means
+`robot_bridge` runs open-loop wheel odometry from `/cmd_vel`, while
+`slam_cont` starts `rf2o_laser_odometry` automatically because
+`START_RF2O=auto`. This matches
+`../stack/config/containers/robot_localization.yaml`, where EKF `odom0` is
+`/odom_rf2o`.
+
 ### RealSense IMU vs Nano IMU
 
 Default stack behavior:
 
 - `/imu/data` comes from `sensor_fusion_cont` using RealSense IMU input
 
-The Arduino/Nano IMU stream:
+The Arduino/Nano IMU stream in serial legacy mode:
 
-- remains available on `/imu/arduino`
+- is available on `/imu/arduino`
 - is useful for debugging and recording
 - is not the default fused IMU source
 
@@ -188,10 +217,13 @@ Typical deployment:
 
 1. Build or pull images for the runtime services.
 2. Start the stack from `../stack/`.
-3. Confirm the Nano is visible as `/dev/ttyACM0`.
-4. Confirm `robot_bridge` receives packets from the Nano.
-5. Verify `/wheel_odom`, `/imu/arduino`, and `/scan`.
+3. Confirm `/dev/i2c-1` and `/dev/gpiochip4` are available on the host.
+4. Confirm `robot_bridge` starts in `rpi_direct` mode.
+5. Verify `/wheel_odom`, `/robot_status`, and `/scan`.
 6. Run mapping or navigation workflows.
+
+If intentionally using serial legacy mode, confirm the Nano is visible as
+`/dev/ttyACM0` and verify `/imu/arduino`.
 
 ## 8. Related Documents
 

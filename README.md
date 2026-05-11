@@ -11,6 +11,9 @@ This project contains the main software components for a modular robotic system 
 
 Ovaj projekt sadrzi glavne softverske komponente za modularni robotski sustav temeljen na ROS 2, Dockeru, SLAM-u, navigaciji, AI obradi slike, snimanju ROS 2 bagova i pohrani podataka u bazu.
 
+Detaljan pregled funkcionalnosti i specificnosti svakog containera nalazi se u
+[README.hr.md](./README.hr.md#funkcionalnosti-po-kontejneru).
+
 ## Recommended Layout
 
 The repository now uses this documentation structure:

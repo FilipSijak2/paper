@@ -3,6 +3,10 @@
 Ovaj sketch sluzi za brzu provjeru radi li `AS5600` preko `I2C` veze na
 `Arduino Uno R4 WiFi`.
 
+Napomena: ovo je izolirani test sketch. `UNO R4 WiFi` nije dio aktivnog
+runtime stacka; trenutni stack koristi `BRIDGE_MODE=rpi_direct` s Raspberry Pi
+I2C/GPIO putem, a Nano ESP32 je samo legacy serial opcija.
+
 ## Spojevi
 
 Koristi oznacene `SDA` i `SCL` pinove na `UNO R4 WiFi`:

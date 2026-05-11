@@ -39,7 +39,7 @@ Common GND ----------> RPi + DRV8833 + TCA9548A + AS5600
 - `RPi pin 11 (GPIO17)` -> `DRV8833 SLP` (recommended)
 
 These match `bridge_cont/robot_rpi_direct_bridge.py` defaults and
-`stack/config/bridge_rpi_direct.env`.
+`../stack/config/containers/bridge_rpi_direct.env`.
 
 ## 2. TCA9548A Connections
 
@@ -148,6 +148,10 @@ Without common ground, PWM direction control and I2C behavior are unreliable.
 
 - `BRIDGE_MODE=rpi_direct` -> use this wiring
 - `BRIDGE_MODE=serial_legacy` -> use Nano ESP32 bridge wiring
+- current `../stack/.env` uses `BRIDGE_MODE=rpi_direct`
+- current `../stack/.env` maps `/dev/i2c-1` and `/dev/gpiochip4`
+- current `bridge_rpi_direct.env` has `ENCODERS_ENABLED=0`, so bridge
+  odometry is open-loop and `slam_cont` should use rf2o odometry
 - if `SLP` is on GPIO, set `DRV_SLEEP_PIN` to that BCM pin (recommended `17`)
 - if `SLP` is hardwired to `3V3`, set `DRV_SLEEP_PIN=-1`
 
@@ -156,8 +160,8 @@ If encoders are temporarily unavailable, software fallback can run with:
 - `ENCODERS_ENABLED=0`
 - `OPEN_LOOP_ODOM_FROM_CMD=1`
 
-in `stack/config/bridge_rpi_direct.env`. Motors still work, odometry becomes
-open-loop estimate.
+in `../stack/config/containers/bridge_rpi_direct.env`. Motors still work,
+odometry becomes open-loop estimate.
 
 ## 7. Legacy Nano Wiring (Optional)
 

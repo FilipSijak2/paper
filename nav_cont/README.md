@@ -147,9 +147,11 @@ ros2 service call /set_manual_mode std_srvs/srv/SetBool "{data: false}"
 - `nav_cont` trenutno samo signalizira da je put blokiran/stuck.
 - AI dio (detekcija klase, spremanje slike, logiranje poznata/nepoznata anomalija) ide kroz `ai_kit_cont`.
 
-1. Footprint je trenutno aproksimiran (`robot_radius: 0.22`).
+1. Footprint je trenutno definiran kao poligon u `nav2_params.yaml`.
 
-- Za pouzdano zaobilazenje treba unijeti stvarne dimenzije robota i sigurnosni margin.
+- Trenutna vrijednost je okvirno `22 cm x 23 cm` uz mali padding.
+- Za pouzdano zaobilazenje treba potvrditi stvarne dimenzije robota i
+  sigurnosni margin kroz test voznju.
 
 1. Placeholder mapa je fallback za podizanje stacka.
 
@@ -157,8 +159,8 @@ ros2 service call /set_manual_mode std_srvs/srv/SetBool "{data: false}"
 
 ## Sljedeci korak (preporuka)
 
-Kad posaljes dimenzije robota, treba:
+Kad se potvrde stvarne dimenzije robota, treba:
 
-1. zamijeniti `robot_radius` tocnim `footprint` poligonom u `nav2_params.yaml`
+1. po potrebi prilagoditi `footprint` poligon u `nav2_params.yaml`
 1. prilagoditi inflation radius/tolerance prema stvarnom clearanceu
 1. napraviti kratki obstacle-course test i fino podesiti pragove

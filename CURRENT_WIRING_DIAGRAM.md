@@ -3,7 +3,8 @@
 Ovo je trenutna aktivna arhitektura:
 
 - `Raspberry Pi -> DRV8833 -> lijevi i desni motor`
-- `Raspberry Pi -> TCA9548A -> AS5600 LEFT + AS5600 RIGHT`
+- `Raspberry Pi -> TCA9548A -> AS5600 LEFT + AS5600 RIGHT` je oziceno,
+  ali je u trenutnom stacku `ENCODERS_ENABLED=0`
 - motori imaju vanjsko napajanje
 - na nasem DRV8833 modulu `SLP` mora biti `HIGH` (inace su izlazi ugaseni)
 - Nano ESP32 je `legacy` i nije potreban u normalnom radu
@@ -126,6 +127,10 @@ Za ovu shemu mora biti:
 - `BRIDGE_I2C_DEVICE=/dev/i2c-1`
 - `BRIDGE_GPIOMEM_DEVICE=/dev/gpiochip4` (Pi 5)
 - `DRV_SLEEP_PIN=17` ako je `SLP` spojen na GPIO17
+- trenutni stack ima `ENCODERS_ENABLED=0`, pa bridge radi open-loop
+  odometriju iz `/cmd_vel`, a `slam_cont` pokrece `rf2o_laser_odometry`
+- za normalan rad s AS5600 enkoderima vrati `ENCODERS_ENABLED=1` u
+  `bridge_rpi_direct.env` i uskladi odometrijski izvor u SLAM/EKF konfiguraciji
 
 Ako je `SLP` spojen direktno na `3V3` (always-on):
 

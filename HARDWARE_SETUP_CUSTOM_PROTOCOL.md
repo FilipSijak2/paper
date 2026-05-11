@@ -1,10 +1,13 @@
-# Custom Serial Protocol - Hardware Setup Guide
+# Custom Serial Protocol - Legacy Hardware Setup Guide
 
-This guide reflects the current `Nano-only` hardware architecture.
+This guide documents the legacy `Nano-only` hardware architecture used when
+`BRIDGE_MODE=serial_legacy` is intentionally enabled. The active runtime stack
+in `../stack/.env` currently uses `BRIDGE_MODE=rpi_direct`, so Raspberry Pi
+GPIO/I2C wiring is the default deployment path.
 
 ## Overview
 
-The current robot controller architecture is:
+The serial legacy robot controller architecture is:
 
 ```text
 Host PC / Raspberry Pi (ROS 2)
@@ -206,9 +209,10 @@ Board:
 
 ### 3. ROS bridge
 
-Typical runtime stack configuration:
+Serial legacy runtime stack configuration:
 
 - `robot_bridge` container
+- `BRIDGE_MODE=serial_legacy`
 - serial device: `/dev/ttyACM0`
 - baud: `115200`
 

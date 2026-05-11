@@ -5,6 +5,9 @@ ROS 2 robot bridge container for Devastator, with two runtime modes:
 - `serial_legacy` (default): Nano ESP32 custom serial protocol
 - `rpi_direct`: direct Raspberry Pi GPIO + I2C hardware control
 
+The Docker image default is `serial_legacy`, but the current runtime stack in
+`../stack/.env` uses `BRIDGE_MODE=rpi_direct`.
+
 ## Purpose
 
 `bridge_cont` subscribes to `/cmd_vel` and publishes robot feedback topics.
@@ -36,12 +39,22 @@ Note:
 
 ## Runtime Defaults
 
-Default environment:
+Image defaults:
 
 - `BRIDGE_MODE=serial_legacy`
 - `SERIAL_PORT=/dev/ttyUSB0`
 - `SERIAL_BAUD=115200`
 - `RMW_IMPLEMENTATION=rmw_cyclonedds_cpp`
+
+Current stack overrides:
+
+- `BRIDGE_MODE=rpi_direct`
+- `BRIDGE_SERIAL_DEVICE=/dev/null`
+- `BRIDGE_I2C_DEVICE=/dev/i2c-1`
+- `BRIDGE_GPIOMEM_DEVICE=/dev/gpiochip4`
+- `ENCODERS_ENABLED=0`
+- `OPEN_LOOP_ODOM_FROM_CMD=0` (`robot_rpi_direct_bridge.py` still forces
+  open-loop odometry when encoders are disabled)
 
 ## Environment Variables
 
