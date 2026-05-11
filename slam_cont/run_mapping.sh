@@ -268,10 +268,20 @@ start_slam() {
 }
 
 EXISTING_SLAM_PID=""
-# Match both async_slam_toolbox_node (started by slam_manager.py) and online_async_launch.py
-if pgrep -f "async_slam_toolbox_node|slam_toolbox.*online_async_launch" >/dev/null 2>&1; then
-	EXISTING_SLAM_PID=$(pgrep -f "async_slam_toolbox_node|slam_toolbox.*online_async_launch" | head -n1)
-	if [[ "$FORCE_NEW_SLAM" == "1" ]]; then
+# Match all slam_toolbox variants: async (mapping), localization, and launch-based.
+# localization_slam_toolbox_node cannot switch to mapping mode (different binary),
+# so it must always be killed before starting a mapping session.
+SLAM_PGREP_PATTERN="async_slam_toolbox_node|localization_slam_toolbox_node|slam_toolbox.*online_async_launch|slam_toolbox.*localization_launch"
+if pgrep -f "$SLAM_PGREP_PATTERN" >/dev/null 2>&1; then
+	EXISTING_SLAM_PID=$(pgrep -f "$SLAM_PGREP_PATTERN" | head -n1)
+	EXISTING_SLAM_TYPE=$(ps -p "$EXISTING_SLAM_PID" -o args= 2>/dev/null || echo "unknown")
+	if echo "$EXISTING_SLAM_TYPE" | grep -q "localization_slam_toolbox_node"; then
+		# Localization node cannot do mapping - must be replaced.
+		warn "Detected localization_slam_toolbox_node (pid ${EXISTING_SLAM_PID}); killing to start mapping instance."
+		kill "$EXISTING_SLAM_PID" || true
+		sleep 2
+		start_slam "replacing localization with mapping node"
+	elif [[ "$FORCE_NEW_SLAM" == "1" ]]; then
 		warn "FORCE_NEW_SLAM=1 -> killing existing slam_toolbox (pid ${EXISTING_SLAM_PID}) to relaunch with params"
 		kill "$EXISTING_SLAM_PID" || true
 		sleep 2

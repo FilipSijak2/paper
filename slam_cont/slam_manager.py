@@ -33,18 +33,21 @@ class SlamManager(Node):
         start_slam_toolbox = os.environ.get("START_SLAM_TOOLBOX", "1").strip().lower()
         if start_slam_toolbox not in ("0", "false", "no", "off"):
             slam_params = "/app/slam_params.yaml"
+            # Use localization_slam_toolbox_node for navigation: no pose graph,
+            # no map building, no loop closures -> significantly lower CPU on RPi 5.
+            # Mapping sessions use their own slam_toolbox instance (run_mapping.sh).
             cmd = (
                 [
                     "ros2",
                     "run",
                     "slam_toolbox",
-                    "async_slam_toolbox_node",
+                    "localization_slam_toolbox_node",
                     "--ros-args",
                     "--params-file",
                     slam_params,
                 ]
                 if os.path.exists(slam_params)
-                else ["ros2", "launch", "slam_toolbox", "online_async_launch.py"]
+                else ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
             )
 
             self.get_logger().info(f"Pokrecem slam_toolbox (cmd={' '.join(cmd)})")
