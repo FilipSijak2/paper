@@ -254,7 +254,8 @@ Functionality:
 - Runs `ros2 launch rosbridge_server rosbridge_websocket_launch.xml`.
 - Exposes the ROS 2 graph to web clients over WebSocket, typically on port
   `9090`.
-- Builds a local `/ros_ws` workspace from `rosbridge_cont/src`.
+- Does not build a local workspace because there are currently no custom
+  rosbridge packages.
 
 ### `foxglove_bridge_cont`
 

@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "============================================================"
-echo "[bag_recorder_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-echo "============================================================"
-
 ROS_DISTRO=${ROS_DISTRO:-humble}
 TOPICS_FILE=${TOPICS_FILE:-/config/recorded_topics.yaml}
 BAG_OUTPUT_DIR=${BAG_OUTPUT_DIR:-/bags}
@@ -20,6 +16,12 @@ TOPICS=()
 RESOLVED_TOPICS=()
 ACTIVE_TOPICS=()
 stop_requested=false
+
+log_container_start() {
+	echo "============================================================"
+	echo "[bag_recorder_cont] CONTAINER START  $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+	echo "============================================================"
+}
 
 source_ros_environment() {
 	export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
@@ -287,6 +289,7 @@ run_recorder_loop() {
 }
 
 main() {
+	log_container_start
 	source_ros_environment
 	normalize_rmw
 	verify_ros_cli

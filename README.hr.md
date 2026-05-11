@@ -244,7 +244,7 @@ Funkcionalnosti:
 - Pokrece `ros2 launch rosbridge_server rosbridge_websocket_launch.xml`.
 - Otvara ROS 2 graf web klijentima preko WebSocketa, tipicno na portu
   `9090`.
-- Builda lokalni `/ros_ws` workspace iz `rosbridge_cont/src`.
+- Ne gradi lokalni workspace jer trenutno nema dodatnih rosbridge paketa.
 
 ### `foxglove_bridge_cont`
 

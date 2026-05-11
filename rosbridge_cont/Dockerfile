@@ -37,19 +37,12 @@ RUN set -eu; \
     rm -rf /var/lib/apt/lists/*; \
     if [ "$DEBUG_APT" = "true" ]; then set +x; fi
 
-# Set working directory to /ros_ws
 RUN printf '%s\n' "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc \
     && printf '%s\n' "export PS1='\\[\\033[1;34m\\]rosbridge: \\[\\033[0m\\]'" >> /root/.bashrc
-WORKDIR /ros_ws
+WORKDIR /rosbridge
 
 RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=Europe/Zagreb
 
-# Copy only manifest files first (better caching) then the rest of the source code
-COPY ./src /ros_ws/src
-
-# Build workspace with colcon
-RUN bash -c "set -e; source /opt/ros/${ROS_DISTRO}/setup.bash && colcon build --symlink-install"
-
 # Start rosbridge automatically using XML launch file
-CMD ["bash", "-c", "echo '============================================================' && echo '[rosbridge_cont] CONTAINER START  '$(date -u '+%Y-%m-%dT%H:%M:%SZ') && echo '============================================================' && source /opt/ros/${ROS_DISTRO}/setup.bash && source /ros_ws/install/setup.bash && ros2 launch rosbridge_server rosbridge_websocket_launch.xml"]
+CMD ["bash", "-c", "echo '============================================================' && echo '[rosbridge_cont] CONTAINER START  '$(date -u '+%Y-%m-%dT%H:%M:%SZ') && echo '============================================================' && source /opt/ros/${ROS_DISTRO}/setup.bash && ros2 launch rosbridge_server rosbridge_websocket_launch.xml"]
