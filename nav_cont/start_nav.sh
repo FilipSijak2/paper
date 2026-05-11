@@ -62,6 +62,13 @@ if [ -z "${MAP_FILE}" ]; then
 			fi
 		done
 	fi
+	# /app/map.yaml written by select_map.sh on the host (mounted from config/containers/map.yaml)
+	if [ -z "${MAP_FILE}" ]; then
+		if [ -f "/app/map.yaml" ] && [ -s "/app/map.yaml" ] && ! grep -q "placeholder: true" "/app/map.yaml"; then
+			MAP_FILE="/app/map.yaml"
+			echo "[nav_start] Using map from /app/map.yaml (set by select_map.sh)"
+		fi
+	fi
 	# Active / latest symlinks as fallbacks
 	if [ -z "${MAP_FILE}" ]; then
 		for cand in \
