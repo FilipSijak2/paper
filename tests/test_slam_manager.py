@@ -105,7 +105,7 @@ def test_start_slam_toolbox_uses_params_file_and_normalizes_rmw(monkeypatch):
         "ros2",
         "run",
         "slam_toolbox",
-        "async_slam_toolbox_node",
+        "localization_slam_toolbox_node",
         "--ros-args",
         "--params-file",
         "/app/slam_params.yaml",
@@ -131,7 +131,7 @@ def test_start_slam_toolbox_falls_back_to_launch_when_params_missing(monkeypatch
     module.SlamManager.start_slam_toolbox(manager)
 
     assert os.environ["RMW_IMPLEMENTATION"] == "rmw_cyclonedds_cpp"
-    assert commands[0] == ["ros2", "launch", "slam_toolbox", "online_async_launch.py"]
+    assert commands[0] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
 
 
 def test_start_slam_toolbox_loads_valid_static_tf_and_skips_invalid_entry(tmp_path, monkeypatch):
@@ -181,20 +181,20 @@ def test_start_slam_toolbox_loads_valid_static_tf_and_skips_invalid_entry(tmp_pa
 
     module.SlamManager.start_slam_toolbox(manager)
 
-    assert commands[0] == ["ros2", "launch", "slam_toolbox", "online_async_launch.py"]
+    assert commands[0] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
     assert [
         "ros2",
         "run",
         "tf2_ros",
         "static_transform_publisher",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0",
-        "base_link",
-        "laser",
+        "--frame-id", "base_link",
+        "--child-frame-id", "laser",
+        "--x", "0",
+        "--y", "0",
+        "--z", "0",
+        "--roll", "0",
+        "--pitch", "0",
+        "--yaw", "0",
     ] in commands
     assert not any(cmd[-1] == "bad_tf" for cmd in commands if isinstance(cmd, list))
     assert any("neispravna duljina" in warning for warning in manager._logger.warnings)
