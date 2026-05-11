@@ -244,8 +244,10 @@ start_slam() {
 			printf '\n# Injected to ensure /map publication\n  %s: true\n' "${PUBLISH_MAP_PARAM_KEY}" >>"$SLAM_PARAMS_FILE" || true
 		fi
 		if [[ "$USE_DIRECT_SLAM" == "1" ]]; then
-			# Direct execution avoids extra layers & makes parameter application explicit
-			ros2 run slam_toolbox async_slam_toolbox_node --ros-args --params-file "$SLAM_PARAMS_FILE" &
+			# Direct execution avoids extra layers & makes parameter application explicit.
+			# Force mode:=mapping regardless of what slam_params.yaml says (it may be set
+			# to localization for the normal nav stack; mapping sessions always need mapping).
+			ros2 run slam_toolbox async_slam_toolbox_node --ros-args --params-file "$SLAM_PARAMS_FILE" -p mode:=mapping &
 		else
 			ros2 launch slam_toolbox online_async_launch.py params_file:="$SLAM_PARAMS_FILE" &
 		fi
@@ -626,6 +628,21 @@ cleanup() {
 	fi
 	if kill -0 $PLAY_PID 2>/dev/null; then kill $PLAY_PID; fi
 	if kill -0 $REPLAY_SLAM_PID 2>/dev/null; then kill $REPLAY_SLAM_PID; fi
+
+	# Serialize pose graph for slam_toolbox localization mode.
+	# localization_slam_toolbox_node requires .posegraph + .data files (not just .yaml/.pgm).
+	# This must be called while the mapping slam_toolbox instance is still alive.
+	info "Serializing pose graph for localization (target: ${FINAL_BASE})"
+	if wait_for_service "/slam_toolbox/serialize_pose_graph" 8; then
+		if ! timeout 15s ros2 service call /slam_toolbox/serialize_pose_graph \
+			slam_toolbox/srv/SerializePoseGraph "{filename: {data: '${FINAL_BASE}'}}"; then
+			warn "serialize_pose_graph call failed – localization mode will not have a pose graph"
+		else
+			info "Pose graph serialized: ${FINAL_BASE}.posegraph"
+		fi
+	else
+		warn "serialize_pose_graph service not available – localization mode will not have a pose graph"
+	fi
 
 	# Insert YAML to DB
 	YAML_FILE="${FINAL_BASE}.yaml"
