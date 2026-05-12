@@ -224,8 +224,9 @@ if [[ -n "$TOPICS_FILE" ]]; then
 	fi
 	TOPICS=$(grep -Ev '^#|^$' "$TOPICS_FILE" | xargs || true)
 else
-	# Default essential topics for slam_toolbox map reproduction (adjust as needed)
-	TOPICS="/tf /tf_static /wheel_odom /scan /imu/data /robot_description /clock"
+	# Default essential topics for slam_toolbox map reproduction.
+	# Keep wheel_odom for legacy/debug, plus rf2o and EKF odometry used when encoders are disabled.
+	TOPICS="/tf /tf_static /wheel_odom /odom_rf2o /odometry/filtered /scan /imu/data /robot_description /clock"
 fi
 info "Topics: $TOPICS"
 log "Root: $MAP_ROOT | session=$SESSION_ID (incremental=$INCREMENTAL_NAMES prefix=$NAME_PREFIX index=${SESSION_INDEX:-N/A})"
