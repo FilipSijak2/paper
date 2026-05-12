@@ -254,8 +254,10 @@ start_slam() {
 			ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
 				--params-file "$SLAM_PARAMS_FILE" \
 				--params-file "$_MAPPING_OVERRIDE" &
-			_MAPPING_OVERRIDE_PID=$!
-			sleep 0.5
+			SLAM_PID=$!
+			# Wait until ros2 has loaded params before removing the temp file.
+			# The file must stay on disk until rcl finishes argument parsing.
+			sleep 3
 			rm -f "$_MAPPING_OVERRIDE"
 		else
 			ros2 launch slam_toolbox online_async_launch.py params_file:="$SLAM_PARAMS_FILE" &
