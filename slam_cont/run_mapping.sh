@@ -61,6 +61,44 @@ MAP_TOPIC_CANDIDATES=${MAP_TOPIC_CANDIDATES:-"/map /slam_toolbox/map /localized_
 # Reentrancy lock for cleanup
 CLEANUP_LOCK=0
 
+# Container management: stop heavy services to free CPU/RAM during mapping.
+# Set MANAGE_DOCKER_SERVICES=0 to disable, or MAPPING_STOP_SERVICES to override list.
+# Default: auto (stop if docker is available and we're running inside a container).
+MANAGE_DOCKER_SERVICES=${MANAGE_DOCKER_SERVICES:-auto}
+MAPPING_STOP_SERVICES=${MAPPING_STOP_SERVICES:-"nav_cont ai_kit_cont bag_recorder_cont bag_browser container_log_collector healthcheck_cont"}
+_STOPPED_CONTAINERS=""
+
+manage_containers_stop() {
+	# Check if docker CLI is available (it's mounted from host in some setups)
+	if ! command -v docker >/dev/null 2>&1; then
+		warn "docker CLI not found inside container – skipping container management (set MANAGE_DOCKER_SERVICES=0 to silence)"
+		return
+	fi
+	local actually_stopped=""
+	for svc in $MAPPING_STOP_SERVICES; do
+		if docker inspect --format '{{.State.Running}}' "${svc}" 2>/dev/null | grep -q true; then
+			info "Stopping $svc to free resources during mapping..."
+			docker stop "${svc}" >/dev/null 2>&1 && actually_stopped="$actually_stopped $svc" || warn "Could not stop $svc"
+		fi
+	done
+	_STOPPED_CONTAINERS="$actually_stopped"
+	if [[ -n "$_STOPPED_CONTAINERS" ]]; then
+		info "Stopped containers:$_STOPPED_CONTAINERS"
+	else
+		info "No extra containers to stop (already down or not found)"
+	fi
+}
+
+manage_containers_restore() {
+	if [[ -z "$_STOPPED_CONTAINERS" ]]; then return; fi
+	if ! command -v docker >/dev/null 2>&1; then return; fi
+	info "Restoring stopped containers:$_STOPPED_CONTAINERS"
+	for svc in $_STOPPED_CONTAINERS; do
+		docker start "${svc}" >/dev/null 2>&1 && info "Started $svc" || warn "Could not start $svc"
+	done
+	_STOPPED_CONTAINERS=""
+}
+
 RED="\033[0;31m"
 GREEN="\033[0;32m"
 YELLOW="\033[1;33m"
@@ -231,6 +269,11 @@ fi
 info "Topics: $TOPICS"
 log "Root: $MAP_ROOT | session=$SESSION_ID (incremental=$INCREMENTAL_NAMES prefix=$NAME_PREFIX index=${SESSION_INDEX:-N/A})"
 
+# Stop heavy containers to free CPU/RAM during mapping session.
+if [[ "$MANAGE_DOCKER_SERVICES" != "0" ]]; then
+	manage_containers_stop
+fi
+
 # Detect existing slam_toolbox instance (avoid parallel)
 EXISTING_SLAM_PID=""
 start_slam() {
@@ -250,7 +293,19 @@ start_slam() {
 			# Use a second --params-file override to reliably force mode=mapping regardless
 			# of what slam_params.yaml says (it may be set to localization for normal nav).
 			_MAPPING_OVERRIDE=$(mktemp /tmp/slam_mapping_override_XXXXXX.yaml)
-			printf 'slam_toolbox:\n  ros__parameters:\n    mode: mapping\n    map_file_name: ""\n' > "$_MAPPING_OVERRIDE"
+			cat > "$_MAPPING_OVERRIDE" <<'MAPPING_YAML'
+slam_toolbox:
+  ros__parameters:
+    mode: mapping
+    map_file_name: ""
+    # Higher quality scan matching during mapping (localization uses coarser 0.02).
+    # 0.01 doubles angular search resolution -> better loop closure & scan alignment.
+    correlation_search_space_resolution: 0.01
+    # Process scans more frequently during mapping for denser coverage.
+    minimum_time_interval: 0.1
+    minimum_travel_distance: 0.05
+    minimum_travel_heading: 0.087
+MAPPING_YAML
 			ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
 				--params-file "$SLAM_PARAMS_FILE" \
 				--params-file "$_MAPPING_OVERRIDE" &
@@ -838,6 +893,8 @@ METAJSON
 		}) || true
 		info "Symlink updated: ${MAP_ROOT}/latest -> ${SESSION_ID}"
 	fi
+	# Restore containers that were stopped at mapping start.
+	manage_containers_restore
 	exit 0
 }
 
