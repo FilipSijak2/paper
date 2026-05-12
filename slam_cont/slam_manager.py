@@ -171,8 +171,11 @@ class SlamManager(Node):
             "ros2", "run", "rf2o_laser_odometry", "rf2o_laser_odometry_node",
             "--ros-args",
             "-r", "laser_scan:=/scan",
+            "-p", "laser_scan_topic:=/scan",
+            "-p", "odom_topic:=/odom_rf2o",
             "-p", "base_frame_id:=base_link",
             "-p", "odom_frame_id:=odom",
+            "-p", "init_pose_from_topic:=",
             "-p", "publish_tf:=false",
             "-p", "freq:=10.0",
         ]
