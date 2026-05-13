@@ -1,0 +1,19 @@
+{
+  "name": "keyboard-teleop",
+  "version": "1.0.0",
+  "description": "Teleop panel controlled with arrow keys instead of clicking buttons",
+  "publisher": "filip",
+  "homepage": "",
+  "license": "MIT",
+  "main": "dist/extension.js",
+  "keywords": ["foxglove", "teleop", "keyboard", "ros2"],
+  "scripts": {
+    "build": "foxglove-extension build",
+    "package": "foxglove-extension package",
+    "local-install": "foxglove-extension install"
+  },
+  "devDependencies": {
+    "@foxglove/extension": "^2",
+    "create-foxglove-extension": "^1"
+  }
+}
