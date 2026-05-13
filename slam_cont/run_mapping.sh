@@ -65,14 +65,36 @@ CLEANUP_LOCK=0
 # Set MANAGE_DOCKER_SERVICES=0 to disable, or MAPPING_STOP_SERVICES to override list.
 # Default: auto (stop if docker is available and we're running inside a container).
 MANAGE_DOCKER_SERVICES=${MANAGE_DOCKER_SERVICES:-auto}
-MAPPING_STOP_SERVICES=${MAPPING_STOP_SERVICES:-"nav_cont ai_kit_cont bag_recorder_cont bag_browser container_log_collector healthcheck_cont"}
+# nav_cont is intentionally excluded: it is restarted in MAPPING_MODE=1 (cmd_vel_mux only)
+# so /set_manual_mode stays available during mapping.
+MAPPING_STOP_SERVICES=${MAPPING_STOP_SERVICES:-"ai_kit_cont bag_recorder_cont bag_browser container_log_collector healthcheck_cont"}
 _STOPPED_CONTAINERS=""
+_NAV_RESTARTED_MAPPING_MODE=0
 
 manage_containers_stop() {
 	# Check if docker CLI is available (it's mounted from host in some setups)
 	if ! command -v docker >/dev/null 2>&1; then
 		warn "docker CLI not found inside container – skipping container management (set MANAGE_DOCKER_SERVICES=0 to silence)"
 		return
+	fi
+	# Restart nav_cont in MAPPING_MODE=1 (keeps cmd_vel_mux + /set_manual_mode, skips Nav2)
+	if docker inspect --format '{{.State.Running}}' nav_cont 2>/dev/null | grep -q true; then
+		info "Restarting nav_cont in MAPPING_MODE=1 (cmd_vel_mux only, no Nav2)..."
+		docker stop nav_cont >/dev/null 2>&1 || true
+		docker run -d --rm --name nav_cont_mapping_mode \
+			--env-file /dev/null \
+			$(docker inspect --format '{{range .Config.Env}}--env {{.}} {{end}}' nav_cont 2>/dev/null || true) \
+			--env MAPPING_MODE=1 \
+			$(docker inspect --format '{{.Config.Image}}' nav_cont 2>/dev/null) \
+			>/dev/null 2>&1 || {
+			# Fallback: use docker compose if direct run fails (e.g. complex volume mounts)
+			warn "Direct docker run failed; trying compose restart with MAPPING_MODE=1"
+			docker compose -f /stack/docker-compose.yaml stop nav_cont >/dev/null 2>&1 || true
+			MAPPING_MODE=1 docker compose -f /stack/docker-compose.yaml up -d nav_cont >/dev/null 2>&1 || \
+				warn "Could not restart nav_cont in mapping mode; /set_manual_mode will be unavailable"
+		}
+		_NAV_RESTARTED_MAPPING_MODE=1
+		info "nav_cont restarted in mapping mode (/set_manual_mode available)"
 	fi
 	local actually_stopped=""
 	for svc in $MAPPING_STOP_SERVICES; do
@@ -90,8 +112,16 @@ manage_containers_stop() {
 }
 
 manage_containers_restore() {
-	if [[ -z "$_STOPPED_CONTAINERS" ]]; then return; fi
 	if ! command -v docker >/dev/null 2>&1; then return; fi
+	# Restore nav_cont to normal mode (with Nav2) if we had put it in mapping mode
+	if [[ "$_NAV_RESTARTED_MAPPING_MODE" == "1" ]]; then
+		info "Restoring nav_cont to normal mode (Nav2 enabled)..."
+		docker stop nav_cont_mapping_mode >/dev/null 2>&1 || docker stop nav_cont >/dev/null 2>&1 || true
+		docker compose -f /stack/docker-compose.yaml up -d nav_cont >/dev/null 2>&1 && \
+			info "Started nav_cont" || warn "Could not restart nav_cont in normal mode"
+		_NAV_RESTARTED_MAPPING_MODE=0
+	fi
+	if [[ -z "$_STOPPED_CONTAINERS" ]]; then return; fi
 	info "Restoring stopped containers:$_STOPPED_CONTAINERS"
 	for svc in $_STOPPED_CONTAINERS; do
 		docker start "${svc}" >/dev/null 2>&1 && info "Started $svc" || warn "Could not start $svc"
@@ -306,7 +336,10 @@ slam_toolbox:
     minimum_travel_distance: 0.05
     minimum_travel_heading: 0.087
 MAPPING_YAML
-			ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
+			# setsid: run slam_toolbox in its own process group so CTRL+C from the
+			# terminal does NOT kill it. cleanup() will kill it explicitly AFTER
+			# save_map and serialize_pose_graph service calls succeed.
+			setsid ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
 				--params-file "$SLAM_PARAMS_FILE" \
 				--params-file "$_MAPPING_OVERRIDE" &
 			SLAM_PID=$!
@@ -315,11 +348,11 @@ MAPPING_YAML
 			sleep 3
 			rm -f "$_MAPPING_OVERRIDE"
 		else
-			ros2 launch slam_toolbox online_async_launch.py params_file:="$SLAM_PARAMS_FILE" &
+			setsid ros2 launch slam_toolbox online_async_launch.py params_file:="$SLAM_PARAMS_FILE" &
 		fi
 	else
 		warn "Params file $SLAM_PARAMS_FILE not found; launching without explicit params (may not publish /map)."
-		ros2 launch "${SLAM_LAUNCH[@]}" &
+		setsid ros2 launch "${SLAM_LAUNCH[@]}" &
 	fi
 	SLAM_PID=$!
 	sleep 5
