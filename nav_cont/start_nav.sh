@@ -28,6 +28,7 @@ echo "============================================================"
 : "${FORCE_MAP_WAIT:=0}"
 : "${NAV2_LAUNCH_FILE:=/app/robot_nav_launch.py}"
 : "${NAV2_USE_AMCL:=true}"
+: "${MAPPING_MODE:=0}"          # Set to 1 during mapping: skips Nav2/goal_forwarder, keeps cmd_vel_mux+joystick
 : "${ENABLE_CMD_VEL_MUX:=1}"
 : "${ENABLE_JOYSTICK:=1}"
 : "${JOYSTICK_DEV:=/dev/input/js0}"
@@ -148,27 +149,34 @@ if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 	NAV_CMD_VEL_OUT="${CMD_VEL_AUTO}"
 fi
 
-echo "[nav_start] Launching Nav2 params=${NAV2_PARAMS_FILE} ${MAP_ARG:+with map arg} use_amcl=${NAV2_USE_AMCL} cmd_vel_out=${NAV_CMD_VEL_OUT}"
-if [ -f "${NAV2_LAUNCH_FILE}" ]; then
-	ros2 launch "${NAV2_LAUNCH_FILE}" \
-		"${MAP_ARG[@]}" \
-		params_file:="${NAV2_PARAMS_FILE}" \
-		cmd_vel_out:="${NAV_CMD_VEL_OUT}" \
-		use_amcl:="${NAV2_USE_AMCL}" \
-		use_composition:=False \
-		autostart:=true &
-else
-	echo "[nav_start][WARN] Custom launch file missing (${NAV2_LAUNCH_FILE}); falling back to nav2_bringup/navigation_launch.py"
-	ros2 launch nav2_bringup navigation_launch.py params_file:="${NAV2_PARAMS_FILE}" &
-fi
-NAV2_PID=$!
-
-sleep 5 || true
-
-python3 /app/goal_forwarder.py --ros-args -p goal_topic:="${GOAL_TOPIC}" &
-GOAL_FORWARDER_PID=$!
-
+NAV2_PID=""
+GOAL_FORWARDER_PID=""
 EXTRA_PIDS=()
+
+if [ "${MAPPING_MODE}" = "1" ]; then
+	echo "[nav_start] MAPPING_MODE=1 — skipping Nav2 and goal_forwarder (cmd_vel_mux + joystick only)"
+else
+	echo "[nav_start] Launching Nav2 params=${NAV2_PARAMS_FILE} ${MAP_ARG:+with map arg} use_amcl=${NAV2_USE_AMCL} cmd_vel_out=${NAV_CMD_VEL_OUT}"
+	if [ -f "${NAV2_LAUNCH_FILE}" ]; then
+		ros2 launch "${NAV2_LAUNCH_FILE}" \
+			"${MAP_ARG[@]}" \
+			params_file:="${NAV2_PARAMS_FILE}" \
+			cmd_vel_out:="${NAV_CMD_VEL_OUT}" \
+			use_amcl:="${NAV2_USE_AMCL}" \
+			use_composition:=False \
+			autostart:=true &
+	else
+		echo "[nav_start][WARN] Custom launch file missing (${NAV2_LAUNCH_FILE}); falling back to nav2_bringup/navigation_launch.py"
+		ros2 launch nav2_bringup navigation_launch.py params_file:="${NAV2_PARAMS_FILE}" &
+	fi
+	NAV2_PID=$!
+
+	sleep 5 || true
+
+	python3 /app/goal_forwarder.py --ros-args -p goal_topic:="${GOAL_TOPIC}" &
+	GOAL_FORWARDER_PID=$!
+fi
+
 if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 	echo "[nav_start] Starting cmd_vel mux (manual_default=${MANUAL_DEFAULT})"
 	python3 /app/cmd_vel_mux.py --ros-args \
@@ -202,13 +210,17 @@ if [ "${ENABLE_JOYSTICK}" = "1" ]; then
 	fi
 fi
 
-echo "[nav_start] Nav2 PID=${NAV2_PID}; GoalForwarder PID=${GOAL_FORWARDER_PID}"
-echo "[nav_start] Ready. If you later define a map, restart this container to apply it (or use select_map.sh if present)."
-echo "[nav_start] AMCL localization active: postavite početnu pozu preko Foxglove 2D Pose Estimate (publisha na /initialpose) ili:"
-echo "[nav_start]   python3 /app/set_initial_pose.py <x> <y> <yaw_deg> [map_frame]"
-echo "[nav_start] Primjer: python3 /app/set_initial_pose.py 0.0 0.0 90"
+if [ "${MAPPING_MODE}" = "1" ]; then
+	echo "[nav_start] Mapping mode ready — /set_manual_mode service available, Nav2 not running."
+else
+	echo "[nav_start] Nav2 PID=${NAV2_PID}; GoalForwarder PID=${GOAL_FORWARDER_PID}"
+	echo "[nav_start] Ready. If you later define a map, restart this container to apply it (or use select_map.sh if present)."
+	echo "[nav_start] AMCL localization active: postavite početnu pozu preko Foxglove 2D Pose Estimate (publisha na /initialpose) ili:"
+	echo "[nav_start]   python3 /app/set_initial_pose.py <x> <y> <yaw_deg> [map_frame]"
+	echo "[nav_start] Primjer: python3 /app/set_initial_pose.py 0.0 0.0 90"
+fi
 
-trap 'echo "[nav_start] Stopping..."; kill ${GOAL_FORWARDER_PID} ${NAV2_PID} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; wait ${GOAL_FORWARDER_PID} ${NAV2_PID} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; exit 0' INT TERM
+trap 'echo "[nav_start] Stopping..."; kill ${GOAL_FORWARDER_PID:-} ${NAV2_PID:-} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; wait ${GOAL_FORWARDER_PID:-} ${NAV2_PID:-} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; exit 0' INT TERM
 while true; do
 	sleep 60
 	echo "[nav_start] heartbeat $(date)"
