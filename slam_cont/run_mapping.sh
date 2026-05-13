@@ -65,11 +65,92 @@ CLEANUP_LOCK=0
 # Set MANAGE_DOCKER_SERVICES=0 to disable, or MAPPING_STOP_SERVICES to override list.
 # Default: auto (stop if docker is available and we're running inside a container).
 MANAGE_DOCKER_SERVICES=${MANAGE_DOCKER_SERVICES:-auto}
+MANAGE_NAV_MAPPING_MODE=${MANAGE_NAV_MAPPING_MODE:-auto} # auto|1|0; 0 leaves nav_cont untouched
 # nav_cont is intentionally excluded: it is restarted in MAPPING_MODE=1 (cmd_vel_mux only)
 # so /set_manual_mode stays available during mapping.
 MAPPING_STOP_SERVICES=${MAPPING_STOP_SERVICES:-"ai_kit_cont bag_recorder_cont bag_browser container_log_collector healthcheck_cont"}
 _STOPPED_CONTAINERS=""
 _NAV_RESTARTED_MAPPING_MODE=0
+_NAV_ORIGINAL_STOPPED=0
+_NAV_MAPPING_CONTAINER=${NAV_MAPPING_CONTAINER:-nav_cont_mapping_mode}
+
+ros_service_available() {
+	local svc="$1"
+	command -v ros2 >/dev/null 2>&1 || return 1
+	ros2 service list 2>/dev/null | grep -q "^${svc}$"
+}
+
+wait_for_ros_service() {
+	local svc="$1"
+	local timeout="${2:-8}"
+	local start
+	start=$(date +%s)
+	while true; do
+		if ros_service_available "$svc"; then
+			return 0
+		fi
+		if (($(date +%s) - start >= timeout)); then
+			return 1
+		fi
+		sleep 0.5
+	done
+}
+
+container_env_value() {
+	local container="$1"
+	local key="$2"
+	docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$container" 2>/dev/null |
+		awk -F= -v key="$key" '$1 == key { value = substr($0, index($0, "=") + 1) } END { print value }'
+}
+
+start_nav_mapping_clone() {
+	local image
+	local env_kv
+	local env_args=()
+
+	image=$(docker inspect --format '{{.Config.Image}}' nav_cont 2>/dev/null || true)
+	if [[ -z "$image" || "$image" == "<no value>" ]]; then
+		warn "Could not determine nav_cont image; /set_manual_mode may be unavailable during mapping"
+		return 1
+	fi
+
+	while IFS= read -r env_kv; do
+		[[ -z "$env_kv" ]] && continue
+		# Force mapping mode, but keep the rest of the compose-provided ROS/DDS env.
+		[[ "$env_kv" == MAPPING_MODE=* ]] && continue
+		env_args+=(--env "$env_kv")
+	done < <(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' nav_cont 2>/dev/null || true)
+
+	docker rm -f "$_NAV_MAPPING_CONTAINER" >/dev/null 2>&1 || true
+
+	if docker inspect --format '{{.State.Running}}' nav_cont 2>/dev/null | grep -q true; then
+		if ! docker stop nav_cont >/dev/null 2>&1; then
+			warn "Could not stop nav_cont before mapping-mode clone"
+			return 1
+		fi
+	else
+		info "nav_cont is not running; using its existing container config for mapping-mode clone"
+	fi
+	_NAV_ORIGINAL_STOPPED=1
+
+	# A bare docker run misses host networking and compose mounts, so ROS discovery
+	# cannot see /set_manual_mode. Clone the runtime shape from the stopped nav_cont.
+	if ! docker run -d --rm --name "$_NAV_MAPPING_CONTAINER" \
+		--network host \
+		--privileged \
+		--volumes-from nav_cont \
+		"${env_args[@]}" \
+		--env MAPPING_MODE=1 \
+		"$image" >/dev/null; then
+		warn "Could not start $_NAV_MAPPING_CONTAINER; restoring original nav_cont"
+		docker start nav_cont >/dev/null 2>&1 || warn "Could not restart original nav_cont"
+		_NAV_ORIGINAL_STOPPED=0
+		return 1
+	fi
+
+	_NAV_RESTARTED_MAPPING_MODE=1
+	return 0
+}
 
 manage_containers_stop() {
 	# Check if docker CLI is available (it's mounted from host in some setups)
@@ -78,23 +159,43 @@ manage_containers_stop() {
 		return
 	fi
 	# Restart nav_cont in MAPPING_MODE=1 (keeps cmd_vel_mux + /set_manual_mode, skips Nav2)
-	if docker inspect --format '{{.State.Running}}' nav_cont 2>/dev/null | grep -q true; then
-		info "Restarting nav_cont in MAPPING_MODE=1 (cmd_vel_mux only, no Nav2)..."
-		docker stop nav_cont >/dev/null 2>&1 || true
-		docker run -d --rm --name nav_cont_mapping_mode \
-			--env-file /dev/null \
-			$(docker inspect --format '{{range .Config.Env}}--env {{.}} {{end}}' nav_cont 2>/dev/null || true) \
-			--env MAPPING_MODE=1 \
-			$(docker inspect --format '{{.Config.Image}}' nav_cont 2>/dev/null) \
-			>/dev/null 2>&1 || {
-			# Fallback: use docker compose if direct run fails (e.g. complex volume mounts)
-			warn "Direct docker run failed; trying compose restart with MAPPING_MODE=1"
-			docker compose -f /stack/docker-compose.yaml stop nav_cont >/dev/null 2>&1 || true
-			MAPPING_MODE=1 docker compose -f /stack/docker-compose.yaml up -d nav_cont >/dev/null 2>&1 || \
-				warn "Could not restart nav_cont in mapping mode; /set_manual_mode will be unavailable"
-		}
-		_NAV_RESTARTED_MAPPING_MODE=1
-		info "nav_cont restarted in mapping mode (/set_manual_mode available)"
+	if [[ "$MANAGE_NAV_MAPPING_MODE" != "0" ]]; then
+		if docker inspect --format '{{.State.Running}}' nav_cont 2>/dev/null | grep -q true; then
+			local current_nav_mapping_mode
+			current_nav_mapping_mode=$(container_env_value nav_cont MAPPING_MODE)
+			if [[ "$current_nav_mapping_mode" == "1" ]]; then
+				info "nav_cont already runs with MAPPING_MODE=1; leaving it in place."
+				if wait_for_ros_service "/set_manual_mode" 10; then
+					info "/set_manual_mode service visible"
+				else
+					warn "nav_cont is in mapping mode, but /set_manual_mode is not visible yet"
+				fi
+			else
+				info "Restarting nav_cont in MAPPING_MODE=1 (cmd_vel_mux only, no Nav2)..."
+				if start_nav_mapping_clone; then
+					if wait_for_ros_service "/set_manual_mode" 12; then
+						info "$_NAV_MAPPING_CONTAINER started; /set_manual_mode service visible"
+					else
+						warn "$_NAV_MAPPING_CONTAINER started, but /set_manual_mode is not visible from this ROS graph"
+					fi
+				else
+					warn "Could not restart nav_cont in mapping mode; /set_manual_mode may be unavailable"
+				fi
+			fi
+		elif docker inspect nav_cont >/dev/null 2>&1; then
+			info "nav_cont exists but is not running; starting mapping-mode clone from its config..."
+			if start_nav_mapping_clone; then
+				if wait_for_ros_service "/set_manual_mode" 12; then
+					info "$_NAV_MAPPING_CONTAINER started; /set_manual_mode service visible"
+				else
+					warn "$_NAV_MAPPING_CONTAINER started, but /set_manual_mode is not visible from this ROS graph"
+				fi
+			else
+				warn "Could not start nav_cont mapping-mode clone"
+			fi
+		fi
+	else
+		info "MANAGE_NAV_MAPPING_MODE=0 -> leaving nav_cont unchanged"
 	fi
 	local actually_stopped=""
 	for svc in $MAPPING_STOP_SERVICES; do
@@ -116,9 +217,12 @@ manage_containers_restore() {
 	# Restore nav_cont to normal mode (with Nav2) if we had put it in mapping mode
 	if [[ "$_NAV_RESTARTED_MAPPING_MODE" == "1" ]]; then
 		info "Restoring nav_cont to normal mode (Nav2 enabled)..."
-		docker stop nav_cont_mapping_mode >/dev/null 2>&1 || docker stop nav_cont >/dev/null 2>&1 || true
-		docker compose -f /stack/docker-compose.yaml up -d nav_cont >/dev/null 2>&1 && \
-			info "Started nav_cont" || warn "Could not restart nav_cont in normal mode"
+		docker stop "$_NAV_MAPPING_CONTAINER" >/dev/null 2>&1 || true
+		if [[ "$_NAV_ORIGINAL_STOPPED" == "1" ]]; then
+			docker start nav_cont >/dev/null 2>&1 &&
+				info "Started nav_cont" || warn "Could not restart original nav_cont"
+			_NAV_ORIGINAL_STOPPED=0
+		fi
 		_NAV_RESTARTED_MAPPING_MODE=0
 	fi
 	if [[ -z "$_STOPPED_CONTAINERS" ]]; then return; fi
