@@ -134,6 +134,44 @@ def test_start_slam_toolbox_falls_back_to_launch_when_params_missing(monkeypatch
     assert commands[0] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
 
 
+def test_start_rf2o_does_not_pass_empty_parameter_override(monkeypatch):
+    module = load_slam_manager_module()
+    manager = make_manager(module)
+    commands = []
+
+    def fake_popen(cmd, *args, **kwargs):
+        commands.append(cmd)
+        return DummyProcess()
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    module.SlamManager.start_rf2o(manager)
+
+    assert commands
+    assert "init_pose_from_topic:=" not in commands[0]
+    assert commands[0] == [
+        "ros2",
+        "run",
+        "rf2o_laser_odometry",
+        "rf2o_laser_odometry_node",
+        "--ros-args",
+        "-r",
+        "laser_scan:=/scan",
+        "-p",
+        "laser_scan_topic:=/scan",
+        "-p",
+        "odom_topic:=/odom_rf2o",
+        "-p",
+        "base_frame_id:=base_link",
+        "-p",
+        "odom_frame_id:=odom",
+        "-p",
+        "publish_tf:=false",
+        "-p",
+        "freq:=10.0",
+    ]
+
+
 def test_start_slam_toolbox_loads_valid_static_tf_and_skips_invalid_entry(tmp_path, monkeypatch):
     module = load_slam_manager_module()
     manager = make_manager(module)

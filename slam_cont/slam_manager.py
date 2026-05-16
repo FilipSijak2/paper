@@ -175,7 +175,6 @@ class SlamManager(Node):
             "-p", "odom_topic:=/odom_rf2o",
             "-p", "base_frame_id:=base_link",
             "-p", "odom_frame_id:=odom",
-            "-p", "init_pose_from_topic:=",
             "-p", "publish_tf:=false",
             "-p", "freq:=10.0",
         ]
