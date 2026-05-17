@@ -96,6 +96,34 @@ wait_for_ros_service() {
 	done
 }
 
+topic_has_message() {
+	local topic="$1"
+	local timeout="${2:-8}"
+	command -v ros2 >/dev/null 2>&1 || return 1
+	timeout "${timeout}s" ros2 topic echo "$topic" --once >/dev/null 2>&1
+}
+
+preflight_mapping_odometry() {
+	local encoders="${ENCODERS_ENABLED:-1}"
+	local expect_rf2o="${EXPECT_RF2O_ODOM:-auto}"
+
+	if [[ "$expect_rf2o" == "auto" ]]; then
+		[[ "$encoders" == "0" ]] || return 0
+	elif [[ "$expect_rf2o" =~ ^(0|false|no|off)$ ]]; then
+		return 0
+	fi
+
+	info "Checking RF2O odometry before mapping (/odom_rf2o)..."
+	if topic_has_message /odom_rf2o "${RF2O_PREFLIGHT_TIMEOUT:-8}"; then
+		info "RF2O odometry is alive."
+		return 0
+	fi
+
+	err "/odom_rf2o is not publishing. Refusing to start mapping because the map would use bad/stale odometry."
+	err "Check slam_cont logs for rf2o_laser_odometry crashes and verify: ros2 topic hz /odom_rf2o"
+	return 1
+}
+
 container_env_value() {
 	local container="$1"
 	local key="$2"
@@ -407,6 +435,8 @@ log "Root: $MAP_ROOT | session=$SESSION_ID (incremental=$INCREMENTAL_NAMES prefi
 if [[ "$MANAGE_DOCKER_SERVICES" != "0" ]]; then
 	manage_containers_stop
 fi
+
+preflight_mapping_odometry
 
 # Detect existing slam_toolbox instance (avoid parallel)
 EXISTING_SLAM_PID=""

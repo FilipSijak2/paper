@@ -167,8 +167,6 @@ def test_start_rf2o_matches_working_launch_parameters(monkeypatch):
         "-p",
         "odom_frame_id:=odom",
         "-p",
-        "init_pose_from_topic:=",
-        "-p",
         "freq:=20.0",
     ]
 

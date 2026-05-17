@@ -176,7 +176,6 @@ class SlamManager(Node):
             "-p", "publish_tf:=false",
             "-p", "base_frame_id:=base_link",
             "-p", "odom_frame_id:=odom",
-            "-p", "init_pose_from_topic:=",
             "-p", "freq:=20.0",
         ]
         self.get_logger().info("Pokrecem rf2o_laser_odometry kao zamjenu za wheel_odom...")
