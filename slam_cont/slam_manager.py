@@ -14,6 +14,7 @@ class SlamManager(Node):
         super().__init__("slam_manager")
         self.process = None
         self.rf2o_process = None
+        self.scan_filter_process = None
         self.static_tf_processes = []
         self.create_timer(2.0, self.monitor_processes)
         self.get_logger().info("SlamManager started (bez automatskog spremanja mape).")
@@ -22,6 +23,11 @@ class SlamManager(Node):
         """Start slam_toolbox as a child process with normalized RMW/params."""
         if not hasattr(self, "static_tf_processes"):
             self.static_tf_processes = []
+
+        # Start scan range filter first so /scan_filtered is available before
+        # slam_toolbox subscribes to it.  The filter strips 0.0 m RPLIDAR invalid
+        # returns that otherwise crash CorrelationGrid::GetDataPointer.
+        self.start_scan_filter()
 
         rmw = os.environ.get("RMW_IMPLEMENTATION", "")
         if "cyclonedx" in rmw:
@@ -178,6 +184,20 @@ class SlamManager(Node):
         except FileNotFoundError:
             self.get_logger().error("rf2o_laser_odometry_node nije pronadjen - provjeri Dockerfile!")
 
+    def start_scan_filter(self) -> None:
+        """Start scan_range_filter.py: filters 0.0 m RPLIDAR invalid returns.
+
+        Republishes /scan as /scan_filtered with readings outside [0.2, range_max]
+        replaced by inf.  slam_toolbox uses /scan_filtered (set in slam_params.yaml)
+        so it never receives the 0.0 m readings that cause a CorrelationGrid crash.
+        """
+        cmd = ["python3", "/app/scan_range_filter.py"]
+        self.get_logger().info("Pokrecem scan_range_filter (/scan → /scan_filtered, min=0.2 m)...")
+        try:
+            self.scan_filter_process = subprocess.Popen(cmd)
+        except Exception as exc:
+            self.get_logger().error(f"Ne mogu pokrenuti scan_range_filter: {exc}")
+
     def monitor_processes(self):
         """Best-effort health logging for slam_toolbox and helper TF publishers."""
         if self.process is not None:
@@ -193,6 +213,13 @@ class SlamManager(Node):
                 self.rf2o_process = None
                 self.start_rf2o()
 
+        if self.scan_filter_process is not None:
+            rc = self.scan_filter_process.poll()
+            if rc is not None:
+                self.get_logger().error(f"scan_range_filter izasao s kodom {rc}, restartujem...")
+                self.scan_filter_process = None
+                self.start_scan_filter()
+
         alive_static_tf = []
         for child, proc in getattr(self, "static_tf_processes", []):
             return_code = proc.poll()
@@ -204,7 +231,18 @@ class SlamManager(Node):
         self.static_tf_processes = alive_static_tf
 
     def stop_slam_toolbox(self):
-        """Stop slam_toolbox, rf2o and helper TF publishers."""
+        """Stop slam_toolbox, rf2o, scan_range_filter and helper TF publishers."""
+        if self.scan_filter_process:
+            if self.scan_filter_process.poll() is None:
+                self.get_logger().info("Zaustavljam scan_range_filter...")
+                self.scan_filter_process.terminate()
+                try:
+                    self.scan_filter_process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    self.scan_filter_process.kill()
+                    self.scan_filter_process.wait(timeout=3)
+            self.scan_filter_process = None
+
         if self.rf2o_process:
             if self.rf2o_process.poll() is None:
                 self.get_logger().info("Zaustavljam rf2o_laser_odometry...")

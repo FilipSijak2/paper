@@ -49,6 +49,7 @@ WORKDIR /app
 COPY slam_manager.py /app/slam_manager.py
 COPY run_mapping.sh /app/run_mapping.sh
 COPY rf2o_odom.launch.py /app/rf2o_odom.launch.py
+COPY scan_range_filter.py /app/scan_range_filter.py
 RUN chmod +x /app/run_mapping.sh
 
 # Unique operation mode: always runs slam_manager (slam_toolbox for localization),

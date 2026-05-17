@@ -462,6 +462,7 @@ slam_toolbox:
   ros__parameters:
     mode: mapping
     map_file_name: ""
+    scan_topic: /scan_filtered
     # Explicitly set laser range to filter invalid 0.0 m lidar returns.
     # Without this override the default (0.0 m) is used and invalid readings
     # corrupt the probability grid, causing a FATAL probability search crash.
@@ -472,6 +473,10 @@ slam_toolbox:
     minimum_time_interval: 0.1
     minimum_travel_distance: 0.12
     minimum_travel_heading: 0.17
+    # Larger search space: rf2o without encoders can accumulate >25 cm heading
+    # error during rotation.  0.5 m (±25 cm) was too small and caused the
+    # CorrelationGrid crash.  1.5 m (±75 cm) tolerates typical rf2o drift.
+    correlation_search_space_dimension: 1.5
     correlation_search_space_resolution: 0.02
     loop_match_minimum_response_coarse: 0.45
     loop_match_maximum_variance_coarse: 2.0
