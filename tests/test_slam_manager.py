@@ -73,6 +73,9 @@ class DummyProcess:
 def make_manager(module):
     manager = module.SlamManager.__new__(module.SlamManager)
     manager.process = None
+    manager.rf2o_process = None
+    manager.scan_filter_process = None
+    manager.static_tf_processes = []
     manager._logger = FakeLogger()
     manager.get_logger = lambda: manager._logger
     return manager
@@ -101,7 +104,8 @@ def test_start_slam_toolbox_uses_params_file_and_normalizes_rmw(monkeypatch):
     module.SlamManager.start_slam_toolbox(manager)
 
     assert os.environ["RMW_IMPLEMENTATION"] == "rmw_cyclonedds_cpp"
-    assert commands[0] == [
+    assert commands[0] == ["python3", "/app/scan_range_filter.py"]
+    assert commands[1] == [
         "ros2",
         "run",
         "slam_toolbox",
@@ -131,7 +135,8 @@ def test_start_slam_toolbox_falls_back_to_launch_when_params_missing(monkeypatch
     module.SlamManager.start_slam_toolbox(manager)
 
     assert os.environ["RMW_IMPLEMENTATION"] == "rmw_cyclonedds_cpp"
-    assert commands[0] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
+    assert commands[0] == ["python3", "/app/scan_range_filter.py"]
+    assert commands[1] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
 
 
 def test_start_rf2o_matches_working_launch_parameters(monkeypatch):
@@ -202,7 +207,8 @@ def test_start_slam_toolbox_loads_valid_static_tf_and_skips_invalid_entry(tmp_pa
 
     module.SlamManager.start_slam_toolbox(manager)
 
-    assert commands[0] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
+    assert commands[0] == ["python3", "/app/scan_range_filter.py"]
+    assert commands[1] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
     assert [
         "ros2",
         "run",

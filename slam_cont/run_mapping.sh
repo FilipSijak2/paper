@@ -100,7 +100,9 @@ topic_has_message() {
 	local topic="$1"
 	local timeout="${2:-8}"
 	command -v ros2 >/dev/null 2>&1 || return 1
-	timeout "${timeout}s" ros2 topic echo "$topic" --once >/dev/null 2>&1
+	timeout "${timeout}s" ros2 topic echo "$topic" --once >/dev/null 2>&1 ||
+		timeout "${timeout}s" ros2 topic echo "$topic" --qos-reliability best_effort --once >/dev/null 2>&1 ||
+		timeout "${timeout}s" ros2 topic echo "$topic" --qos-reliability reliable --once >/dev/null 2>&1
 }
 
 preflight_mapping_odometry() {
@@ -122,6 +124,39 @@ preflight_mapping_odometry() {
 	err "/odom_rf2o is not publishing. Refusing to start mapping because the map would use bad/stale odometry."
 	err "Check slam_cont logs for rf2o_laser_odometry crashes and verify: ros2 topic hz /odom_rf2o"
 	return 1
+}
+
+preflight_mapping_scan_topic() {
+	local scan_topic="${MAPPING_SCAN_TOPIC:-}"
+	if [[ -z "$scan_topic" && -f "$SLAM_PARAMS_FILE" ]]; then
+		scan_topic=$(awk -F: '/^[[:space:]]*scan_topic:/ { gsub(/[[:space:]\047"]/, "", $2); print $2; exit }' "$SLAM_PARAMS_FILE")
+	fi
+	scan_topic="${scan_topic:-/scan}"
+
+	info "Checking mapping scan topic (${scan_topic})..."
+	if topic_has_message "$scan_topic" "${SCAN_PREFLIGHT_TIMEOUT:-8}"; then
+		info "Mapping scan topic is alive."
+		return 0
+	fi
+
+	err "${scan_topic} is not publishing. Refusing to start mapping because slam_toolbox would subscribe to an empty scan topic."
+	err "If using /scan_filtered, verify scan_range_filter is running and that slam_cont image includes /app/scan_range_filter.py."
+	return 1
+}
+
+ensure_slam_alive() {
+	local stage="${1:-}"
+	if [[ -n "${SLAM_PID:-}" ]] && kill -0 "$SLAM_PID" 2>/dev/null; then
+		return 0
+	fi
+
+	if [[ -n "${EXISTING_SLAM_PID:-}" ]] && kill -0 "$EXISTING_SLAM_PID" 2>/dev/null; then
+		return 0
+	fi
+
+	err "slam_toolbox is not running${stage:+ ($stage)}. Refusing to continue mapping without active SLAM."
+	err "Check docker logs slam_cont for the slam_toolbox fatal error above this message."
+	exit 1
 }
 
 container_env_value() {
@@ -426,7 +461,7 @@ if [[ -n "$TOPICS_FILE" ]]; then
 else
 	# Default essential topics for slam_toolbox map reproduction.
 	# Keep wheel_odom for legacy/debug, plus rf2o and EKF odometry used when encoders are disabled.
-	TOPICS="/tf /tf_static /wheel_odom /odom_rf2o /odometry/filtered /scan /imu/data /robot_description /clock"
+	TOPICS="/tf /tf_static /wheel_odom /odom_rf2o /odometry/filtered /scan /scan_filtered /imu/data /robot_description /clock"
 fi
 info "Topics: $TOPICS"
 log "Root: $MAP_ROOT | session=$SESSION_ID (incremental=$INCREMENTAL_NAMES prefix=$NAME_PREFIX index=${SESSION_INDEX:-N/A})"
@@ -437,6 +472,7 @@ if [[ "$MANAGE_DOCKER_SERVICES" != "0" ]]; then
 fi
 
 preflight_mapping_odometry
+preflight_mapping_scan_topic
 
 # Detect existing slam_toolbox instance (avoid parallel)
 EXISTING_SLAM_PID=""
@@ -467,7 +503,7 @@ slam_toolbox:
     # Without this override the default (0.0 m) is used and invalid readings
     # corrupt the probability grid, causing a FATAL probability search crash.
     minimum_laser_range: 0.2
-    maximum_laser_range: 10.0
+    max_laser_range: 10.0
     # Conservative mapping: dense scan insertion in narrow halls caused repeated
     # map->odom jumps and smeared loop closures. Prefer fewer, more distinct scans.
     minimum_time_interval: 0.1
@@ -493,9 +529,21 @@ MAPPING_YAML
 			# Wait until ros2 has loaded params before removing the temp file.
 			# The file must stay on disk until rcl finishes argument parsing.
 			sleep 3
+			if ! kill -0 "$SLAM_PID" 2>/dev/null; then
+				err "slam_toolbox exited during startup; refusing to record a mapping bag without active SLAM."
+				err "Check docker logs slam_cont for the slam_toolbox fatal error above this message."
+				exit 1
+			fi
 			rm -f "$_MAPPING_OVERRIDE"
 		else
 			setsid ros2 launch slam_toolbox online_async_launch.py params_file:="$SLAM_PARAMS_FILE" &
+			SLAM_PID=$!
+			sleep 3
+			if ! kill -0 "$SLAM_PID" 2>/dev/null; then
+				err "slam_toolbox exited during startup; refusing to record a mapping bag without active SLAM."
+				err "Check docker logs slam_cont for the slam_toolbox fatal error above this message."
+				exit 1
+			fi
 		fi
 	else
 		warn "Params file $SLAM_PARAMS_FILE not found; launching without explicit params (may not publish /map)."
@@ -503,6 +551,7 @@ MAPPING_YAML
 	fi
 	SLAM_PID=$!
 	sleep 5
+	ensure_slam_alive "after slam_toolbox startup"
 	# Post-launch param enforcement (best-effort)
 	for n in slam_toolbox async_slam_toolbox_node async_slam_toolbox; do
 		ros2 param set "$n" "${PUBLISH_MAP_PARAM_KEY}" true >/dev/null 2>&1 || true
@@ -573,6 +622,7 @@ detect_map_topic() {
 }
 
 detect_map_topic || true
+ensure_slam_alive "before rosbag record"
 
 # Start rosbag record
 info "Starting rosbag record into $BAG_DIR (session $SESSION_ID | storage=${STORAGE_BACKEND} | replay=$([[ $USE_REPLAY -eq 1 ]] && echo on || echo off))"
