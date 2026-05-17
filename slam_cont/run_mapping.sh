@@ -462,13 +462,15 @@ slam_toolbox:
   ros__parameters:
     mode: mapping
     map_file_name: ""
-    # Higher quality scan matching during mapping (localization uses coarser 0.02).
-    # 0.01 doubles angular search resolution -> better loop closure & scan alignment.
-    correlation_search_space_resolution: 0.01
-    # Process scans more frequently during mapping for denser coverage.
-    minimum_time_interval: 0.1
-    minimum_travel_distance: 0.05
-    minimum_travel_heading: 0.087
+    # Conservative mapping: dense scan insertion in narrow halls caused repeated
+    # map->odom jumps and smeared loop closures. Prefer fewer, more distinct scans.
+    minimum_time_interval: 0.2
+    minimum_travel_distance: 0.12
+    minimum_travel_heading: 0.17
+    correlation_search_space_resolution: 0.02
+    loop_match_minimum_response_coarse: 0.55
+    loop_match_maximum_variance_coarse: 1.5
+    loop_match_minimum_chain_size: 25
 MAPPING_YAML
 			# setsid: run slam_toolbox in its own process group so CTRL+C from the
 			# terminal does NOT kill it. cleanup() will kill it explicitly AFTER
