@@ -150,24 +150,8 @@ def test_start_rf2o_matches_working_launch_parameters(monkeypatch):
     assert commands
     assert commands[0] == [
         "ros2",
-        "run",
-        "rf2o_laser_odometry",
-        "rf2o_laser_odometry_node",
-        "--ros-args",
-        "-r",
-        "__node:=rf2o_laser_odometry",
-        "-p",
-        "laser_scan_topic:=/scan",
-        "-p",
-        "odom_topic:=/odom_rf2o",
-        "-p",
-        "publish_tf:=false",
-        "-p",
-        "base_frame_id:=base_link",
-        "-p",
-        "odom_frame_id:=odom",
-        "-p",
-        "freq:=20.0",
+        "launch",
+        "/app/rf2o_odom.launch.py",
     ]
 
 

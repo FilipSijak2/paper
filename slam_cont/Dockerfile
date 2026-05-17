@@ -48,6 +48,7 @@ RUN echo ": \"\${AMENT_TRACE_SETUP_FILES:=}\"" >> /root/.bashrc && \
 WORKDIR /app
 COPY slam_manager.py /app/slam_manager.py
 COPY run_mapping.sh /app/run_mapping.sh
+COPY rf2o_odom.launch.py /app/rf2o_odom.launch.py
 RUN chmod +x /app/run_mapping.sh
 
 # Unique operation mode: always runs slam_manager (slam_toolbox for localization),
