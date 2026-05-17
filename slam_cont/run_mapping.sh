@@ -37,7 +37,7 @@ SLAM_LAUNCH=(slam_toolbox online_async_launch.py)
 RESTART_LOCALIZATION=${RESTART_LOCALIZATION:-0}
 MAX_SAVEMAP_SECONDS=${MAX_SAVEMAP_SECONDS:-10} # Max wall time for a single SaveMap call
 USE_NAV2_EXPORT=${USE_NAV2_EXPORT:-auto}       # auto|always|never
-OCCUPANCY_MODE=${OCCUPANCY_MODE:-trinary}
+OCCUPANCY_MODE=${OCCUPANCY_MODE:-scale}
 OCC_FREE_THRESH=${OCC_FREE_THRESH:-0.25}
 OCC_OCC_THRESH=${OCC_OCC_THRESH:-0.65}
 NAV2_SAVE_TIMEOUT=${NAV2_SAVE_TIMEOUT:-20}
@@ -517,6 +517,7 @@ slam_toolbox:
   ros__parameters:
     mode: mapping
     map_file_name: ""
+    resolution: 0.02
     scan_topic: /scan_filtered
     # Explicitly set laser range to filter invalid 0.0 m lidar returns.
     # Without this override the default (0.0 m) is used and invalid readings
@@ -525,9 +526,9 @@ slam_toolbox:
     max_laser_range: 10.0
     # Conservative mapping: dense scan insertion in narrow halls caused repeated
     # map->odom jumps and smeared loop closures. Prefer fewer, more distinct scans.
-    minimum_time_interval: 0.2
-    minimum_travel_distance: 0.10
-    minimum_travel_heading: 0.17
+    minimum_time_interval: 0.12
+    minimum_travel_distance: 0.05
+    minimum_travel_heading: 0.08
     # Larger search space: rf2o without encoders can accumulate >25 cm heading
     # error during rotation.  0.5 m (±25 cm) was too small and caused the
     # CorrelationGrid crash.  1.5 m (±75 cm) tolerates typical rf2o drift.
@@ -943,7 +944,7 @@ cleanup() {
 				# Ensure /map topic is actually present (slam_toolbox may publish it; if not, map_saver will fail)
 				if wait_for_topic "${WAIT_MAP_TOPIC}" "${WAIT_MAP_TIMEOUT}"; then
 					# Use CLI flags --occ/--free; provide topic explicitly in case default differs
-					local saver_cmd=(ros2 run nav2_map_server map_saver_cli -f "${FINAL_BASE}" -t "${WAIT_MAP_TOPIC}" --occ "${OCC_OCC_THRESH}" --free "${OCC_FREE_THRESH}")
+					local saver_cmd=(ros2 run nav2_map_server map_saver_cli -f "${FINAL_BASE}" -t "${WAIT_MAP_TOPIC}" --occ "${OCC_OCC_THRESH}" --free "${OCC_FREE_THRESH}" --mode "${OCCUPANCY_MODE}")
 					if command -v setsid >/dev/null 2>&1; then saver_cmd=(setsid "${saver_cmd[@]}"); fi
 					local SAVER_OK=0
 					if command -v timeout >/dev/null 2>&1; then

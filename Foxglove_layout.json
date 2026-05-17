@@ -26,7 +26,9 @@
         "near": 0.5,
         "far": 5000
       },
-      "followMode": "follow-pose",
+      "fixedFrame": "map",
+      "followTf": "map",
+      "followMode": "follow-none",
       "scene": {},
       "transforms": {},
       "topics": {
