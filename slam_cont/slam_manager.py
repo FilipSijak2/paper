@@ -170,13 +170,14 @@ class SlamManager(Node):
         rf2o_cmd = [
             "ros2", "run", "rf2o_laser_odometry", "rf2o_laser_odometry_node",
             "--ros-args",
-            "-r", "laser_scan:=/scan",
+            "-r", "__node:=rf2o_laser_odometry",
             "-p", "laser_scan_topic:=/scan",
             "-p", "odom_topic:=/odom_rf2o",
+            "-p", "publish_tf:=false",
             "-p", "base_frame_id:=base_link",
             "-p", "odom_frame_id:=odom",
-            "-p", "publish_tf:=false",
-            "-p", "freq:=10.0",
+            "-p", "init_pose_from_topic:=",
+            "-p", "freq:=20.0",
         ]
         self.get_logger().info("Pokrecem rf2o_laser_odometry kao zamjenu za wheel_odom...")
         try:

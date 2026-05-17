@@ -134,7 +134,7 @@ def test_start_slam_toolbox_falls_back_to_launch_when_params_missing(monkeypatch
     assert commands[0] == ["ros2", "launch", "slam_toolbox", "localization_launch.py"]
 
 
-def test_start_rf2o_does_not_pass_empty_parameter_override(monkeypatch):
+def test_start_rf2o_matches_working_launch_parameters(monkeypatch):
     module = load_slam_manager_module()
     manager = make_manager(module)
     commands = []
@@ -148,7 +148,6 @@ def test_start_rf2o_does_not_pass_empty_parameter_override(monkeypatch):
     module.SlamManager.start_rf2o(manager)
 
     assert commands
-    assert "init_pose_from_topic:=" not in commands[0]
     assert commands[0] == [
         "ros2",
         "run",
@@ -156,19 +155,21 @@ def test_start_rf2o_does_not_pass_empty_parameter_override(monkeypatch):
         "rf2o_laser_odometry_node",
         "--ros-args",
         "-r",
-        "laser_scan:=/scan",
+        "__node:=rf2o_laser_odometry",
         "-p",
         "laser_scan_topic:=/scan",
         "-p",
         "odom_topic:=/odom_rf2o",
         "-p",
+        "publish_tf:=false",
+        "-p",
         "base_frame_id:=base_link",
         "-p",
         "odom_frame_id:=odom",
         "-p",
-        "publish_tf:=false",
+        "init_pose_from_topic:=",
         "-p",
-        "freq:=10.0",
+        "freq:=20.0",
     ]
 
 
