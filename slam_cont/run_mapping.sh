@@ -57,6 +57,7 @@ DB_RETRY_DELAY=${DB_RETRY_DELAY:-3}
 SAVE_SERVICE_TYPE=""                  # will be detected on first successful SaveMap call; keep empty safely under set -u with :- expansion
 USE_DIRECT_SLAM=${USE_DIRECT_SLAM:-1} # 1 => use ros2 run async_slam_toolbox_node with params file, bypass generic launch
 MAP_TOPIC_CANDIDATES=${MAP_TOPIC_CANDIDATES:-"/map /slam_toolbox/map /localized_map"}
+MAPPING_MONITOR_INTERVAL=${MAPPING_MONITOR_INTERVAL:-2}
 
 # Reentrancy lock for cleanup
 CLEANUP_LOCK=0
@@ -156,6 +157,23 @@ ensure_slam_alive() {
 
 	err "slam_toolbox is not running${stage:+ ($stage)}. Refusing to continue mapping without active SLAM."
 	err "Check docker logs slam_cont for the slam_toolbox fatal error above this message."
+	exit 1
+}
+
+abort_mapping_due_to_slam_crash() {
+	echo
+	err "slam_toolbox crashed during mapping. Stopping bag recording and restoring containers; no map will be generated from this run."
+	trap '' INT TERM
+	set +e
+	if [[ -n "${BAG_PID:-}" ]] && kill -0 "${BAG_PID}" 2>/dev/null; then
+		kill "${BAG_PID}"
+		wait "${BAG_PID}" 2>/dev/null
+	fi
+	if [[ -n "${SLAM_PID:-}" ]] && kill -0 "${SLAM_PID}" 2>/dev/null; then
+		kill "${SLAM_PID}"
+		wait "${SLAM_PID}" 2>/dev/null
+	fi
+	manage_containers_restore
 	exit 1
 }
 
@@ -506,18 +524,22 @@ slam_toolbox:
     max_laser_range: 10.0
     # Conservative mapping: dense scan insertion in narrow halls caused repeated
     # map->odom jumps and smeared loop closures. Prefer fewer, more distinct scans.
-    minimum_time_interval: 0.1
-    minimum_travel_distance: 0.12
+    minimum_time_interval: 0.2
+    minimum_travel_distance: 0.10
     minimum_travel_heading: 0.17
     # Larger search space: rf2o without encoders can accumulate >25 cm heading
     # error during rotation.  0.5 m (±25 cm) was too small and caused the
     # CorrelationGrid crash.  1.5 m (±75 cm) tolerates typical rf2o drift.
-    correlation_search_space_dimension: 1.5
-    correlation_search_space_resolution: 0.02
-    loop_match_minimum_response_coarse: 0.45
-    loop_match_maximum_variance_coarse: 2.0
-    loop_match_minimum_chain_size: 10
-    loop_search_maximum_distance: 2.5
+    correlation_search_space_dimension: 0.5
+    correlation_search_space_resolution: 0.01
+    correlation_search_space_smear_deviation: 0.1
+    coarse_search_angle_offset: 0.349
+    coarse_angle_resolution: 0.0349
+    do_loop_closing: false
+    loop_match_minimum_response_coarse: 0.70
+    loop_match_maximum_variance_coarse: 1.0
+    loop_match_minimum_chain_size: 20
+    loop_search_maximum_distance: 1.5
 MAPPING_YAML
 			# setsid: run slam_toolbox in its own process group so CTRL+C from the
 			# terminal does NOT kill it. cleanup() will kill it explicitly AFTER
@@ -1133,6 +1155,16 @@ trap cleanup INT TERM
 info "Mapping in progress. Press CTRL+C to finish and generate final map from bag replay."
 # Simple heartbeat
 while true; do
-	sleep 30
-	echo "[heartbeat] $(date)"
+	sleep "$MAPPING_MONITOR_INTERVAL"
+	if [[ -n "${SLAM_PID:-}" ]] && ! kill -0 "${SLAM_PID}" 2>/dev/null; then
+		abort_mapping_due_to_slam_crash
+	fi
+	if [[ -n "${BAG_PID:-}" && "${BAG_PID}" != "0" ]] && ! kill -0 "${BAG_PID}" 2>/dev/null; then
+		err "ros2 bag record exited during mapping. Stopping this run instead of generating an incomplete map."
+		manage_containers_restore
+		exit 1
+	fi
+	if (( $(date +%s) % 30 < MAPPING_MONITOR_INTERVAL )); then
+		echo "[heartbeat] $(date)"
+	fi
 done
