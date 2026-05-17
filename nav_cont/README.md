@@ -151,7 +151,8 @@ ros2 service call /set_manual_mode std_srvs/srv/SetBool "{data: false}"
 
 1. Footprint je trenutno definiran kao poligon u `nav2_params.yaml`.
 
-- Trenutna vrijednost je okvirno `22 cm x 23 cm` uz mali padding.
+- Trenutna vrijednost je asimetricna: okvirno `27 cm x 33 cm`, s dodatnih
+  `5 cm` sigurnosnog margina naprijed, lijevo i desno uz mali padding.
 - Za pouzdano zaobilazenje treba potvrditi stvarne dimenzije robota i
   sigurnosni margin kroz test voznju.
 

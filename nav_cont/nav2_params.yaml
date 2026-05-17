@@ -178,8 +178,8 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      # Footprint: 22 cm (x) by 23 cm (y)
-      footprint: "[[0.11, 0.115], [0.11, -0.115], [-0.11, -0.115], [-0.11, 0.115]]"
+      # Footprint with 5 cm safety margin in front/left/right for LIDAR blind zone near base_link.
+      footprint: "[[0.16, 0.165], [0.16, -0.165], [-0.11, -0.165], [-0.11, 0.165]]"
       footprint_padding: 0.01
       plugins: [voxel_layer, inflation_layer]
       inflation_layer:
@@ -237,8 +237,8 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      # Footprint: 22 cm (x) by 23 cm (y)
-      footprint: "[[0.11, 0.115], [0.11, -0.115], [-0.11, -0.115], [-0.11, 0.115]]"
+      # Footprint with 5 cm safety margin in front/left/right for LIDAR blind zone near base_link.
+      footprint: "[[0.16, 0.165], [0.16, -0.165], [-0.11, -0.165], [-0.11, 0.165]]"
       footprint_padding: 0.01
       resolution: 0.05
       track_unknown_space: true
