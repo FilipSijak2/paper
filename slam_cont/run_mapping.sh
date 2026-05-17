@@ -12,6 +12,7 @@ BAG_PREFIX="session"
 DURATION=0
 TOPICS_FILE=""
 
+
 # Incremental naming configuration
 # Default behavior now: directories named mapa1, mapa2, ... (NAME_PREFIX + index)
 # Disable by exporting INCREMENTAL_NAMES=0 (then timestamp legacy name is used)
