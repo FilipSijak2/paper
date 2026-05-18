@@ -123,22 +123,29 @@ controller_server:
       yaw_goal_tolerance: 0.25
 
     FollowPath:
-      plugin: dwb_core::DWBLocalPlanner
+      plugin: nav2_rotation_shim_controller::RotationShimController
+      primary_controller: dwb_core::DWBLocalPlanner
+      angular_dist_threshold: 0.45
+      forward_sampling_distance: 0.5
+      rotate_to_heading_angular_vel: 0.35
+      max_angular_accel: 0.9
+      simulate_ahead_time: 1.0
+      rotate_to_goal_heading: true
       debug_trajectory_details: true
       min_vel_x: 0.0
       min_vel_y: 0.0
       max_vel_x: 0.22
       max_vel_y: 0.0
-      max_vel_theta: 0.30
+      max_vel_theta: 0.35
       min_speed_xy: 0.0
       max_speed_xy: 0.22
       min_speed_theta: 0.0
       acc_lim_x: 0.6
       acc_lim_y: 0.0
-      acc_lim_theta: 0.8
+      acc_lim_theta: 0.9
       decel_lim_x: -0.6
       decel_lim_y: 0.0
-      decel_lim_theta: -0.8
+      decel_lim_theta: -0.9
       vx_samples: 20
       vy_samples: 5
       vtheta_samples: 20
@@ -284,8 +291,8 @@ planner_server:
     planner_plugins: [GridBased]
     GridBased:
       plugin: nav2_navfn_planner/NavfnPlanner
-      tolerance: 0.5
-      use_astar: false
+      tolerance: 0.25
+      use_astar: true
       allow_unknown: true
 
 smoother_server:
@@ -317,9 +324,9 @@ behavior_server:
     assisted_teleop:
       plugin: nav2_behaviors/AssistedTeleop
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.30
+    max_rotational_vel: 0.35
     min_rotational_vel: 0.08
-    rotational_acc_lim: 0.8
+    rotational_acc_lim: 0.9
 
 robot_state_publisher:
   ros__parameters:
@@ -342,10 +349,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: CLOSED_LOOP
-    max_velocity: [0.22, 0.0, 0.30]
-    min_velocity: [-0.22, 0.0, -0.30]
-    max_accel: [0.6, 0.0, 0.8]
-    max_decel: [-0.6, 0.0, -0.8]
+    max_velocity: [0.22, 0.0, 0.35]
+    min_velocity: [-0.22, 0.0, -0.35]
+    max_accel: [0.6, 0.0, 0.9]
+    max_decel: [-0.6, 0.0, -0.9]
     odom_topic: /odometry/filtered
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
