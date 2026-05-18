@@ -8,6 +8,7 @@ RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ros-humble-ros2bag \
     ros-humble-rosbag2-storage-default-plugins \
+    ros-humble-rosbag2-storage-mcap \
     ros-humble-rosbag2-compression-zstd \
     ros-humble-rmw-cyclonedds-cpp \
     bash \
@@ -24,8 +25,13 @@ RUN chmod +x /app/bag_recorder.sh
 
 ENV TOPICS_FILE=/config/recorded_topics.yaml \
     BAG_OUTPUT_DIR=/bags \
+    BAG_WORK_DIR=/bags \
     MAX_BAG_MB=150 \
     MAX_BAG_DURATION_S=0 \
+    SESSION_DURATION_S=0 \
+    STORAGE_BACKEND=sqlite3 \
+    COMPRESSION_MODE=file \
+    COMPRESSION_FORMAT=zstd \
     RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
 ENTRYPOINT ["/app/bag_recorder.sh"]

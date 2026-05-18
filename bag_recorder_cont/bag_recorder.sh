@@ -4,8 +4,13 @@ set -euo pipefail
 ROS_DISTRO=${ROS_DISTRO:-humble}
 TOPICS_FILE=${TOPICS_FILE:-/config/recorded_topics.yaml}
 BAG_OUTPUT_DIR=${BAG_OUTPUT_DIR:-/bags}
+BAG_WORK_DIR=${BAG_WORK_DIR:-${BAG_OUTPUT_DIR}}
 MAX_BAG_MB=${MAX_BAG_MB:-150}
 MAX_BAG_DURATION_S=${MAX_BAG_DURATION_S:-0}
+SESSION_DURATION_S=${SESSION_DURATION_S:-0}
+STORAGE_BACKEND=${STORAGE_BACKEND:-sqlite3}
+COMPRESSION_MODE=${COMPRESSION_MODE:-file}
+COMPRESSION_FORMAT=${COMPRESSION_FORMAT:-zstd}
 RESTART_DELAY_S=${RESTART_DELAY_S:-3}
 TOPIC_WAIT_TIMEOUT_S=${TOPIC_WAIT_TIMEOUT_S:-30}
 TOPIC_RECHECK_INTERVAL_S=${TOPIC_RECHECK_INTERVAL_S:-2}
@@ -44,6 +49,12 @@ log_runtime_configuration() {
 	echo "[bag_recorder] RMW_IMPLEMENTATION=${RMW_IMPLEMENTATION:-unset}"
 	echo "[bag_recorder] ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-unset}"
 	echo "[bag_recorder] CYCLONEDDS_URI=${CYCLONEDDS_URI:-unset}"
+	echo "[bag_recorder] BAG_OUTPUT_DIR=${BAG_OUTPUT_DIR}"
+	echo "[bag_recorder] BAG_WORK_DIR=${BAG_WORK_DIR}"
+	echo "[bag_recorder] STORAGE_BACKEND=${STORAGE_BACKEND}"
+	echo "[bag_recorder] COMPRESSION_MODE=${COMPRESSION_MODE}"
+	echo "[bag_recorder] COMPRESSION_FORMAT=${COMPRESSION_FORMAT}"
+	echo "[bag_recorder] SESSION_DURATION_S=${SESSION_DURATION_S}"
 }
 
 normalize_rmw() {
@@ -243,13 +254,15 @@ terminate() {
 run_recorder_loop() {
 	local timestamp
 	local prefix
+	local final_prefix
 	local max_bag_bytes
 	local exit_code
 	local -a args
 
 	while [[ "${stop_requested}" == false ]]; do
 		timestamp=$(date -u +%Y%m%d-%H%M%S)
-		prefix="${BAG_OUTPUT_DIR}/recording_${timestamp}"
+		prefix="${BAG_WORK_DIR}/recording_${timestamp}"
+		final_prefix="${BAG_OUTPUT_DIR}/recording_${timestamp}"
 
 		max_bag_bytes=$((MAX_BAG_MB * 1024 * 1024))
 		if [[ ${max_bag_bytes} -lt 86016 ]]; then
@@ -263,19 +276,34 @@ run_recorder_loop() {
 			continue
 		fi
 
-		args=(ros2 bag record --output "${prefix}" --max-bag-size "${max_bag_bytes}" --compression-mode file --compression-format zstd)
+		args=(ros2 bag record --output "${prefix}" --storage "${STORAGE_BACKEND}" --max-bag-size "${max_bag_bytes}")
 		if [[ "${MAX_BAG_DURATION_S}" != "0" ]]; then
 			args+=(--max-bag-duration "${MAX_BAG_DURATION_S}")
+		fi
+		if [[ "${COMPRESSION_MODE}" != "none" ]]; then
+			args+=(--compression-mode "${COMPRESSION_MODE}" --compression-format "${COMPRESSION_FORMAT}")
 		fi
 		args+=("${RESOLVED_TOPICS[@]}")
 
 		echo "Starting ros2 bag record -> ${prefix} (max ${MAX_BAG_MB} MB per bag)"
-		"${args[@]}" &
+		if [[ "${SESSION_DURATION_S}" != "0" ]]; then
+			timeout --signal=INT --kill-after=30s "${SESSION_DURATION_S}" "${args[@]}" &
+		else
+			"${args[@]}" &
+		fi
 		record_pid=$!
 		set +e
 		wait "${record_pid}"
 		exit_code=$?
 		set -e
+
+		if [[ -d "${prefix}" && "${prefix}" != "${final_prefix}" ]]; then
+			if [[ -e "${final_prefix}" ]]; then
+				final_prefix="${final_prefix}_$(date -u +%H%M%S)"
+			fi
+			mv "${prefix}" "${final_prefix}"
+			echo "[bag_recorder] Published completed bag session -> ${final_prefix}"
+		fi
 
 		if [[ "${stop_requested}" == true ]]; then
 			break
@@ -296,6 +324,7 @@ main() {
 	log_runtime_configuration
 	load_topics_file
 	mkdir -p "${BAG_OUTPUT_DIR}"
+	mkdir -p "${BAG_WORK_DIR}"
 	trap terminate SIGINT SIGTERM
 	run_recorder_loop
 }
