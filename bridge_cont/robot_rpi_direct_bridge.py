@@ -172,6 +172,7 @@ def raw_counts_to_radians(counts):
 def compute_wheel_commands(
     cmd_linear, cmd_angular,
     max_linear_vel, max_angular_vel,
+    min_motor_cmd=0.0,
     left_inverted=False, right_inverted=False,
 ):
     # Normalise SI cmd_vel to [-1, 1] independently for each axis, then mix.
@@ -187,6 +188,13 @@ def compute_wheel_commands(
         left_speed = -left_speed
     if right_inverted:
         right_speed = -right_speed
+
+    min_motor_cmd = clamp(float(min_motor_cmd), 0.0, 1.0)
+    if min_motor_cmd > 0.0:
+        if 0.0 < abs(left_speed) < min_motor_cmd:
+            left_speed = math.copysign(min_motor_cmd, left_speed)
+        if 0.0 < abs(right_speed) < min_motor_cmd:
+            right_speed = math.copysign(min_motor_cmd, right_speed)
 
     return clamp(left_speed, -1.0, 1.0), clamp(right_speed, -1.0, 1.0)
 
@@ -217,6 +225,7 @@ def resolve_runtime_config(args):
         "open_loop_odom_from_cmd": _env_bool("OPEN_LOOP_ODOM_FROM_CMD", False),
         "max_linear_vel": _env_float("MAX_LINEAR_VEL", 0.5, minimum=0.01),
         "max_angular_vel": _env_float("MAX_ANGULAR_VEL", 3.0, minimum=0.01),
+        "min_motor_cmd": _env_float("MIN_MOTOR_CMD", 0.0, minimum=0.0, maximum=1.0),
     }
 
 
@@ -247,6 +256,7 @@ class RobotRpiDirectBridge(Node):
         open_loop_odom_from_cmd=False,
         max_linear_vel=0.5,
         max_angular_vel=3.0,
+        min_motor_cmd=0.0,
     ):
         super().__init__("robot_rpi_direct_bridge")
 
@@ -286,6 +296,7 @@ class RobotRpiDirectBridge(Node):
         self.right_encoder_inverted = right_encoder_inverted
         self.max_linear_vel = float(max_linear_vel)
         self.max_angular_vel = float(max_angular_vel)
+        self.min_motor_cmd = float(min_motor_cmd)
 
         self.bus = SMBus(self.i2c_bus_id) if self.encoders_enabled else None
 
@@ -558,6 +569,7 @@ class RobotRpiDirectBridge(Node):
             self.cmd_angular,
             self.max_linear_vel,
             self.max_angular_vel,
+            min_motor_cmd=self.min_motor_cmd,
             left_inverted=self.left_motor_inverted,
             right_inverted=self.right_motor_inverted,
         )

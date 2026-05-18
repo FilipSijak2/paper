@@ -27,6 +27,8 @@ set -u
 : "${RS_BASE_FRAME_ID:=}"
 : "${RS_DEPTH_PROFILE:=640x480x15}"
 : "${RS_COLOR_PROFILE:=640x480x15}"
+: "${RS_GYRO_FPS:=200}"
+: "${RS_ACCEL_FPS:=100}"
 : "${RS_ALIGN_DEPTH:=true}"
 : "${RS_ENABLE_POINTCLOUD:=false}"
 : "${RS_COMPRESSED_JPEG_QUALITY:=40}"
@@ -188,6 +190,8 @@ args=(
 	"base_frame_id:=${RS_BASE_FRAME_ID}"
 	"depth_module.depth_profile:=${RS_DEPTH_PROFILE}"
 	"rgb_camera.color_profile:=${RS_COLOR_PROFILE}"
+	"gyro_fps:=${RS_GYRO_FPS}"
+	"accel_fps:=${RS_ACCEL_FPS}"
 	"align_depth.enable:=${RS_ALIGN_DEPTH}"
 	"pointcloud.enable:=${RS_ENABLE_POINTCLOUD}"
 )
