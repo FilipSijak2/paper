@@ -225,7 +225,7 @@ def resolve_runtime_config(args):
         "open_loop_odom_from_cmd": _env_bool("OPEN_LOOP_ODOM_FROM_CMD", False),
         "max_linear_vel": _env_float("MAX_LINEAR_VEL", 0.5, minimum=0.01),
         "max_angular_vel": _env_float("MAX_ANGULAR_VEL", 3.0, minimum=0.01),
-        "min_motor_cmd": _env_float("MIN_MOTOR_CMD", 0.0, minimum=0.0, maximum=1.0),
+        "min_motor_cmd": _env_float("MIN_MOTOR_CMD", 0.0, minimum=0.0),
     }
 
 
