@@ -100,6 +100,15 @@ Current stack overrides:
 - `MAX_LINEAR_VEL` (default `0.5`)
 - `MAX_ANGULAR_VEL` (default `1.0`)
 - `MIN_MOTOR_CMD` (default `0.35`, raises small non-zero wheel commands above motor deadband)
+- `POWER_ADAPT_ENABLED` (`1`/`0`, default `0`)
+- `POWER_ADAPT_IMU_TOPIC` (default `/imu/data`)
+- `POWER_ADAPT_MIN_ANGULAR` (default `0.12`)
+- `POWER_ADAPT_LOW_RATIO` (default `0.55`)
+- `POWER_ADAPT_HIGH_RATIO` (default `1.15`)
+- `POWER_ADAPT_MAX_BOOST` (default `0.50`)
+- `POWER_ADAPT_STEP_UP` (default `0.01`)
+- `POWER_ADAPT_STEP_DOWN` (default `0.004`)
+- `POWER_ADAPT_FEEDBACK_TIMEOUT_S` (default `0.25`)
 
 No-encoder fallback mode:
 

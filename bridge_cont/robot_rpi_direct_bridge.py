@@ -24,6 +24,7 @@ import rclpy
 from geometry_msgs.msg import Point, Quaternion, Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from sensor_msgs.msg import Imu
 from std_msgs.msg import String
 
 try:
@@ -199,6 +200,42 @@ def compute_wheel_commands(
     return clamp(left_speed, -1.0, 1.0), clamp(right_speed, -1.0, 1.0)
 
 
+def update_power_adapt_boost(
+    current_boost,
+    cmd_angular,
+    measured_angular,
+    feedback_age_s,
+    *,
+    enabled=True,
+    min_angular=0.12,
+    low_ratio=0.55,
+    high_ratio=1.15,
+    max_boost=0.50,
+    step_up=0.01,
+    step_down=0.004,
+    feedback_timeout_s=0.25,
+):
+    current_boost = clamp(float(current_boost), 0.0, float(max_boost))
+    if not enabled or abs(cmd_angular) < min_angular:
+        return clamp(current_boost - step_down, 0.0, max_boost)
+
+    if feedback_age_s is None or feedback_age_s > feedback_timeout_s:
+        return clamp(current_boost - step_down, 0.0, max_boost)
+
+    target = abs(cmd_angular)
+    actual = abs(measured_angular)
+    ratio = actual / target if target > 1e-6 else 1.0
+
+    if ratio < low_ratio:
+        current_boost += step_up
+    elif ratio > high_ratio:
+        current_boost -= step_down
+    else:
+        current_boost -= step_down * 0.25
+
+    return clamp(current_boost, 0.0, max_boost)
+
+
 def resolve_runtime_config(args):
     return {
         "i2c_bus": args.i2c_bus if args.i2c_bus is not None else _env_int("I2C_BUS", 1, minimum=0),
@@ -226,6 +263,15 @@ def resolve_runtime_config(args):
         "max_linear_vel": _env_float("MAX_LINEAR_VEL", 0.5, minimum=0.01),
         "max_angular_vel": _env_float("MAX_ANGULAR_VEL", 1.0, minimum=0.01),
         "min_motor_cmd": _env_float("MIN_MOTOR_CMD", 0.35, minimum=0.0),
+        "power_adapt_enabled": _env_bool("POWER_ADAPT_ENABLED", False),
+        "power_adapt_imu_topic": os.environ.get("POWER_ADAPT_IMU_TOPIC", "/imu/data"),
+        "power_adapt_min_angular": _env_float("POWER_ADAPT_MIN_ANGULAR", 0.12, minimum=0.0),
+        "power_adapt_low_ratio": _env_float("POWER_ADAPT_LOW_RATIO", 0.55, minimum=0.0),
+        "power_adapt_high_ratio": _env_float("POWER_ADAPT_HIGH_RATIO", 1.15, minimum=0.0),
+        "power_adapt_max_boost": _env_float("POWER_ADAPT_MAX_BOOST", 0.50, minimum=0.0),
+        "power_adapt_step_up": _env_float("POWER_ADAPT_STEP_UP", 0.01, minimum=0.0),
+        "power_adapt_step_down": _env_float("POWER_ADAPT_STEP_DOWN", 0.004, minimum=0.0),
+        "power_adapt_feedback_timeout_s": _env_float("POWER_ADAPT_FEEDBACK_TIMEOUT_S", 0.25, minimum=0.01),
     }
 
 
@@ -257,6 +303,15 @@ class RobotRpiDirectBridge(Node):
         max_linear_vel=0.5,
         max_angular_vel=1.0,
         min_motor_cmd=0.35,
+        power_adapt_enabled=False,
+        power_adapt_imu_topic="/imu/data",
+        power_adapt_min_angular=0.12,
+        power_adapt_low_ratio=0.55,
+        power_adapt_high_ratio=1.15,
+        power_adapt_max_boost=0.50,
+        power_adapt_step_up=0.01,
+        power_adapt_step_down=0.004,
+        power_adapt_feedback_timeout_s=0.25,
     ):
         super().__init__("robot_rpi_direct_bridge")
 
@@ -297,6 +352,18 @@ class RobotRpiDirectBridge(Node):
         self.max_linear_vel = float(max_linear_vel)
         self.max_angular_vel = float(max_angular_vel)
         self.min_motor_cmd = float(min_motor_cmd)
+        self.power_adapt_enabled = bool(power_adapt_enabled)
+        self.power_adapt_imu_topic = str(power_adapt_imu_topic)
+        self.power_adapt_min_angular = float(power_adapt_min_angular)
+        self.power_adapt_low_ratio = float(power_adapt_low_ratio)
+        self.power_adapt_high_ratio = float(power_adapt_high_ratio)
+        self.power_adapt_max_boost = float(power_adapt_max_boost)
+        self.power_adapt_step_up = float(power_adapt_step_up)
+        self.power_adapt_step_down = float(power_adapt_step_down)
+        self.power_adapt_feedback_timeout_s = float(power_adapt_feedback_timeout_s)
+        self.power_adapt_boost = 0.0
+        self.feedback_angular_z = 0.0
+        self.last_feedback_time = 0.0
 
         self.bus = SMBus(self.i2c_bus_id) if self.encoders_enabled else None
 
@@ -334,6 +401,13 @@ class RobotRpiDirectBridge(Node):
         self.odom_pub = self.create_publisher(Odometry, "wheel_odom", 10)
         self.status_pub = self.create_publisher(String, "robot_status", 10)
         self.cmd_sub = self.create_subscription(Twist, "cmd_vel", self.cmd_vel_callback, 10)
+        if self.power_adapt_enabled:
+            self.imu_feedback_sub = self.create_subscription(
+                Imu,
+                self.power_adapt_imu_topic,
+                self.imu_feedback_callback,
+                20,
+            )
 
         self._init_gpio()
 
@@ -347,6 +421,7 @@ class RobotRpiDirectBridge(Node):
             f"encoders_enabled={self.encoders_enabled}, "
             f"max_linear_vel={self.max_linear_vel:.3f}, max_angular_vel={self.max_angular_vel:.3f}, "
             f"min_motor_cmd={self.min_motor_cmd:.3f}, "
+            f"power_adapt_enabled={self.power_adapt_enabled}, "
             f"odom_source={'open_loop_cmd_vel' if self.open_loop_odom_from_cmd else 'encoders'})"
         )
 
@@ -549,6 +624,10 @@ class RobotRpiDirectBridge(Node):
         self.error_flags &= ~ERROR_FLAG_COMM_TIMEOUT
         self.command_timeout_active = False
 
+    def imu_feedback_callback(self, msg):
+        self.feedback_angular_z = float(msg.angular_velocity.z)
+        self.last_feedback_time = time.time()
+
     def control_loop(self):
         self.stats["loops"] += 1
 
@@ -566,9 +645,28 @@ class RobotRpiDirectBridge(Node):
             self.error_flags &= ~ERROR_FLAG_COMM_TIMEOUT
             self.command_timeout_active = False
 
+        feedback_age_s = None
+        if self.last_feedback_time > 0.0:
+            feedback_age_s = now - self.last_feedback_time
+        self.power_adapt_boost = update_power_adapt_boost(
+            self.power_adapt_boost,
+            self.cmd_angular,
+            self.feedback_angular_z,
+            feedback_age_s,
+            enabled=self.power_adapt_enabled,
+            min_angular=self.power_adapt_min_angular,
+            low_ratio=self.power_adapt_low_ratio,
+            high_ratio=self.power_adapt_high_ratio,
+            max_boost=self.power_adapt_max_boost,
+            step_up=self.power_adapt_step_up,
+            step_down=self.power_adapt_step_down,
+            feedback_timeout_s=self.power_adapt_feedback_timeout_s,
+        )
+        motor_angular = self.cmd_angular * (1.0 + self.power_adapt_boost)
+
         left_cmd, right_cmd = compute_wheel_commands(
             self.cmd_linear,
-            self.cmd_angular,
+            motor_angular,
             self.max_linear_vel,
             self.max_angular_vel,
             min_motor_cmd=self.min_motor_cmd,
@@ -601,6 +699,9 @@ class RobotRpiDirectBridge(Node):
             f"OPEN_LOOP_UPD={self.stats['open_loop_updates']} "
             f"ENC_EN={1 if self.encoders_enabled else 0} "
             f"ODOM_SRC={'OPEN_LOOP' if self.open_loop_odom_from_cmd else 'ENC'} "
+            f"PWR_ADAPT={1 if self.power_adapt_enabled else 0} "
+            f"PWR_BOOST={self.power_adapt_boost:.3f} "
+            f"IMU_WZ={self.feedback_angular_z:.3f} "
             f"FLAGS=0x{self.sensor_flags:04X} "
             f"ERR=0x{self.error_flags:02X}"
         )

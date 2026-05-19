@@ -1,4 +1,5 @@
 import importlib.util
+import math
 import sys
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
@@ -22,6 +23,8 @@ def load_direct_bridge_module():
     geometry_msgs_msg = ModuleType("geometry_msgs.msg")
     nav_msgs = ModuleType("nav_msgs")
     nav_msgs_msg = ModuleType("nav_msgs.msg")
+    sensor_msgs = ModuleType("sensor_msgs")
+    sensor_msgs_msg = ModuleType("sensor_msgs.msg")
     std_msgs = ModuleType("std_msgs")
     std_msgs_msg = ModuleType("std_msgs.msg")
 
@@ -51,6 +54,9 @@ def load_direct_bridge_module():
     class Odometry:
         pass
 
+    class Imu:
+        pass
+
     class String:
         pass
 
@@ -64,10 +70,12 @@ def load_direct_bridge_module():
     setattr(geometry_msgs_msg, "Point", Point)
     setattr(geometry_msgs_msg, "Quaternion", Quaternion)
     setattr(nav_msgs_msg, "Odometry", Odometry)
+    setattr(sensor_msgs_msg, "Imu", Imu)
     setattr(std_msgs_msg, "String", String)
 
     setattr(geometry_msgs, "msg", geometry_msgs_msg)
     setattr(nav_msgs, "msg", nav_msgs_msg)
+    setattr(sensor_msgs, "msg", sensor_msgs_msg)
     setattr(std_msgs, "msg", std_msgs_msg)
 
     setattr(rpi_mod, "GPIO", rpi_gpio_mod)
@@ -79,6 +87,8 @@ def load_direct_bridge_module():
     inject("geometry_msgs.msg", geometry_msgs_msg)
     inject("nav_msgs", nav_msgs)
     inject("nav_msgs.msg", nav_msgs_msg)
+    inject("sensor_msgs", sensor_msgs)
+    inject("sensor_msgs.msg", sensor_msgs_msg)
     inject("std_msgs", std_msgs)
     inject("std_msgs.msg", std_msgs_msg)
     inject("RPi", rpi_mod)
@@ -123,6 +133,8 @@ def test_resolve_runtime_config_uses_env(monkeypatch):
     assert config["open_loop_odom_from_cmd"] is True
     assert config["max_angular_vel"] == 1.0
     assert config["min_motor_cmd"] == 0.35
+    assert config["power_adapt_enabled"] is False
+    assert config["power_adapt_imu_topic"] == "/imu/data"
 
 
 def test_unwrap_raw_handles_wraparound():
@@ -170,6 +182,37 @@ def test_compute_wheel_commands_applies_min_motor_cmd_deadband_compensation():
 
     assert left == -0.25
     assert right == 0.25
+
+
+def test_update_power_adapt_boost_increases_when_measured_rotation_is_too_low():
+    module = load_direct_bridge_module()
+
+    boost = module.update_power_adapt_boost(
+        0.10,
+        cmd_angular=0.6,
+        measured_angular=0.1,
+        feedback_age_s=0.02,
+        enabled=True,
+        step_up=0.02,
+        max_boost=0.5,
+    )
+
+    assert math.isclose(boost, 0.12, rel_tol=1e-9)
+
+
+def test_update_power_adapt_boost_decays_when_measured_rotation_is_high():
+    module = load_direct_bridge_module()
+
+    boost = module.update_power_adapt_boost(
+        0.10,
+        cmd_angular=0.3,
+        measured_angular=0.5,
+        feedback_age_s=0.02,
+        enabled=True,
+        step_down=0.02,
+    )
+
+    assert math.isclose(boost, 0.08, rel_tol=1e-9)
 
 
 def test_integrate_pose_updates_position_and_heading():

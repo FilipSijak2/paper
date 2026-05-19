@@ -127,8 +127,8 @@ controller_server:
       primary_controller: dwb_core::DWBLocalPlanner
       angular_dist_threshold: 0.45
       forward_sampling_distance: 0.5
-      rotate_to_heading_angular_vel: 0.55
-      max_angular_accel: 1.2
+      rotate_to_heading_angular_vel: 0.40
+      max_angular_accel: 1.0
       simulate_ahead_time: 1.0
       rotate_to_goal_heading: true
       debug_trajectory_details: true
@@ -136,16 +136,16 @@ controller_server:
       min_vel_y: 0.0
       max_vel_x: 0.22
       max_vel_y: 0.0
-      max_vel_theta: 0.60
+      max_vel_theta: 0.45
       min_speed_xy: 0.0
       max_speed_xy: 0.22
       min_speed_theta: 0.0
       acc_lim_x: 0.6
       acc_lim_y: 0.0
-      acc_lim_theta: 1.2
+      acc_lim_theta: 1.0
       decel_lim_x: -0.6
       decel_lim_y: 0.0
-      decel_lim_theta: -1.2
+      decel_lim_theta: -1.0
       vx_samples: 20
       vy_samples: 5
       vtheta_samples: 20
@@ -324,9 +324,9 @@ behavior_server:
     assisted_teleop:
       plugin: nav2_behaviors/AssistedTeleop
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.60
+    max_rotational_vel: 0.45
     min_rotational_vel: 0.08
-    rotational_acc_lim: 1.2
+    rotational_acc_lim: 1.0
 
 robot_state_publisher:
   ros__parameters:
@@ -349,10 +349,10 @@ velocity_smoother:
     smoothing_frequency: 20.0
     scale_velocities: false
     feedback: CLOSED_LOOP
-    max_velocity: [0.22, 0.0, 0.60]
-    min_velocity: [-0.22, 0.0, -0.60]
-    max_accel: [0.6, 0.0, 1.2]
-    max_decel: [-0.6, 0.0, -1.2]
+    max_velocity: [0.22, 0.0, 0.45]
+    min_velocity: [-0.22, 0.0, -0.45]
+    max_accel: [0.6, 0.0, 1.0]
+    max_decel: [-0.6, 0.0, -1.0]
     odom_topic: /odometry/filtered
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
