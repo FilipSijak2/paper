@@ -97,6 +97,9 @@ Current stack overrides:
 - `RPI_LGPIO_CHIP` (optional, recommended `4` on Raspberry Pi 5)
 - `ENCODERS_ENABLED` (`1`/`0`, default `1`)
 - `OPEN_LOOP_ODOM_FROM_CMD` (`1`/`0`, default `0`, auto-enabled when encoders are disabled)
+- `MAX_LINEAR_VEL` (default `0.5`)
+- `MAX_ANGULAR_VEL` (default `1.0`)
+- `MIN_MOTOR_CMD` (default `0.35`, raises small non-zero wheel commands above motor deadband)
 
 No-encoder fallback mode:
 

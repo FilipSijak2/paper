@@ -67,8 +67,9 @@ const int RPWM_L = 5;   // Left motor PWM
 const int LPWM_L = 6;   // Left motor DIR
 
 // Robot parameters
-const float WHEEL_BASE = 0.20f;
-// Wheel radius not needed now
+const float MAX_LINEAR_VEL = 0.5f;   // m/s matching bridge/Nav2 scale
+const float MAX_ANGULAR_VEL = 1.0f;  // rad/s matching bridge/Nav2 scale
+const float MIN_MOTOR_CMD = 0.35f;   // overcome static friction / motor deadband
 
 // Serial communication buffer for commands from Nano ESP32
 uint8_t cmd_buffer[COMMAND_PACKET_SIZE];
@@ -294,13 +295,24 @@ void displayPattern(const uint32_t p[3]) {
 }
 
 void updateMotorControl() {
-  // Simple differential drive kinematics
-  float left_speed = cmd_linear - (cmd_angular * WHEEL_BASE / 2.0f);
-  float right_speed = cmd_linear + (cmd_angular * WHEEL_BASE / 2.0f);
+  float lin = (MAX_LINEAR_VEL > 0.0f) ? (cmd_linear / MAX_LINEAR_VEL) : 0.0f;
+  float ang = (MAX_ANGULAR_VEL > 0.0f) ? (cmd_angular / MAX_ANGULAR_VEL) : 0.0f;
+
+  float left_speed = lin - ang;
+  float right_speed = lin + ang;
   
   // Constrain speeds to [-1.0, 1.0]
   left_speed = constrain(left_speed, -1.0f, 1.0f);
   right_speed = constrain(right_speed, -1.0f, 1.0f);
+
+  if (MIN_MOTOR_CMD > 0.0f) {
+    if (abs(left_speed) > 0.0f && abs(left_speed) < MIN_MOTOR_CMD) {
+      left_speed = (left_speed < 0.0f) ? -MIN_MOTOR_CMD : MIN_MOTOR_CMD;
+    }
+    if (abs(right_speed) > 0.0f && abs(right_speed) < MIN_MOTOR_CMD) {
+      right_speed = (right_speed < 0.0f) ? -MIN_MOTOR_CMD : MIN_MOTOR_CMD;
+    }
+  }
   
   // Convert to PWM (0-255)
   int left_pwm = abs(left_speed * 255);

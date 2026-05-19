@@ -224,8 +224,8 @@ def resolve_runtime_config(args):
         "encoders_enabled": _env_bool("ENCODERS_ENABLED", True),
         "open_loop_odom_from_cmd": _env_bool("OPEN_LOOP_ODOM_FROM_CMD", False),
         "max_linear_vel": _env_float("MAX_LINEAR_VEL", 0.5, minimum=0.01),
-        "max_angular_vel": _env_float("MAX_ANGULAR_VEL", 3.0, minimum=0.01),
-        "min_motor_cmd": _env_float("MIN_MOTOR_CMD", 0.0, minimum=0.0),
+        "max_angular_vel": _env_float("MAX_ANGULAR_VEL", 1.0, minimum=0.01),
+        "min_motor_cmd": _env_float("MIN_MOTOR_CMD", 0.35, minimum=0.0),
     }
 
 
@@ -255,8 +255,8 @@ class RobotRpiDirectBridge(Node):
         encoders_enabled=True,
         open_loop_odom_from_cmd=False,
         max_linear_vel=0.5,
-        max_angular_vel=3.0,
-        min_motor_cmd=0.0,
+        max_angular_vel=1.0,
+        min_motor_cmd=0.35,
     ):
         super().__init__("robot_rpi_direct_bridge")
 
@@ -345,6 +345,8 @@ class RobotRpiDirectBridge(Node):
             f"(I2C bus={self.i2c_bus_id}, mux=0x{self.mux_addr:02X}, "
             f"AS5600=0x{self.as5600_addr:02X}, control_period={self.control_period_s:.3f}s, "
             f"encoders_enabled={self.encoders_enabled}, "
+            f"max_linear_vel={self.max_linear_vel:.3f}, max_angular_vel={self.max_angular_vel:.3f}, "
+            f"min_motor_cmd={self.min_motor_cmd:.3f}, "
             f"odom_source={'open_loop_cmd_vel' if self.open_loop_odom_from_cmd else 'encoders'})"
         )
 
