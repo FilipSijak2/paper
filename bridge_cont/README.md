@@ -109,6 +109,10 @@ Current stack overrides:
 - `POWER_ADAPT_STEP_UP` (default `0.01`)
 - `POWER_ADAPT_STEP_DOWN` (default `0.004`)
 - `POWER_ADAPT_FEEDBACK_TIMEOUT_S` (default `0.25`)
+- `FORWARD_ARC_TURN_ENABLED` (`1`/`0`, default `0`)
+- `FORWARD_ARC_TURN_MIN_ANGULAR` (default `0.12`)
+- `FORWARD_ARC_TURN_MAX_LINEAR` (default `0.03`)
+- `FORWARD_ARC_TURN_INNER_CMD` (default `0.16`)
 
 No-encoder fallback mode:
 

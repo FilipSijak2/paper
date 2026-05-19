@@ -200,6 +200,42 @@ def compute_wheel_commands(
     return clamp(left_speed, -1.0, 1.0), clamp(right_speed, -1.0, 1.0)
 
 
+def compute_forward_arc_turn_commands(
+    cmd_angular,
+    max_angular_vel,
+    min_motor_cmd=0.0,
+    inner_motor_cmd=0.16,
+    left_inverted=False,
+    right_inverted=False,
+):
+    turn = abs(cmd_angular) / max_angular_vel if max_angular_vel > 0.0 else 0.0
+    outer_speed = clamp(max(turn, min_motor_cmd), 0.0, 1.0)
+    inner_speed = clamp(inner_motor_cmd, 0.0, outer_speed)
+
+    if cmd_angular >= 0.0:
+        left_speed = inner_speed
+        right_speed = outer_speed
+    else:
+        left_speed = outer_speed
+        right_speed = inner_speed
+
+    if left_inverted:
+        left_speed = -left_speed
+    if right_inverted:
+        right_speed = -right_speed
+
+    return left_speed, right_speed
+
+
+def enforce_forward_turn_no_reverse(left_cmd, right_cmd, cmd_angular, inner_motor_cmd=0.16):
+    inner_motor_cmd = clamp(inner_motor_cmd, 0.0, 1.0)
+    if cmd_angular >= 0.0:
+        left_cmd = max(left_cmd, inner_motor_cmd)
+    else:
+        right_cmd = max(right_cmd, inner_motor_cmd)
+    return left_cmd, right_cmd
+
+
 def update_power_adapt_boost(
     current_boost,
     cmd_angular,
@@ -272,6 +308,10 @@ def resolve_runtime_config(args):
         "power_adapt_step_up": _env_float("POWER_ADAPT_STEP_UP", 0.01, minimum=0.0),
         "power_adapt_step_down": _env_float("POWER_ADAPT_STEP_DOWN", 0.004, minimum=0.0),
         "power_adapt_feedback_timeout_s": _env_float("POWER_ADAPT_FEEDBACK_TIMEOUT_S", 0.25, minimum=0.01),
+        "forward_arc_turn_enabled": _env_bool("FORWARD_ARC_TURN_ENABLED", False),
+        "forward_arc_turn_min_angular": _env_float("FORWARD_ARC_TURN_MIN_ANGULAR", 0.12, minimum=0.0),
+        "forward_arc_turn_max_linear": _env_float("FORWARD_ARC_TURN_MAX_LINEAR", 0.03, minimum=0.0),
+        "forward_arc_turn_inner_cmd": _env_float("FORWARD_ARC_TURN_INNER_CMD", 0.16, minimum=0.0),
     }
 
 
@@ -312,6 +352,10 @@ class RobotRpiDirectBridge(Node):
         power_adapt_step_up=0.01,
         power_adapt_step_down=0.004,
         power_adapt_feedback_timeout_s=0.25,
+        forward_arc_turn_enabled=False,
+        forward_arc_turn_min_angular=0.12,
+        forward_arc_turn_max_linear=0.03,
+        forward_arc_turn_inner_cmd=0.16,
     ):
         super().__init__("robot_rpi_direct_bridge")
 
@@ -364,6 +408,11 @@ class RobotRpiDirectBridge(Node):
         self.power_adapt_boost = 0.0
         self.feedback_angular_z = 0.0
         self.last_feedback_time = 0.0
+        self.forward_arc_turn_enabled = bool(forward_arc_turn_enabled)
+        self.forward_arc_turn_min_angular = float(forward_arc_turn_min_angular)
+        self.forward_arc_turn_max_linear = float(forward_arc_turn_max_linear)
+        self.forward_arc_turn_inner_cmd = float(forward_arc_turn_inner_cmd)
+        self.forward_arc_turn_active = False
 
         self.bus = SMBus(self.i2c_bus_id) if self.encoders_enabled else None
 
@@ -422,6 +471,7 @@ class RobotRpiDirectBridge(Node):
             f"max_linear_vel={self.max_linear_vel:.3f}, max_angular_vel={self.max_angular_vel:.3f}, "
             f"min_motor_cmd={self.min_motor_cmd:.3f}, "
             f"power_adapt_enabled={self.power_adapt_enabled}, "
+            f"forward_arc_turn_enabled={self.forward_arc_turn_enabled}, "
             f"odom_source={'open_loop_cmd_vel' if self.open_loop_odom_from_cmd else 'encoders'})"
         )
 
@@ -664,15 +714,44 @@ class RobotRpiDirectBridge(Node):
         )
         motor_angular = self.cmd_angular * (1.0 + self.power_adapt_boost)
 
-        left_cmd, right_cmd = compute_wheel_commands(
-            self.cmd_linear,
-            motor_angular,
-            self.max_linear_vel,
-            self.max_angular_vel,
-            min_motor_cmd=self.min_motor_cmd,
-            left_inverted=self.left_motor_inverted,
-            right_inverted=self.right_motor_inverted,
+        use_forward_arc_turn = (
+            self.forward_arc_turn_enabled
+            and abs(self.cmd_angular) >= self.forward_arc_turn_min_angular
+            and abs(self.cmd_linear) <= self.forward_arc_turn_max_linear
         )
+        if use_forward_arc_turn:
+            left_cmd, right_cmd = compute_forward_arc_turn_commands(
+                motor_angular,
+                self.max_angular_vel,
+                min_motor_cmd=self.min_motor_cmd,
+                inner_motor_cmd=self.forward_arc_turn_inner_cmd,
+                left_inverted=self.left_motor_inverted,
+                right_inverted=self.right_motor_inverted,
+            )
+        else:
+            left_cmd, right_cmd = compute_wheel_commands(
+                self.cmd_linear,
+                motor_angular,
+                self.max_linear_vel,
+                self.max_angular_vel,
+                min_motor_cmd=self.min_motor_cmd,
+                left_inverted=self.left_motor_inverted,
+                right_inverted=self.right_motor_inverted,
+            )
+            if (
+                self.forward_arc_turn_enabled
+                and self.cmd_linear >= 0.0
+                and abs(self.cmd_angular) >= self.forward_arc_turn_min_angular
+                and not self.left_motor_inverted
+                and not self.right_motor_inverted
+            ):
+                left_cmd, right_cmd = enforce_forward_turn_no_reverse(
+                    left_cmd,
+                    right_cmd,
+                    self.cmd_angular,
+                    inner_motor_cmd=self.forward_arc_turn_inner_cmd,
+                )
+        self.forward_arc_turn_active = use_forward_arc_turn
         self._set_motor_output(left_cmd, right_cmd)
 
         if self.open_loop_odom_from_cmd:
@@ -702,6 +781,8 @@ class RobotRpiDirectBridge(Node):
             f"PWR_ADAPT={1 if self.power_adapt_enabled else 0} "
             f"PWR_BOOST={self.power_adapt_boost:.3f} "
             f"IMU_WZ={self.feedback_angular_z:.3f} "
+            f"FWD_ARC={1 if self.forward_arc_turn_enabled else 0} "
+            f"FWD_ARC_ACTIVE={1 if self.forward_arc_turn_active else 0} "
             f"FLAGS=0x{self.sensor_flags:04X} "
             f"ERR=0x{self.error_flags:02X}"
         )

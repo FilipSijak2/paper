@@ -135,6 +135,7 @@ def test_resolve_runtime_config_uses_env(monkeypatch):
     assert config["min_motor_cmd"] == 0.35
     assert config["power_adapt_enabled"] is False
     assert config["power_adapt_imu_topic"] == "/imu/data"
+    assert config["forward_arc_turn_enabled"] is False
 
 
 def test_unwrap_raw_handles_wraparound():
@@ -182,6 +183,48 @@ def test_compute_wheel_commands_applies_min_motor_cmd_deadband_compensation():
 
     assert left == -0.25
     assert right == 0.25
+
+
+def test_compute_forward_arc_turn_commands_keeps_both_wheels_forward():
+    module = load_direct_bridge_module()
+
+    left, right = module.compute_forward_arc_turn_commands(
+        0.4,
+        max_angular_vel=1.0,
+        min_motor_cmd=0.35,
+        inner_motor_cmd=0.16,
+    )
+
+    assert left == 0.16
+    assert right == 0.4
+
+
+def test_compute_forward_arc_turn_commands_right_turn_keeps_both_wheels_forward():
+    module = load_direct_bridge_module()
+
+    left, right = module.compute_forward_arc_turn_commands(
+        -0.4,
+        max_angular_vel=1.0,
+        min_motor_cmd=0.35,
+        inner_motor_cmd=0.16,
+    )
+
+    assert left == 0.4
+    assert right == 0.16
+
+
+def test_enforce_forward_turn_no_reverse_clamps_inner_wheel_forward():
+    module = load_direct_bridge_module()
+
+    left, right = module.enforce_forward_turn_no_reverse(
+        -0.2,
+        0.7,
+        cmd_angular=0.4,
+        inner_motor_cmd=0.18,
+    )
+
+    assert left == 0.18
+    assert right == 0.7
 
 
 def test_update_power_adapt_boost_increases_when_measured_rotation_is_too_low():
