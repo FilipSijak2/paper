@@ -3,3 +3,5 @@
 *.zip
 *__pycache__/
 megalinter-reports/
+.vscode/settings.json
+robottrace.robottrace-log-viewer-1.0.0.foxe
