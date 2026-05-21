@@ -22,7 +22,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'arduino_listener = sensor_fusion_pkg.arduino_listener_impl:main'
+            'arduino_listener = sensor_fusion_pkg.arduino_listener_impl:main',
+            'realsense_imu_transform = sensor_fusion_pkg.realsense_imu_transform:main',
         ],
     },
 )

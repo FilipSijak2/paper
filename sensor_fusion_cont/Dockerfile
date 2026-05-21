@@ -65,6 +65,7 @@ ENV SF_VERSION_TAG=unset \
     SF_IMU_SOURCE=realsense \
     SF_IMU_INPUT_TOPIC=/camera/realsense/imu \
     SF_IMU_OUTPUT_TOPIC=/imu/data \
+    SF_IMU_BASE_TOPIC=/imu/base_link \
     SF_EKF_CONFIG=/app/robot_localization.yaml
 
 # Use wrapper script that ensures workspace is built & sourced before launching

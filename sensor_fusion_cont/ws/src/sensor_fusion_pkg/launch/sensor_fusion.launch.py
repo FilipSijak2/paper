@@ -48,6 +48,13 @@ def generate_launch_description():
                     ('imu/data', output_topic),
                 ],
             ),
+            Node(
+                package='sensor_fusion_pkg',
+                executable='realsense_imu_transform',
+                name='realsense_imu_transform',
+                output='screen',
+                emulate_tty=True,
+            ),
             ekf_node,
         ])
 
