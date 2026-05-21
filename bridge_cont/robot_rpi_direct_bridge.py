@@ -716,6 +716,7 @@ class RobotRpiDirectBridge(Node):
 
         use_forward_arc_turn = (
             self.forward_arc_turn_enabled
+            and self.cmd_linear >= 0.0
             and abs(self.cmd_angular) >= self.forward_arc_turn_min_angular
             and abs(self.cmd_linear) <= self.forward_arc_turn_max_linear
         )
