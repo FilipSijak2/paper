@@ -1,0 +1,66 @@
+# Default Nav2 Collision Monitor configuration for muxed manual/auto cmd_vel.
+
+collision_monitor:
+  ros__parameters:
+    enabled: true
+    use_sim_time: false
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+
+    cmd_vel_in_topic: "/cmd_vel_collision_in"
+    cmd_vel_out_topic: "/cmd_vel"
+    state_topic: "/collision_monitor_state"
+
+    transform_tolerance: 0.2
+    source_timeout: 0.4
+    base_shift_correction: true
+    stop_pub_timeout: 1.0
+    enable_stamped_cmd_vel: false
+    use_realtime_priority: false
+
+    polygons: ["front_stop", "front_slow", "rear_stop", "footprint_approach"]
+
+    front_stop:
+      type: "polygon"
+      points: "[[0.34, 0.16], [0.34, -0.16], [0.06, -0.16], [0.06, 0.16]]"
+      action_type: "stop"
+      min_points: 2
+      visualize: true
+      polygon_pub_topic: "/collision_monitor/front_stop"
+      enabled: true
+
+    front_slow:
+      type: "polygon"
+      points: "[[0.70, 0.28], [0.70, -0.28], [0.10, -0.28], [0.10, 0.28]]"
+      action_type: "slowdown"
+      slowdown_ratio: 0.35
+      min_points: 3
+      visualize: true
+      polygon_pub_topic: "/collision_monitor/front_slow"
+      enabled: true
+
+    rear_stop:
+      type: "polygon"
+      points: "[[-0.08, 0.16], [-0.08, -0.16], [-0.30, -0.16], [-0.30, 0.16]]"
+      action_type: "stop"
+      min_points: 2
+      visualize: true
+      polygon_pub_topic: "/collision_monitor/rear_stop"
+      enabled: true
+
+    footprint_approach:
+      type: "polygon"
+      action_type: "approach"
+      footprint_topic: "/local_costmap/published_footprint"
+      time_before_collision: 1.5
+      simulation_time_step: 0.02
+      min_points: 4
+      visualize: false
+      enabled: true
+
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "/scan_filtered"
+      source_timeout: 0.25
+      enabled: true

@@ -36,6 +36,9 @@ echo "============================================================"
 : "${CMD_VEL_AUTO:=/cmd_vel_auto}"
 : "${CMD_VEL_JOY:=/cmd_vel_joy}"
 : "${CMD_VEL_OUT:=/cmd_vel}"
+: "${ENABLE_COLLISION_MONITOR:=0}"
+: "${COLLISION_MONITOR_PARAMS:=/app/collision_monitor_params.yaml}"
+: "${CMD_VEL_COLLISION_IN:=/cmd_vel_collision_in}"
 : "${MANUAL_DEFAULT:=false}"
 : "${MANUAL_TIMEOUT_S:=0.5}"
 : "${AUTO_TIMEOUT_S:=0.7}"
@@ -132,6 +135,10 @@ fi
 if [ ! -f "${NAV2_PARAMS_FILE}" ]; then
 	echo "[nav_start][WARN] Nav2 params file missing: ${NAV2_PARAMS_FILE}" >&2
 fi
+if [ "${ENABLE_COLLISION_MONITOR}" = "1" ] && [ ! -f "${COLLISION_MONITOR_PARAMS}" ]; then
+	echo "[nav_start][WARN] Collision monitor enabled but params missing: ${COLLISION_MONITOR_PARAMS}; publishing directly to ${CMD_VEL_OUT}" >&2
+	ENABLE_COLLISION_MONITOR=0
+fi
 
 export AMENT_TRACE_SETUP_FILES=${AMENT_TRACE_SETUP_FILES:-}
 set +u
@@ -144,7 +151,13 @@ if [ -n "${MAP_FILE}" ] && [ -f "${MAP_FILE}" ]; then
 	MAP_ARG+=("map:=${MAP_FILE}")
 fi
 
-NAV_CMD_VEL_OUT="${CMD_VEL_OUT}"
+FINAL_CMD_VEL_OUT="${CMD_VEL_OUT}"
+MUX_CMD_VEL_OUT="${FINAL_CMD_VEL_OUT}"
+if [ "${ENABLE_COLLISION_MONITOR}" = "1" ]; then
+	MUX_CMD_VEL_OUT="${CMD_VEL_COLLISION_IN}"
+fi
+
+NAV_CMD_VEL_OUT="${MUX_CMD_VEL_OUT}"
 if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 	NAV_CMD_VEL_OUT="${CMD_VEL_AUTO}"
 fi
@@ -154,7 +167,7 @@ GOAL_FORWARDER_PID=""
 EXTRA_PIDS=()
 
 if [ "${MAPPING_MODE}" = "1" ]; then
-	echo "[nav_start] MAPPING_MODE=1 — skipping Nav2 and goal_forwarder (cmd_vel_mux + joystick only)"
+	echo "[nav_start] MAPPING_MODE=1 — skipping Nav2 and goal_forwarder (cmd_vel_mux + optional collision monitor + joystick)"
 else
 	echo "[nav_start] Launching Nav2 params=${NAV2_PARAMS_FILE} ${MAP_ARG:+with map arg} use_amcl=${NAV2_USE_AMCL} cmd_vel_out=${NAV_CMD_VEL_OUT}"
 	if [ -f "${NAV2_LAUNCH_FILE}" ]; then
@@ -182,13 +195,22 @@ if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 	python3 /app/cmd_vel_mux.py --ros-args \
 		-p auto_topic:="${CMD_VEL_AUTO}" \
 		-p joy_topic:="${CMD_VEL_JOY}" \
-		-p out_topic:="${CMD_VEL_OUT}" \
+		-p out_topic:="${MUX_CMD_VEL_OUT}" \
 		-p manual_default:="${MANUAL_DEFAULT}" \
 		-p manual_timeout_s:="${MANUAL_TIMEOUT_S}" \
 		-p auto_timeout_s:="${AUTO_TIMEOUT_S}" \
 		-p publish_rate_hz:="${MUX_PUBLISH_RATE_HZ}" \
 		-p manual_speed_scale:="${MANUAL_SPEED_SCALE}" \
 		-p manual_angular_scale:="${MANUAL_ANGULAR_SCALE}" &
+	EXTRA_PIDS+=("$!")
+fi
+
+if [ "${ENABLE_COLLISION_MONITOR}" = "1" ]; then
+	echo "[nav_start] Starting collision monitor params=${COLLISION_MONITOR_PARAMS} in=${MUX_CMD_VEL_OUT} out=${FINAL_CMD_VEL_OUT}"
+	ros2 launch /app/collision_monitor_launch.py \
+		params_file:="${COLLISION_MONITOR_PARAMS}" \
+		cmd_vel_in:="${MUX_CMD_VEL_OUT}" \
+		cmd_vel_out:="${FINAL_CMD_VEL_OUT}" &
 	EXTRA_PIDS+=("$!")
 fi
 

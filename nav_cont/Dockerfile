@@ -8,6 +8,7 @@ RUN set -e; apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-nav2-bringup \
     ros-humble-nav2-map-server \
     ros-humble-nav2-amcl \
+    ros-humble-nav2-collision-monitor \
     ros-humble-nav2-lifecycle-manager \
     ros-humble-tf2-tools \
     ros-humble-tf2-geometry-msgs \
