@@ -39,6 +39,22 @@ echo "============================================================"
 : "${ENABLE_COLLISION_MONITOR:=0}"
 : "${COLLISION_MONITOR_PARAMS:=/app/collision_monitor_params.yaml}"
 : "${CMD_VEL_COLLISION_IN:=/cmd_vel_collision_in}"
+: "${ENABLE_CMD_VEL_SAFETY_FILTER:=0}"
+: "${CMD_VEL_SAFETY_INPUT:=/cmd_vel_safety_in}"
+: "${CMD_VEL_SAFETY_STATUS:=/cmd_vel_safety_status}"
+: "${CMD_VEL_REVERSE_MAX_SPEED:=0.22}"
+: "${CMD_VEL_FORBID_REVERSE_TURNING:=false}"
+: "${CMD_VEL_SCAN_STOP_ENABLED:=false}"
+: "${CMD_VEL_SCAN_TOPIC:=/scan_filtered}"
+: "${CMD_VEL_FRONT_STOP_DISTANCE:=0.28}"
+: "${CMD_VEL_REAR_STOP_DISTANCE:=0.22}"
+: "${CMD_VEL_SCAN_HALF_ANGLE_DEG:=28.0}"
+: "${CMD_VEL_SCAN_MIN_POINTS:=2}"
+: "${CMD_VEL_MAP_STOP_ENABLED:=false}"
+: "${CMD_VEL_MAP_TOPIC:=/map}"
+: "${CMD_VEL_POSE_TOPIC:=/amcl_pose}"
+: "${CMD_VEL_MAP_LOOKAHEAD_M:=0.30}"
+: "${CMD_VEL_MAP_HALF_WIDTH_M:=0.18}"
 : "${MANUAL_DEFAULT:=false}"
 : "${MANUAL_TIMEOUT_S:=0.5}"
 : "${AUTO_TIMEOUT_S:=0.7}"
@@ -152,7 +168,12 @@ if [ -n "${MAP_FILE}" ] && [ -f "${MAP_FILE}" ]; then
 fi
 
 FINAL_CMD_VEL_OUT="${CMD_VEL_OUT}"
-MUX_CMD_VEL_OUT="${FINAL_CMD_VEL_OUT}"
+POST_COLLISION_CMD_VEL_OUT="${FINAL_CMD_VEL_OUT}"
+if [ "${ENABLE_CMD_VEL_SAFETY_FILTER}" = "1" ]; then
+	POST_COLLISION_CMD_VEL_OUT="${CMD_VEL_SAFETY_INPUT}"
+fi
+
+MUX_CMD_VEL_OUT="${POST_COLLISION_CMD_VEL_OUT}"
 if [ "${ENABLE_COLLISION_MONITOR}" = "1" ]; then
 	MUX_CMD_VEL_OUT="${CMD_VEL_COLLISION_IN}"
 fi
@@ -206,11 +227,33 @@ if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then
 fi
 
 if [ "${ENABLE_COLLISION_MONITOR}" = "1" ]; then
-	echo "[nav_start] Starting collision monitor params=${COLLISION_MONITOR_PARAMS} in=${MUX_CMD_VEL_OUT} out=${FINAL_CMD_VEL_OUT}"
+	echo "[nav_start] Starting collision monitor params=${COLLISION_MONITOR_PARAMS} in=${MUX_CMD_VEL_OUT} out=${POST_COLLISION_CMD_VEL_OUT}"
 	ros2 launch /app/collision_monitor_launch.py \
 		params_file:="${COLLISION_MONITOR_PARAMS}" \
 		cmd_vel_in:="${MUX_CMD_VEL_OUT}" \
-		cmd_vel_out:="${FINAL_CMD_VEL_OUT}" &
+		cmd_vel_out:="${POST_COLLISION_CMD_VEL_OUT}" &
+	EXTRA_PIDS+=("$!")
+fi
+
+if [ "${ENABLE_CMD_VEL_SAFETY_FILTER}" = "1" ]; then
+	echo "[nav_start] Starting cmd_vel safety filter in=${POST_COLLISION_CMD_VEL_OUT} out=${FINAL_CMD_VEL_OUT}"
+	python3 /app/cmd_vel_safety_filter.py --ros-args \
+		-p input_topic:="${POST_COLLISION_CMD_VEL_OUT}" \
+		-p output_topic:="${FINAL_CMD_VEL_OUT}" \
+		-p status_topic:="${CMD_VEL_SAFETY_STATUS}" \
+		-p reverse_max_speed:="${CMD_VEL_REVERSE_MAX_SPEED}" \
+		-p forbid_reverse_turning:="${CMD_VEL_FORBID_REVERSE_TURNING}" \
+		-p scan_stop_enabled:="${CMD_VEL_SCAN_STOP_ENABLED}" \
+		-p scan_topic:="${CMD_VEL_SCAN_TOPIC}" \
+		-p front_stop_distance:="${CMD_VEL_FRONT_STOP_DISTANCE}" \
+		-p rear_stop_distance:="${CMD_VEL_REAR_STOP_DISTANCE}" \
+		-p scan_half_angle_deg:="${CMD_VEL_SCAN_HALF_ANGLE_DEG}" \
+		-p scan_min_points:="${CMD_VEL_SCAN_MIN_POINTS}" \
+		-p map_stop_enabled:="${CMD_VEL_MAP_STOP_ENABLED}" \
+		-p map_topic:="${CMD_VEL_MAP_TOPIC}" \
+		-p pose_topic:="${CMD_VEL_POSE_TOPIC}" \
+		-p map_lookahead_m:="${CMD_VEL_MAP_LOOKAHEAD_M}" \
+		-p map_half_width_m:="${CMD_VEL_MAP_HALF_WIDTH_M}" &
 	EXTRA_PIDS+=("$!")
 fi
 

@@ -22,28 +22,28 @@ collision_monitor:
 
     front_stop:
       type: "polygon"
-      points: "[[0.34, 0.16], [0.34, -0.16], [0.06, -0.16], [0.06, 0.16]]"
+      points: [0.34, 0.16, 0.34, -0.16, 0.06, -0.16, 0.06, 0.16]
       action_type: "stop"
-      min_points: 2
+      max_points: 1
       visualize: true
       polygon_pub_topic: "/collision_monitor/front_stop"
       enabled: true
 
     front_slow:
       type: "polygon"
-      points: "[[0.70, 0.28], [0.70, -0.28], [0.10, -0.28], [0.10, 0.28]]"
+      points: [0.70, 0.28, 0.70, -0.28, 0.10, -0.28, 0.10, 0.28]
       action_type: "slowdown"
       slowdown_ratio: 0.35
-      min_points: 3
+      max_points: 2
       visualize: true
       polygon_pub_topic: "/collision_monitor/front_slow"
       enabled: true
 
     rear_stop:
       type: "polygon"
-      points: "[[-0.08, 0.16], [-0.08, -0.16], [-0.30, -0.16], [-0.30, 0.16]]"
+      points: [-0.08, 0.16, -0.08, -0.16, -0.30, -0.16, -0.30, 0.16]
       action_type: "stop"
-      min_points: 2
+      max_points: 1
       visualize: true
       polygon_pub_topic: "/collision_monitor/rear_stop"
       enabled: true
@@ -54,7 +54,7 @@ collision_monitor:
       footprint_topic: "/local_costmap/published_footprint"
       time_before_collision: 1.5
       simulation_time_step: 0.02
-      min_points: 4
+      max_points: 3
       visualize: false
       enabled: true
 

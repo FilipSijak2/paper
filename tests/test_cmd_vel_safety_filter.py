@@ -19,6 +19,10 @@ def load_safety_filter_module():
     rclpy_node = ModuleType("rclpy.node")
     geometry_msgs = ModuleType("geometry_msgs")
     geometry_msgs_msg = ModuleType("geometry_msgs.msg")
+    nav_msgs = ModuleType("nav_msgs")
+    nav_msgs_msg = ModuleType("nav_msgs.msg")
+    sensor_msgs = ModuleType("sensor_msgs")
+    sensor_msgs_msg = ModuleType("sensor_msgs.msg")
     std_msgs = ModuleType("std_msgs")
     std_msgs_msg = ModuleType("std_msgs.msg")
 
@@ -30,20 +34,51 @@ def load_safety_filter_module():
             self.linear = SimpleNamespace(x=0.0, y=0.0, z=0.0)
             self.angular = SimpleNamespace(x=0.0, y=0.0, z=0.0)
 
+    class PoseWithCovarianceStamped:
+        def __init__(self):
+            orientation = SimpleNamespace(x=0.0, y=0.0, z=0.0, w=1.0)
+            position = SimpleNamespace(x=0.0, y=0.0, z=0.0)
+            self.pose = SimpleNamespace(pose=SimpleNamespace(position=position, orientation=orientation))
+
+    class OccupancyGrid:
+        def __init__(self):
+            orientation = SimpleNamespace(x=0.0, y=0.0, z=0.0, w=1.0)
+            position = SimpleNamespace(x=0.0, y=0.0, z=0.0)
+            origin = SimpleNamespace(position=position, orientation=orientation)
+            self.info = SimpleNamespace(resolution=0.1, width=10, height=10, origin=origin)
+            self.data = [0] * 100
+
+    class LaserScan:
+        def __init__(self):
+            self.angle_min = 0.0
+            self.angle_increment = 0.0
+            self.range_min = 0.0
+            self.range_max = 10.0
+            self.ranges = []
+
     class String:
         def __init__(self):
             self.data = ""
 
     rclpy_node.Node = Node
     geometry_msgs_msg.Twist = Twist
+    geometry_msgs_msg.PoseWithCovarianceStamped = PoseWithCovarianceStamped
+    nav_msgs_msg.OccupancyGrid = OccupancyGrid
+    sensor_msgs_msg.LaserScan = LaserScan
     std_msgs_msg.String = String
     geometry_msgs.msg = geometry_msgs_msg
+    nav_msgs.msg = nav_msgs_msg
+    sensor_msgs.msg = sensor_msgs_msg
     std_msgs.msg = std_msgs_msg
 
     inject("rclpy", rclpy)
     inject("rclpy.node", rclpy_node)
     inject("geometry_msgs", geometry_msgs)
     inject("geometry_msgs.msg", geometry_msgs_msg)
+    inject("nav_msgs", nav_msgs)
+    inject("nav_msgs.msg", nav_msgs_msg)
+    inject("sensor_msgs", sensor_msgs)
+    inject("sensor_msgs.msg", sensor_msgs_msg)
     inject("std_msgs", std_msgs)
     inject("std_msgs.msg", std_msgs_msg)
 
@@ -102,3 +137,43 @@ def test_filter_can_still_run_legacy_straight_reverse_mode():
     assert out.angular.z == 0.0
     assert modified is True
     assert reason == "reverse_turn_blocked"
+
+
+def test_scan_sector_detects_front_obstacle():
+    module = load_safety_filter_module()
+    scan = module.LaserScan()
+    scan.angle_min = -0.2
+    scan.angle_increment = 0.1
+    scan.range_min = 0.02
+    scan.range_max = 12.0
+    scan.ranges = [1.0, 0.20, 0.21, 1.0]
+
+    assert module.scan_sector_blocked(
+        scan,
+        distance_m=0.28,
+        half_angle_rad=0.25,
+        front=True,
+        min_points=2,
+    )
+
+
+def test_map_motion_blocks_occupied_cell_ahead():
+    module = load_safety_filter_module()
+    grid = module.OccupancyGrid()
+    grid.info.resolution = 0.1
+    grid.info.width = 10
+    grid.info.height = 10
+    grid.data = [0] * 100
+    grid.data[5 * 10 + 7] = 100
+
+    pose = module.PoseWithCovarianceStamped()
+    pose.pose.pose.position.x = 0.5
+    pose.pose.pose.position.y = 0.5
+
+    assert module.map_motion_blocked(
+        grid,
+        pose,
+        linear_x=0.1,
+        lookahead_m=0.25,
+        half_width_m=0.0,
+    )
