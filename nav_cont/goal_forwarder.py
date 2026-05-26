@@ -7,6 +7,7 @@ from rclpy.duration import Duration
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.action import NavigateToPose
 from std_msgs.msg import Bool, String
+from std_srvs.srv import SetBool
 from tf2_ros import Buffer, TransformException, TransformListener
 
 # Required for PoseStamped transform support registration.
@@ -38,6 +39,7 @@ class GoalForwarder(Node):
         self._sub = self.create_subscription(PoseStamped, goal_topic, self.goal_cb, 10)
         self._anomaly_pub = self.create_publisher(Bool, anomaly_topic, 10)
         self._anomaly_detail_pub = self.create_publisher(String, anomaly_detail_topic, 10)
+        self._set_manual_mode_client = self.create_client(SetBool, '/set_manual_mode')
         self._tf_buffer = Buffer(cache_time=Duration(seconds=10.0))
         self._tf_listener = TransformListener(self._tf_buffer, self)
 
@@ -64,6 +66,8 @@ class GoalForwarder(Node):
             self.get_logger().warn('NavigateToPose action server not available yet')
             self._set_anomaly(True, 'navigate_to_pose_unavailable')
             return
+
+        self._request_auto_mode()
 
         if self._cancel_previous_goal and self._active_goal_handle is not None:
             self.get_logger().warn('Canceling previous active goal before sending a new one.')
@@ -169,6 +173,29 @@ class GoalForwarder(Node):
                 f"Could not transform goal from {pose.header.frame_id} to {self._target_frame}: {exc}"
             )
             return None
+
+    def _request_auto_mode(self):
+        if not self._set_manual_mode_client.service_is_ready():
+            if not self._set_manual_mode_client.wait_for_service(timeout_sec=0.2):
+                self.get_logger().warn('/set_manual_mode service not available; goal sent without mux auto switch')
+                return
+
+        req = SetBool.Request()
+        req.data = False
+        future = self._set_manual_mode_client.call_async(req)
+        future.add_done_callback(self._auto_mode_response)
+
+    def _auto_mode_response(self, future):
+        try:
+            res = future.result()
+        except Exception as exc:
+            self.get_logger().warn(f'Could not switch mux to auto mode: {exc}')
+            return
+
+        if res.success:
+            self.get_logger().info('Mux switched to auto mode for navigation goal')
+        else:
+            self.get_logger().warn(f'Mux auto mode request failed: {res.message}')
 
     def _set_anomaly(self, active: bool, reason: str):
         if self._anomaly_active == active and self._anomaly_reason == reason:

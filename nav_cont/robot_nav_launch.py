@@ -44,6 +44,7 @@ def generate_launch_description() -> LaunchDescription:
             GroupAction(
                 [
                     SetRemap(src="cmd_vel", dst=cmd_vel_out),
+                    SetRemap(src="/cmd_vel", dst=cmd_vel_out),
                     IncludeLaunchDescription(
                         PythonLaunchDescriptionSource(_nav2_launch("bringup_launch.py")),
                         condition=IfCondition(use_amcl),
