@@ -127,6 +127,18 @@ def test_filter_caps_reverse_speed_without_removing_steering():
     assert reason == "reverse_speed_limited"
 
 
+def test_filter_caps_forward_speed_when_enabled():
+    module = load_safety_filter_module()
+    msg = make_twist(module, linear_x=0.32, angular_z=0.10)
+
+    out, modified, reason = module.filter_cmd_vel(msg, forward_max_speed=0.22)
+
+    assert out.linear.x == 0.22
+    assert out.angular.z == 0.10
+    assert modified is True
+    assert reason == "forward_speed_limited"
+
+
 def test_filter_caps_positive_and_negative_angular_speed():
     module = load_safety_filter_module()
     positive = make_twist(module, linear_x=0.10, angular_z=1.20)

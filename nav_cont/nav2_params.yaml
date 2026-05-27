@@ -41,7 +41,7 @@ amcl:
     z_short: 0.05
     scan_topic: /scan_filtered
     map_topic: map
-    set_initial_pose: true
+    set_initial_pose: false
     initial_pose:
       x: 0.026
       y: -0.127
@@ -56,7 +56,7 @@ bt_navigator:
     global_frame: map
     robot_base_frame: base_link
     odom_topic: /odometry/filtered
-    bt_loop_duration: 10
+    bt_loop_duration: 100
     default_server_timeout: 20
     # 'default_nav_through_poses_bt_xml' and 'default_nav_to_pose_bt_xml' are use defaults:
     # nav2_bt_navigator/navigate_to_pose_w_replanning_and_recovery.xml
@@ -114,7 +114,7 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: false
-    controller_frequency: 20.0
+    controller_frequency: 10.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -127,7 +127,7 @@ controller_server:
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.12
-      movement_time_allowance: 5.0
+      movement_time_allowance: 20.0
 
     # Goal checker parameters
     general_goal_checker:
@@ -137,24 +137,16 @@ controller_server:
       yaw_goal_tolerance: 0.25
 
     FollowPath:
-      plugin: "nav2_rotation_shim_controller::RotationShimController"
-      primary_controller: "dwb_core::DWBLocalPlanner"
-      # Shim intercepts control when heading error exceeds threshold and issues
-      # a clean in-place rotation before handing back to DWB.
-      # This solves carpet start-rotation and large-angle turn problems without
-      # relying on DWB to simultaneously rotate and path-follow.
-      angular_dist_threshold: 0.45 # rad (~26 deg): engage shim above this
-      forward_sampling_distance: 0.5 # m: look-ahead to compute path heading
-      rotate_to_heading_angular_vel: 0.30 # rad/s: shim rotation speed
-      max_angular_accel: 0.9
-      rotate_to_goal_heading: true # shim rotates to face goal on arrival
+      plugin: "dwb_core::DWBLocalPlanner"
+      max_angular_accel: 0.8
+      rotate_to_goal_heading: false
       simulate_ahead_time: 1.0
       debug_trajectory_details: false
       min_vel_x: 0.0
       min_vel_y: 0.0
       max_vel_x: 0.22
       max_vel_y: 0.0
-      max_vel_theta: 0.30
+      max_vel_theta: 0.40
       min_speed_xy: 0.0
       max_speed_xy: 0.22
       min_speed_theta: 0.0
@@ -166,9 +158,9 @@ controller_server:
       decel_lim_x: -0.6
       decel_lim_y: 0.0
       decel_lim_theta: -0.9
-      vx_samples: 12
+      vx_samples: 20
       vy_samples: 5
-      vtheta_samples: 16
+      vtheta_samples: 20
       sim_time: 1.7
       linear_granularity: 0.05
       angular_granularity: 0.025
@@ -182,17 +174,12 @@ controller_server:
           "RotateToGoal",
           "Oscillation",
           "BaseObstacle",
-          "ObstacleFootprint",
           "GoalAlign",
           "PathAlign",
           "PathDist",
           "GoalDist",
         ]
-      BaseObstacle.scale: 0.20
-      # ObstacleFootprint at scale 30 (not 120) prevents corner-cutting without
-      # rejecting all trajectories in a small room. Safe because RotationShimController
-      # handles rotations directly — DWB only runs when heading is already aligned.
-      ObstacleFootprint.scale: 2.0
+      BaseObstacle.scale: 0.08
       PathAlign.scale: 32.0
       PathAlign.forward_point_distance: 0.1
       GoalAlign.scale: 24.0
@@ -200,8 +187,8 @@ controller_server:
       PathDist.scale: 32.0
       GoalDist.scale: 24.0
       RotateToGoal.scale: 16.0
-      RotateToGoal.slowing_factor: 12.0
-      RotateToGoal.lookahead_time: 0.3
+      RotateToGoal.slowing_factor: 8.0
+      RotateToGoal.lookahead_time: 0.5
       # Oscillation critic: require 0.3 rad of committed rotation before declaring
       # oscillation. Default 0.2 rad triggers too early on carpet where traction
       # resistance causes small back-and-forth twitches.
@@ -211,7 +198,7 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 10.0
+      update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
@@ -223,12 +210,12 @@ local_costmap:
       resolution: 0.05
       # Keep local costmap odom-only; static map obstacles stay in global_costmap.
       footprint: "[[0.16, 0.165], [0.16, -0.165], [-0.11, -0.165], [-0.11, 0.165]]"
-      footprint_padding: 0.05
+      footprint_padding: 0.02
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.0
-        inflation_radius: 0.55
+        cost_scaling_factor: 2.5
+        inflation_radius: 0.40
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
@@ -284,7 +271,7 @@ global_costmap:
       use_sim_time: false
       # Static map obstacles are handled here; local_costmap remains lighter.
       footprint: "[[0.16, 0.165], [0.16, -0.165], [-0.11, -0.165], [-0.11, 0.165]]"
-      footprint_padding: 0.05
+      footprint_padding: 0.02
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -337,7 +324,7 @@ map_saver:
 
 planner_server:
   ros__parameters:
-    expected_planner_frequency: 20.0
+    expected_planner_frequency: 5.0
     use_sim_time: false
     planner_plugins: ["GridBased"]
     GridBased:
@@ -378,7 +365,7 @@ behavior_server:
     transform_tolerance: 0.3
     use_sim_time: false
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.30
+    max_rotational_vel: 0.40
     min_rotational_vel: 0.08
     rotational_acc_lim: 0.9
 
@@ -400,14 +387,14 @@ waypoint_follower:
 velocity_smoother:
   ros__parameters:
     use_sim_time: false
-    smoothing_frequency: 20.0
+    smoothing_frequency: 10.0
     scale_velocities: false
-    feedback: "CLOSED_LOOP"
-    max_velocity: [0.22, 0.0, 0.30]
-    min_velocity: [-0.22, 0.0, -0.30]
+    feedback: "OPEN_LOOP"
+    max_velocity: [0.22, 0.0, 0.40]
+    min_velocity: [-0.22, 0.0, -0.40]
     max_accel: [0.6, 0.0, 0.9]
     max_decel: [-0.6, 0.0, -0.9]
     odom_topic: "/odometry/filtered"
-    odom_duration: 0.1
+    odom_duration: 0.3
     deadband_velocity: [0.0, 0.0, 0.0]
     velocity_timeout: 1.0
