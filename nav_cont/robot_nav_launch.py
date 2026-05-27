@@ -45,6 +45,11 @@ def generate_launch_description() -> LaunchDescription:
                 [
                     SetRemap(src="cmd_vel", dst=cmd_vel_out),
                     SetRemap(src="/cmd_vel", dst=cmd_vel_out),
+                    # Nav2 bringup may internally route velocity_smoother output
+                    # through cmd_vel_smoothed -> cmd_vel. Keep both names inside
+                    # the auto/mux chain so nothing publishes directly to /cmd_vel.
+                    SetRemap(src="cmd_vel_smoothed", dst=cmd_vel_out),
+                    SetRemap(src="/cmd_vel_smoothed", dst=cmd_vel_out),
                     IncludeLaunchDescription(
                         PythonLaunchDescriptionSource(_nav2_launch("bringup_launch.py")),
                         condition=IfCondition(use_amcl),
