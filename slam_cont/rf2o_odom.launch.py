@@ -1,8 +1,12 @@
+import os
+
 from launch import LaunchDescription
 from launch_ros.actions import Node
 
 
 def generate_launch_description():
+    rf2o_log_level = os.environ.get("RF2O_LOG_LEVEL", "error")
+
     return LaunchDescription(
         [
             Node(
@@ -10,6 +14,11 @@ def generate_launch_description():
                 executable="rf2o_laser_odometry_node",
                 name="rf2o_laser_odometry",
                 output="screen",
+                arguments=[
+                    "--ros-args",
+                    "--log-level",
+                    f"rf2o_laser_odometry:={rf2o_log_level}",
+                ],
                 parameters=[
                     {
                         "laser_scan_topic": "/scan",
