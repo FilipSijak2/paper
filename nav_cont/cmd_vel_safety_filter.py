@@ -5,6 +5,7 @@ Purpose:
     - Preserve normal forward and in-place/forward-arc motion.
     - Allow reverse motion, including reverse arcs.
     - Optionally limit maximum reverse speed.
+    - Optionally limit maximum angular speed.
     - Publish debug information when a command is modified.
 
 Suggested command chain:
@@ -56,14 +57,17 @@ def filter_cmd_vel(
     msg: Twist,
     *,
     reverse_max_speed: float = 0.22,
+    angular_max_speed: float = 0.0,
     forbid_reverse_turning: bool = False,
     angular_deadband: float = 1e-4,
 ) -> tuple[Twist, bool, str]:
     """Return a filtered Twist and metadata.
 
     Reverse motion is allowed. If ``reverse_max_speed`` is positive, reverse
-    speed is clamped to ``-reverse_max_speed``. A legacy straight-reverse-only
-    mode remains available through ``forbid_reverse_turning``.
+    speed is clamped to ``-reverse_max_speed``. If ``angular_max_speed`` is
+    positive, angular speed is clamped symmetrically. A legacy
+    straight-reverse-only mode remains available through
+    ``forbid_reverse_turning``.
     """
 
     out = copy_twist(msg)
@@ -84,6 +88,14 @@ def filter_cmd_vel(
             out.angular.z = 0.0
             modified = True
             reasons.append("reverse_turn_blocked")
+
+    angular_max_speed = abs(float(angular_max_speed))
+    if angular_max_speed > 0.0:
+        limited = clamp(out.angular.z, -angular_max_speed, angular_max_speed)
+        if not math.isclose(limited, out.angular.z, rel_tol=0.0, abs_tol=1e-9):
+            out.angular.z = limited
+            modified = True
+            reasons.append("angular_speed_limited")
 
     return out, modified, ",".join(reasons) if reasons else "unchanged"
 
@@ -195,6 +207,7 @@ class CmdVelSafetyFilter(Node):
         self.output_topic = self.declare_parameter("output_topic", "/cmd_vel").get_parameter_value().string_value
         self.status_topic = self.declare_parameter("status_topic", "/cmd_vel_safety_status").get_parameter_value().string_value
         self.reverse_max_speed = self.declare_parameter("reverse_max_speed", 0.22).get_parameter_value().double_value
+        self.angular_max_speed = self.declare_parameter("angular_max_speed", 0.45).get_parameter_value().double_value
         self.forbid_reverse_turning = self.declare_parameter("forbid_reverse_turning", False).get_parameter_value().bool_value
         self.angular_deadband = self.declare_parameter("angular_deadband", 1e-4).get_parameter_value().double_value
         self.publish_unchanged_status = self.declare_parameter("publish_unchanged_status", False).get_parameter_value().bool_value
@@ -235,6 +248,7 @@ class CmdVelSafetyFilter(Node):
         self.get_logger().info(
             "CmdVelSafetyFilter started "
             f"input={self.input_topic} output={self.output_topic} reverse_max_speed={self.reverse_max_speed:.3f} "
+            f"angular_max_speed={self.angular_max_speed:.3f} "
             f"forbid_reverse_turning={self.forbid_reverse_turning} angular_deadband={self.angular_deadband:.6f} "
             f"scan_stop_enabled={self.scan_stop_enabled} map_stop_enabled={self.map_stop_enabled}"
         )
@@ -297,6 +311,7 @@ class CmdVelSafetyFilter(Node):
         out, modified, reason = filter_cmd_vel(
             msg,
             reverse_max_speed=self.reverse_max_speed,
+            angular_max_speed=self.angular_max_speed,
             forbid_reverse_turning=self.forbid_reverse_turning,
             angular_deadband=self.angular_deadband,
         )

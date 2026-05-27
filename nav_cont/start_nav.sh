@@ -43,6 +43,7 @@ echo "============================================================"
 : "${CMD_VEL_SAFETY_INPUT:=/cmd_vel_safety_in}"
 : "${CMD_VEL_SAFETY_STATUS:=/cmd_vel_safety_status}"
 : "${CMD_VEL_REVERSE_MAX_SPEED:=0.22}"
+: "${CMD_VEL_ANGULAR_MAX_SPEED:=0.45}"
 : "${CMD_VEL_FORBID_REVERSE_TURNING:=false}"
 : "${CMD_VEL_SCAN_STOP_ENABLED:=false}"
 : "${CMD_VEL_SCAN_TOPIC:=/scan_filtered}"
@@ -242,6 +243,7 @@ if [ "${ENABLE_CMD_VEL_SAFETY_FILTER}" = "1" ]; then
 		-p output_topic:="${FINAL_CMD_VEL_OUT}" \
 		-p status_topic:="${CMD_VEL_SAFETY_STATUS}" \
 		-p reverse_max_speed:="${CMD_VEL_REVERSE_MAX_SPEED}" \
+		-p angular_max_speed:="${CMD_VEL_ANGULAR_MAX_SPEED}" \
 		-p forbid_reverse_turning:="${CMD_VEL_FORBID_REVERSE_TURNING}" \
 		-p scan_stop_enabled:="${CMD_VEL_SCAN_STOP_ENABLED}" \
 		-p scan_topic:="${CMD_VEL_SCAN_TOPIC}" \

@@ -127,6 +127,28 @@ def test_filter_caps_reverse_speed_without_removing_steering():
     assert reason == "reverse_speed_limited"
 
 
+def test_filter_caps_positive_and_negative_angular_speed():
+    module = load_safety_filter_module()
+    positive = make_twist(module, linear_x=0.10, angular_z=1.20)
+    negative = make_twist(module, linear_x=0.10, angular_z=-1.20)
+
+    out_positive, modified_positive, reason_positive = module.filter_cmd_vel(
+        positive,
+        angular_max_speed=0.45,
+    )
+    out_negative, modified_negative, reason_negative = module.filter_cmd_vel(
+        negative,
+        angular_max_speed=0.45,
+    )
+
+    assert out_positive.angular.z == 0.45
+    assert modified_positive is True
+    assert reason_positive == "angular_speed_limited"
+    assert out_negative.angular.z == -0.45
+    assert modified_negative is True
+    assert reason_negative == "angular_speed_limited"
+
+
 def test_filter_can_still_run_legacy_straight_reverse_mode():
     module = load_safety_filter_module()
     msg = make_twist(module, linear_x=-0.10, angular_z=0.35)
