@@ -12,7 +12,7 @@ collision_monitor:
     state_topic: "/collision_monitor_state"
 
     transform_tolerance: 0.2
-    source_timeout: 0.4
+    source_timeout: 0.7
     base_shift_correction: true
     stop_pub_timeout: 1.0
     enable_stamped_cmd_vel: false
@@ -22,7 +22,7 @@ collision_monitor:
 
     front_stop:
       type: "polygon"
-      points: [0.34, 0.16, 0.34, -0.16, 0.06, -0.16, 0.06, 0.16]
+      points: [0.29, 0.15, 0.29, -0.15, 0.06, -0.15, 0.06, 0.15]
       action_type: "stop"
       max_points: 1
       visualize: true
@@ -31,9 +31,9 @@ collision_monitor:
 
     front_slow:
       type: "polygon"
-      points: [0.70, 0.28, 0.70, -0.28, 0.10, -0.28, 0.10, 0.28]
+      points: [0.55, 0.24, 0.55, -0.24, 0.10, -0.24, 0.10, 0.24]
       action_type: "slowdown"
-      slowdown_ratio: 0.35
+      slowdown_ratio: 0.55
       max_points: 2
       visualize: true
       polygon_pub_topic: "/collision_monitor/front_slow"
@@ -41,7 +41,7 @@ collision_monitor:
 
     rear_stop:
       type: "polygon"
-      points: [-0.08, 0.16, -0.08, -0.16, -0.30, -0.16, -0.30, 0.16]
+      points: [-0.08, 0.15, -0.08, -0.15, -0.26, -0.15, -0.26, 0.15]
       action_type: "stop"
       max_points: 1
       visualize: true
@@ -62,5 +62,5 @@ collision_monitor:
     scan:
       type: "scan"
       topic: "/scan_filtered"
-      source_timeout: 0.25
+      source_timeout: 0.6
       enabled: true
