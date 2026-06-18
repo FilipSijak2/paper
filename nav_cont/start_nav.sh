@@ -57,6 +57,12 @@ echo "============================================================"
 : "${CMD_VEL_POSE_TOPIC:=/amcl_pose}"
 : "${CMD_VEL_MAP_LOOKAHEAD_M:=0.30}"
 : "${CMD_VEL_MAP_HALF_WIDTH_M:=0.18}"
+: "${ENABLE_ROBOT_POSE_MAP_PUBLISHER:=0}"
+: "${ROBOT_POSE_MAP_TOPIC:=/robot_pose_map}"
+: "${ROBOT_POSE_MAP_FRAME:=map}"
+: "${ROBOT_POSE_BASE_FRAME:=base_link}"
+: "${ROBOT_POSE_PUBLISH_RATE_HZ:=1.0}"
+: "${ROBOT_POSE_LOOKUP_TIMEOUT_S:=0.2}"
 : "${MANUAL_DEFAULT:=false}"
 : "${MANUAL_TIMEOUT_S:=0.5}"
 : "${AUTO_TIMEOUT_S:=0.7}"
@@ -258,6 +264,17 @@ if [ "${ENABLE_CMD_VEL_SAFETY_FILTER}" = "1" ]; then
 		-p pose_topic:="${CMD_VEL_POSE_TOPIC}" \
 		-p map_lookahead_m:="${CMD_VEL_MAP_LOOKAHEAD_M}" \
 		-p map_half_width_m:="${CMD_VEL_MAP_HALF_WIDTH_M}" &
+	EXTRA_PIDS+=("$!")
+fi
+
+if [ "${ENABLE_ROBOT_POSE_MAP_PUBLISHER}" = "1" ]; then
+	echo "[nav_start] Starting robot_pose_map publisher topic=${ROBOT_POSE_MAP_TOPIC}"
+	python3 /app/robot_pose_map_publisher.py --ros-args \
+		-p map_frame:="${ROBOT_POSE_MAP_FRAME}" \
+		-p base_frame:="${ROBOT_POSE_BASE_FRAME}" \
+		-p pose_topic:="${ROBOT_POSE_MAP_TOPIC}" \
+		-p publish_rate_hz:="${ROBOT_POSE_PUBLISH_RATE_HZ}" \
+		-p lookup_timeout_s:="${ROBOT_POSE_LOOKUP_TIMEOUT_S}" &
 	EXTRA_PIDS+=("$!")
 fi
 
