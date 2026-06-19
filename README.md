@@ -23,3 +23,8 @@ The repository now uses this documentation structure:
 - [README.en.md](./README.en.md): full English documentation
 
 This keeps the root page clean on GitHub while still making both documentation versions easy to discover.
+
+## Jetson YOLO Anomaly Pipeline
+
+The rosbridge-based Raspberry Pi + Jetson anomaly workflow is documented in
+[ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PIPELINE.md).

@@ -58,6 +58,12 @@ Napomena:
 | `bag_browser_cont` | Web pregled bagova i logova | `filebrowser/filebrowser`, port `8080`, read-only `bags/` i `logs/` |
 | `camera_cont` | Opcionalni CSI/UDP kamera publisher | Trenutno je komentiran u composeu; RealSense je glavni aktivni camera path |
 
+Jetson YOLO anomaly workflow je izdvojen u
+[ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PIPELINE.md). U tom nacinu
+Jetson se spaja preko Raspberry Pi rosbridge WebSocketa, vraca samo anomaly
+vizualizacijske topice na Pi i sprema anomaly slike/snapshotove lokalno na
+Jetsonu.
+
 ## Funkcionalnosti po kontejneru
 
 Ovaj dio opisuje runtime stack iz `../stack/docker-compose.yaml` i imageove iz

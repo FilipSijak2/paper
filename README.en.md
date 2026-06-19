@@ -59,6 +59,12 @@ Notes:
 | `bag_browser_cont` | Web browser for bags and logs | `filebrowser/filebrowser`, port `8080`, read-only `bags/` and `logs/` |
 | `camera_cont` | Optional CSI/UDP camera publisher | Currently commented out in compose; RealSense is the main active camera path |
 
+The Jetson YOLO anomaly workflow is split out into
+[ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PIPELINE.md). In that mode
+Jetson connects through Raspberry Pi rosbridge, publishes only anomaly
+visualization topics back to the Pi, and saves anomaly evidence locally on the
+Jetson.
+
 ## Container Functionality
 
 This section describes the runtime stack from `../stack/docker-compose.yaml`
