@@ -95,10 +95,9 @@ else
 	green "[OK] Workspace already built and package present."
 fi
 
-# Additional integrity check: Arduino mode launches a package executable, so it
-# requires the standard ROS libexec install location. RealSense mode only uses
-# the launch file plus imu_filter_madgwick and can run without it.
-if [[ "${SF_IMU_MODE}" == "arduino" && ! -d "$LIBEXEC_DIR" ]]; then
+# Additional integrity check: both IMU modes launch package executables, so the
+# standard ROS libexec install location must exist.
+if [ ! -d "$LIBEXEC_DIR" ]; then
 	yellow "[WARN] Expected libexec directory missing: $LIBEXEC_DIR (will attempt one clean rebuild)"
 	pushd /app/ws >/dev/null
 	rm -rf build install log 2>/dev/null || true
@@ -112,7 +111,12 @@ if [[ "${SF_IMU_MODE}" == "arduino" && ! -d "$LIBEXEC_DIR" ]]; then
 	source "$OVERLAY_SETUP"
 	set -u
 	if [ ! -d "$LIBEXEC_DIR" ]; then
-		yellow "[WARN] libexec directory still absent after rebuild; Arduino mode will fallback to direct python execution"
+		if [[ "${SF_IMU_MODE}" == "arduino" ]]; then
+			yellow "[WARN] libexec directory still absent after rebuild; Arduino mode will fallback to direct python execution"
+		else
+			red "[FATAL] libexec directory still absent after rebuild; RealSense mode cannot launch package executables"
+			exit 3
+		fi
 	else
 		green "[OK] libexec directory created after rebuild."
 	fi

@@ -23,6 +23,7 @@ setup(
     entry_points={
         'console_scripts': [
             'arduino_listener = sensor_fusion_pkg.arduino_listener_impl:main',
+            'imu_yaw_rate_corrector = sensor_fusion_pkg.imu_yaw_rate_corrector:main',
             'realsense_imu_transform = sensor_fusion_pkg.realsense_imu_transform:main',
         ],
     },

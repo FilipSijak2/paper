@@ -49,6 +49,8 @@ def test_stack_topics_are_resolvable_against_known_runtime_publishers():
             "/tf",
             "/tf_static",
             "/imu/data",
+            "/imu/base_link",
+            "/imu/base_link_corrected",
             "/imu/arduino",
             "/realsense/imu",
             "/realsense/color/image_raw",
@@ -62,7 +64,14 @@ def test_stack_topics_are_resolvable_against_known_runtime_publishers():
         }
     )
 
-    for topic in ["/wheel_odom", "/imu/data", "/imu/arduino", "/camera/realsense/color/image_compressed"]:
+    for topic in [
+        "/wheel_odom",
+        "/imu/data",
+        "/imu/base_link",
+        "/imu/base_link_corrected",
+        "/imu/arduino",
+        "/camera/realsense/color/image_compressed",
+    ]:
         assert topic in recorded_topics
         assert healthcheck.resolve_available_topic(topic, known_runtime_topics) is not None
 

@@ -63,6 +63,16 @@ echo "============================================================"
 : "${ROBOT_POSE_BASE_FRAME:=base_link}"
 : "${ROBOT_POSE_PUBLISH_RATE_HZ:=1.0}"
 : "${ROBOT_POSE_LOOKUP_TIMEOUT_S:=0.2}"
+: "${ENABLE_AMCL_POSE_PERSISTENCE:=0}"
+: "${AMCL_POSE_FILE:=/srv/nav/last_amcl_pose.json}"
+: "${AMCL_POSE_TOPIC:=/amcl_pose}"
+: "${INITIAL_POSE_TOPIC:=/initialpose}"
+: "${AMCL_POSE_SAVE_PERIOD_S:=2.0}"
+: "${AMCL_POSE_RESTORE_ON_START:=true}"
+: "${AMCL_POSE_RESTORE_DELAY_S:=12.0}"
+: "${AMCL_POSE_RESTORE_COUNT:=12}"
+: "${AMCL_POSE_RESTORE_PERIOD_S:=0.75}"
+: "${AMCL_POSE_MAX_AGE_S:=604800.0}"
 : "${MANUAL_DEFAULT:=false}"
 : "${MANUAL_TIMEOUT_S:=0.5}"
 : "${AUTO_TIMEOUT_S:=0.7}"
@@ -275,6 +285,22 @@ if [ "${ENABLE_ROBOT_POSE_MAP_PUBLISHER}" = "1" ]; then
 		-p pose_topic:="${ROBOT_POSE_MAP_TOPIC}" \
 		-p publish_rate_hz:="${ROBOT_POSE_PUBLISH_RATE_HZ}" \
 		-p lookup_timeout_s:="${ROBOT_POSE_LOOKUP_TIMEOUT_S}" &
+	EXTRA_PIDS+=("$!")
+fi
+
+if [ "${ENABLE_AMCL_POSE_PERSISTENCE}" = "1" ] && [ "${MAPPING_MODE}" != "1" ]; then
+	echo "[nav_start] Starting AMCL pose persistence file=${AMCL_POSE_FILE}"
+	python3 /app/amcl_pose_persistence.py --ros-args \
+		-p pose_topic:="${AMCL_POSE_TOPIC}" \
+		-p initialpose_topic:="${INITIAL_POSE_TOPIC}" \
+		-p pose_file:="${AMCL_POSE_FILE}" \
+		-p map_file:="${MAP_FILE}" \
+		-p save_period_s:="${AMCL_POSE_SAVE_PERIOD_S}" \
+		-p restore_on_start:="${AMCL_POSE_RESTORE_ON_START}" \
+		-p restore_delay_s:="${AMCL_POSE_RESTORE_DELAY_S}" \
+		-p restore_republish_count:="${AMCL_POSE_RESTORE_COUNT}" \
+		-p restore_republish_period_s:="${AMCL_POSE_RESTORE_PERIOD_S}" \
+		-p max_pose_age_s:="${AMCL_POSE_MAX_AGE_S}" &
 	EXTRA_PIDS+=("$!")
 fi
 
