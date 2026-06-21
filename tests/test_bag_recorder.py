@@ -72,6 +72,9 @@ def test_load_topics_file_parses_yaml_array(tmp_path):
 
 
 def test_stack_recorded_topics_include_corrected_imu_streams():
+    if not STACK_RECORDED_TOPICS_PATH.exists():
+        pytest.skip("Sibling stack recorded topics file is not available")
+
     content = STACK_RECORDED_TOPICS_PATH.read_text(encoding="utf-8")
     topics = {
         line.split("#", 1)[0].strip()[2:].strip()
