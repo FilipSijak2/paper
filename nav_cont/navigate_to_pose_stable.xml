@@ -4,11 +4,14 @@
   visible path churn. It computes one global path for the goal and follows it.
   A new path is computed only after FollowPath/recovery fails or a new goal is
   received. Local costmaps and collision_monitor still react to near obstacles.
+
+  Use a normal Sequence here. PipelineSequence intentionally reticks upstream
+  actions while FollowPath is running, which recomputes /plan continuously.
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     <RecoveryNode number_of_retries="4" name="NavigateRecovery">
-      <PipelineSequence name="NavigateWithStablePlan">
+      <Sequence name="NavigateWithStablePlan">
         <RecoveryNode number_of_retries="1" name="ComputePathToPose">
           <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
           <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
@@ -18,7 +21,7 @@
           <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="general_goal_checker"/>
           <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
         </RecoveryNode>
-      </PipelineSequence>
+      </Sequence>
 
       <ReactiveFallback name="RecoveryFallback">
         <GoalUpdated/>

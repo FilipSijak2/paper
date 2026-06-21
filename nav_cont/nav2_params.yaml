@@ -152,7 +152,7 @@ controller_server:
 
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
-      max_angular_accel: 0.55
+      max_angular_accel: 0.35
       rotate_to_goal_heading: false
       simulate_ahead_time: 1.0
       debug_trajectory_details: false
@@ -162,7 +162,7 @@ controller_server:
       min_vel_y: 0.0
       max_vel_x: 0.10
       max_vel_y: 0.0
-      max_vel_theta: 0.24
+      max_vel_theta: 0.20
       min_speed_xy: 0.0
       max_speed_xy: 0.10
       # Let DWB sample true straight and very slow in-place rotations; the
@@ -170,12 +170,12 @@ controller_server:
       min_speed_theta: 0.0
       # Add high threshold velocity for turtlebot 3 issue.
       # https://github.com/ROBOTIS-GIT/turtlebot3_simulations/issues/75
-      acc_lim_x: 0.25
+      acc_lim_x: 0.20
       acc_lim_y: 0.0
-      acc_lim_theta: 0.55
-      decel_lim_x: -0.25
+      acc_lim_theta: 0.35
+      decel_lim_x: -0.20
       decel_lim_y: 0.0
-      decel_lim_theta: -0.55
+      decel_lim_theta: -0.35
       # Fewer samples keep DWB deterministic on the Pi and reduce left/right
       # command churn. vy is unused on this differential-drive robot.
       vx_samples: 18
@@ -203,10 +203,10 @@ controller_server:
       # The global plan can contain small grid-level kinks. Do not chase its
       # instantaneous heading too hard; look farther ahead and prioritize
       # staying near the path/goal over left-right heading corrections.
-      PathAlign.scale: 4.0
-      PathAlign.forward_point_distance: 0.45
-      GoalAlign.scale: 3.0
-      GoalAlign.forward_point_distance: 0.45
+      PathAlign.scale: 2.0
+      PathAlign.forward_point_distance: 0.65
+      GoalAlign.scale: 1.5
+      GoalAlign.forward_point_distance: 0.65
       PathDist.scale: 32.0
       GoalDist.scale: 22.0
       RotateToGoal.scale: 24.0
@@ -420,10 +420,10 @@ velocity_smoother:
     smoothing_frequency: 10.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.10, 0.0, 0.24]
-    min_velocity: [-0.08, 0.0, -0.24]
-    max_accel: [0.25, 0.0, 0.55]
-    max_decel: [-0.25, 0.0, -0.55]
+    max_velocity: [0.10, 0.0, 0.20]
+    min_velocity: [-0.08, 0.0, -0.20]
+    max_accel: [0.20, 0.0, 0.30]
+    max_decel: [-0.20, 0.0, -0.30]
     odom_topic: "/odometry/filtered"
     odom_duration: 0.3
     deadband_velocity: [0.0, 0.0, 0.0]
