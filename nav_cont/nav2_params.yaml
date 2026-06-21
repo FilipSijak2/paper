@@ -136,7 +136,7 @@ controller_server:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
       xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.30
+      yaw_goal_tolerance: 0.45
 
     FollowPath:
       plugin: "dwb_core::DWBLocalPlanner"
@@ -144,25 +144,27 @@ controller_server:
       rotate_to_goal_heading: false
       simulate_ahead_time: 1.0
       debug_trajectory_details: false
-      min_vel_x: 0.0
+      # Allow cautious reverse trajectories. This gives DWB an escape option
+      # when a hard 180-degree in-place turn would stall or disturb localization.
+      min_vel_x: -0.06
       min_vel_y: 0.0
-      max_vel_x: 0.12
+      max_vel_x: 0.10
       max_vel_y: 0.0
       max_vel_theta: 0.24
       min_speed_xy: 0.0
-      max_speed_xy: 0.12
+      max_speed_xy: 0.10
       # Let DWB sample true straight and very slow in-place rotations; the
       # bridge min_motor_cmd / power assist handles low-speed rotation torque.
       min_speed_theta: 0.0
       # Add high threshold velocity for turtlebot 3 issue.
       # https://github.com/ROBOTIS-GIT/turtlebot3_simulations/issues/75
-      acc_lim_x: 0.32
+      acc_lim_x: 0.25
       acc_lim_y: 0.0
       acc_lim_theta: 0.55
-      decel_lim_x: -0.32
+      decel_lim_x: -0.25
       decel_lim_y: 0.0
       decel_lim_theta: -0.55
-      vx_samples: 20
+      vx_samples: 28
       vy_samples: 5
       vtheta_samples: 32
       sim_time: 1.5
@@ -402,10 +404,10 @@ velocity_smoother:
     smoothing_frequency: 10.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.12, 0.0, 0.24]
-    min_velocity: [-0.10, 0.0, -0.24]
-    max_accel: [0.32, 0.0, 0.55]
-    max_decel: [-0.32, 0.0, -0.55]
+    max_velocity: [0.10, 0.0, 0.24]
+    min_velocity: [-0.08, 0.0, -0.24]
+    max_accel: [0.25, 0.0, 0.55]
+    max_decel: [-0.25, 0.0, -0.55]
     odom_topic: "/odometry/filtered"
     odom_duration: 0.3
     deadband_velocity: [0.0, 0.0, 0.0]

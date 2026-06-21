@@ -33,7 +33,10 @@ collision_monitor:
       type: "polygon"
       points: [0.55, 0.24, 0.55, -0.24, 0.10, -0.24, 0.10, 0.24]
       action_type: "slowdown"
-      slowdown_ratio: 0.55
+      # Keep a warning zone, but do not starve in-place rotations of torque.
+      # With 0.55 the 2026-06-21 180-degree turn bags were reduced to ~0.13
+      # rad/s and the drivetrain stalled.
+      slowdown_ratio: 0.80
       max_points: 2
       visualize: true
       polygon_pub_topic: "/collision_monitor/front_slow"
