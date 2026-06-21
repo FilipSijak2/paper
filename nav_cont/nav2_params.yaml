@@ -19,9 +19,12 @@ amcl:
     laser_max_range: 10.0
     laser_min_range: 0.2
     laser_model_type: "likelihood_field"
-    max_beams: 120
-    max_particles: 4000
-    min_particles: 1000
+    # Keep AMCL lighter on the Pi. The 2026-06-21 22:17 bag showed Nav2/TF
+    # timing misses while navigating; fewer beams/particles reduce CPU pressure
+    # without removing laser-based localization.
+    max_beams: 80
+    max_particles: 2000
+    min_particles: 500
     odom_frame_id: "odom"
     pf_err: 0.05
     pf_z: 0.99
@@ -60,8 +63,12 @@ bt_navigator:
     # Milliseconds. 20 ms is too tight on the Pi under DDS/costmap load and
     # causes false BT action/service timeouts during otherwise valid motion.
     default_server_timeout: 1000
-    # 'default_nav_through_poses_bt_xml' and 'default_nav_to_pose_bt_xml' are use defaults:
-    # nav2_bt_navigator/navigate_to_pose_w_replanning_and_recovery.xml
+    # Use a stable single-plan tree for navigate_to_pose. The Nav2 default tree
+    # replans periodically, which caused path churn in the 22:17 bag even when
+    # the goal was simple. This tree replans after a real follow/recovery
+    # failure or a new goal, while local costmaps still handle nearby obstacles.
+    default_nav_to_pose_bt_xml: "/app/navigate_to_pose_stable.xml"
+    # 'default_nav_through_poses_bt_xml' uses the Nav2 default:
     # nav2_bt_navigator/navigate_through_poses_w_replanning_and_recovery.xml
     # They can be set here or via a RewrittenYaml remap from a parent launch file to Nav2.
     plugin_lib_names:
@@ -116,7 +123,10 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: false
-    controller_frequency: 10.0
+    # DWB at 10 Hz with dense trajectory sampling overloaded the Pi and caused
+    # stale odom->map transforms. The robot is slow, so 5 Hz is enough and more
+    # stable.
+    controller_frequency: 5.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
     min_theta_velocity_threshold: 0.001
@@ -128,8 +138,10 @@ controller_server:
     # Progress checker parameters
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.08
-      movement_time_allowance: 35.0
+      # Tight turns near the goal may rotate more than translate. Avoid false
+      # recovery cycles while the robot is still making slow corrective motion.
+      required_movement_radius: 0.04
+      movement_time_allowance: 60.0
 
     # Goal checker parameters
     general_goal_checker:
@@ -164,13 +176,15 @@ controller_server:
       decel_lim_x: -0.25
       decel_lim_y: 0.0
       decel_lim_theta: -0.55
-      vx_samples: 28
-      vy_samples: 5
-      vtheta_samples: 32
-      sim_time: 1.5
+      # Fewer samples keep DWB deterministic on the Pi and reduce left/right
+      # command churn. vy is unused on this differential-drive robot.
+      vx_samples: 18
+      vy_samples: 1
+      vtheta_samples: 22
+      sim_time: 1.2
       linear_granularity: 0.05
       angular_granularity: 0.02
-      transform_tolerance: 0.3
+      transform_tolerance: 0.5
       xy_goal_tolerance: 0.25
       trans_stopped_velocity: 0.03
       short_circuit_trajectory_evaluation: true
@@ -207,11 +221,11 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 5.0
+      update_frequency: 4.0
       publish_frequency: 2.0
       global_frame: odom
       robot_base_frame: base_link
-      transform_tolerance: 0.3
+      transform_tolerance: 0.5
       use_sim_time: false
       rolling_window: true
       width: 3
@@ -226,8 +240,8 @@ local_costmap:
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.0
-        inflation_radius: 0.55
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.45
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
@@ -279,9 +293,11 @@ global_costmap:
       publish_frequency: 1.0
       global_frame: map
       robot_base_frame: base_link
-      transform_tolerance: 0.3
+      transform_tolerance: 0.5
       use_sim_time: false
-      # Global planner keeps a broad static-map inflation field for safer routes.
+      # Keep enough static-map inflation for safety, but do not make the whole
+      # room a high-cost field; the 22:17 bag showed wide global-plan arcs for
+      # simple nearby goals.
       footprint: "[[0.16, 0.165], [0.16, -0.165], [-0.11, -0.165], [-0.11, 0.165]]"
       footprint_padding: 0.03
       resolution: 0.05
@@ -317,8 +333,8 @@ global_costmap:
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 2.0
-        inflation_radius: 0.65
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.45
       always_send_full_costmap: false
 
 map_server:
@@ -336,7 +352,7 @@ map_saver:
 
 planner_server:
   ros__parameters:
-    expected_planner_frequency: 5.0
+    expected_planner_frequency: 2.0
     use_sim_time: false
     planner_plugins: ["GridBased"]
     GridBased:
@@ -376,12 +392,12 @@ behavior_server:
       plugin: "nav2_behaviors/AssistedTeleop"
     global_frame: odom
     robot_base_frame: base_link
-    transform_tolerance: 0.3
+    transform_tolerance: 0.5
     use_sim_time: false
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.24
+    max_rotational_vel: 0.20
     min_rotational_vel: 0.08
-    rotational_acc_lim: 0.55
+    rotational_acc_lim: 0.45
 
 robot_state_publisher:
   ros__parameters:

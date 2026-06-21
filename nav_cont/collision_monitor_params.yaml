@@ -39,7 +39,9 @@ collision_monitor:
       # With 0.55 the 2026-06-21 180-degree turn bags were reduced to ~0.13
       # rad/s and the drivetrain stalled.
       slowdown_ratio: 0.80
-      max_points: 2
+      # Require a small cluster before slowdown so scan speckles do not keep
+      # toggling velocity while Nav2 is trying to finish a goal.
+      max_points: 4
       visualize: true
       polygon_pub_topic: "/collision_monitor/front_slow"
       enabled: true
