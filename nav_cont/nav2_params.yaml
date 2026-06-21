@@ -184,16 +184,15 @@ controller_server:
           "GoalDist",
         ]
       BaseObstacle.scale: 0.28
-      # Avoid chasing tiny heading errors directly under the robot. The MCAP
-      # from 2026-06-21 showed frequent angular sign flips while following a
-      # valid path, so keep path distance important but make heading alignment
-      # look farther ahead and less aggressively.
-      PathAlign.scale: 14.0
-      PathAlign.forward_point_distance: 0.25
-      GoalAlign.scale: 8.0
-      GoalAlign.forward_point_distance: 0.25
-      PathDist.scale: 26.0
-      GoalDist.scale: 20.0
+      # The global plan can contain small grid-level kinks. Do not chase its
+      # instantaneous heading too hard; look farther ahead and prioritize
+      # staying near the path/goal over left-right heading corrections.
+      PathAlign.scale: 4.0
+      PathAlign.forward_point_distance: 0.45
+      GoalAlign.scale: 3.0
+      GoalAlign.forward_point_distance: 0.45
+      PathDist.scale: 32.0
+      GoalDist.scale: 22.0
       RotateToGoal.scale: 24.0
       RotateToGoal.slowing_factor: 18.0
       RotateToGoal.lookahead_time: 0.5
@@ -341,7 +340,9 @@ planner_server:
     GridBased:
       plugin: "nav2_navfn_planner/NavfnPlanner"
       tolerance: 0.25
-      use_astar: true
+      # Dijkstra-style NavFn paths are less prone to cell-by-cell zigzags than
+      # A* in the current inflated indoor map.
+      use_astar: false
       allow_unknown: true
 
 smoother_server:

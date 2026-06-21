@@ -8,6 +8,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "bag_recorder_cont" / "bag_recorder.sh"
+STACK_RECORDED_TOPICS_PATH = REPO_ROOT.parent / "stack" / "config" / "containers" / "recorded_topics.yaml"
 
 
 def bash_available() -> bool:
@@ -68,6 +69,18 @@ def test_load_topics_file_parses_yaml_array(tmp_path):
         "/odom",
         "/camera/realsense/color/image_raw",
     ]
+
+
+def test_stack_recorded_topics_include_corrected_imu_streams():
+    content = STACK_RECORDED_TOPICS_PATH.read_text(encoding="utf-8")
+    topics = {
+        line.split("#", 1)[0].strip()[2:].strip()
+        for line in content.splitlines()
+        if line.split("#", 1)[0].strip().startswith("- ")
+    }
+
+    assert "/imu/base_link" in topics
+    assert "/imu/base_link_corrected" in topics
 
 
 def test_refresh_topic_resolution_resolves_aliases_to_active_topics():

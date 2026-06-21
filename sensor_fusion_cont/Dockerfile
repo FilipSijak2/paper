@@ -1,6 +1,5 @@
 FROM ros:humble
 
-# Install only the ROS/runtime pieces used by the current implementation.
 # `ros-humble-imu-tools` is intentionally omitted because it pulls in RViz
 # plugins and a large GUI dependency chain that is not needed here and has been
 # causing container build failures on ARM images.
