@@ -15,18 +15,12 @@ the local auto/manual mux and safety filter.
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, SetEnvironmentVariable
+from launch.actions import DeclareLaunchArgument, SetEnvironmentVariable
 from launch.conditions import IfCondition
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.descriptions import ParameterFile
-from launch_ros.substitutions import FindPackageShare
 from nav2_common.launch import RewrittenYaml
-
-
-def _nav2_launch(name: str) -> PathJoinSubstitution:
-    return PathJoinSubstitution([FindPackageShare("nav2_bringup"), "launch", name])
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -40,7 +34,9 @@ def generate_launch_description() -> LaunchDescription:
     use_composition = LaunchConfiguration("use_composition")
     use_respawn = LaunchConfiguration("use_respawn")
     log_level = LaunchConfiguration("log_level")
+    localization_bond_timeout = LaunchConfiguration("localization_bond_timeout")
 
+    localization_lifecycle_nodes = ["map_server", "amcl"]
     lifecycle_nodes = [
         "controller_server",
         "smoother_server",
@@ -61,6 +57,19 @@ def generate_launch_description() -> LaunchDescription:
         ),
         allow_substs=True,
     )
+    localization_params = ParameterFile(
+        RewrittenYaml(
+            source_file=params_file,
+            root_key=namespace,
+            param_rewrites={
+                "use_sim_time": use_sim_time,
+                "autostart": autostart,
+                "yaml_filename": map_file,
+            },
+            convert_types=True,
+        ),
+        allow_substs=True,
+    )
 
     return LaunchDescription(
         [
@@ -75,19 +84,49 @@ def generate_launch_description() -> LaunchDescription:
             DeclareLaunchArgument("use_composition", default_value="False"),
             DeclareLaunchArgument("use_respawn", default_value="False"),
             DeclareLaunchArgument("log_level", default_value="info"),
-            IncludeLaunchDescription(
-                PythonLaunchDescriptionSource(_nav2_launch("localization_launch.py")),
+            # Launch localization directly so startup can tolerate transient DDS
+            # delays on the Pi. The stock Nav2 launch uses the lifecycle default
+            # bond timeout (4s), which can abort before map_server finishes its
+            # bond handshake under load and leave AMCL unable to accept
+            # /initialpose.
+            DeclareLaunchArgument("localization_bond_timeout", default_value="15.0"),
+            Node(
+                package="nav2_map_server",
+                executable="map_server",
+                name="map_server",
+                output="screen",
+                respawn=use_respawn,
+                respawn_delay=2.0,
                 condition=IfCondition(use_amcl),
-                launch_arguments={
-                    "namespace": namespace,
-                    "map": map_file,
-                    "params_file": params_file,
-                    "use_sim_time": use_sim_time,
-                    "autostart": autostart,
-                    "use_composition": use_composition,
-                    "use_respawn": use_respawn,
-                    "log_level": log_level,
-                }.items(),
+                parameters=[localization_params],
+                arguments=["--ros-args", "--log-level", log_level],
+                remappings=remappings,
+            ),
+            Node(
+                package="nav2_amcl",
+                executable="amcl",
+                name="amcl",
+                output="screen",
+                respawn=use_respawn,
+                respawn_delay=2.0,
+                condition=IfCondition(use_amcl),
+                parameters=[localization_params],
+                arguments=["--ros-args", "--log-level", log_level],
+                remappings=remappings,
+            ),
+            Node(
+                package="nav2_lifecycle_manager",
+                executable="lifecycle_manager",
+                name="lifecycle_manager_localization",
+                output="screen",
+                condition=IfCondition(use_amcl),
+                arguments=["--ros-args", "--log-level", log_level],
+                parameters=[
+                    {"use_sim_time": use_sim_time},
+                    {"autostart": autostart},
+                    {"node_names": localization_lifecycle_nodes},
+                    {"bond_timeout": localization_bond_timeout},
+                ],
             ),
             Node(
                 package="nav2_controller",

@@ -52,6 +52,7 @@ class AmclPosePersistence(Node):
 
         self.initialpose_pub = self.create_publisher(PoseWithCovarianceStamped, self.initialpose_topic, 10)
         self.create_subscription(PoseWithCovarianceStamped, self.pose_topic, self._pose_cb, 10)
+        self.create_subscription(PoseWithCovarianceStamped, self.initialpose_topic, self._initialpose_cb, 10)
 
         self.create_timer(max(0.5, float(self.save_period_s)), self._save_timer_cb)
         if self.restore_on_start:
@@ -65,6 +66,15 @@ class AmclPosePersistence(Node):
 
     def _pose_cb(self, msg: PoseWithCovarianceStamped) -> None:
         self.last_pose = msg
+
+    def _initialpose_cb(self, msg: PoseWithCovarianceStamped) -> None:
+        if self.restore_msg is not None and self.restore_remaining > 0:
+            if self._pose_id(msg) == self._pose_id(self.restore_msg):
+                return
+
+            self.restore_msg = None
+            self.restore_remaining = 0
+            self.get_logger().info("Manual /initialpose received; cancelling saved-pose restore")
 
     def _pose_id(self, msg: PoseWithCovarianceStamped) -> tuple[float, float, float]:
         pose = msg.pose.pose
