@@ -16,6 +16,7 @@ LAUNCH_COMMAND=(ros2 launch "${PKG_NAME}" sensor_fusion.launch.py)
 LIBEXEC_DIR=/app/ws/install/lib/${PKG_NAME}
 MAX_LAUNCH_RETRIES=${MAX_LAUNCH_RETRIES:-3}
 SF_IMU_SOURCE=${SF_IMU_SOURCE:-realsense}
+SF_IMU_YAW_CORRECTION_ENABLED=${SF_IMU_YAW_CORRECTION_ENABLED:-true}
 SF_IMU_MODE=""
 
 red() { echo -e "\033[31m$*\033[0m"; }
@@ -38,6 +39,7 @@ if [ -f /etc/timezone ]; then echo "[INFO] Container timezone: $(cat /etc/timezo
 
 echo "SENSOR_FUSION_IMAGE_TAG=${SF_VERSION_TAG:-unset}"
 echo "SENSOR_FUSION_IMU_SOURCE=${SF_IMU_SOURCE}"
+echo "SENSOR_FUSION_IMU_YAW_CORRECTION_ENABLED=${SF_IMU_YAW_CORRECTION_ENABLED}"
 SF_IMU_MODE="$(normalize_imu_source)"
 echo "SENSOR_FUSION_IMU_MODE=${SF_IMU_MODE}"
 
@@ -120,6 +122,42 @@ if [ ! -d "$LIBEXEC_DIR" ]; then
 	else
 		green "[OK] libexec directory created after rebuild."
 	fi
+fi
+
+if [[ "${SF_IMU_MODE}" == "realsense" ]]; then
+	missing_realsense_executables=()
+	for executable in realsense_imu_transform imu_yaw_rate_corrector; do
+		if ! ros2 pkg executables "${PKG_NAME}" | awk '{print $2}' | grep -qx "${executable}"; then
+			missing_realsense_executables+=("${executable}")
+		fi
+	done
+	if [ "${#missing_realsense_executables[@]}" -gt 0 ]; then
+		yellow "[WARN] Missing RealSense IMU executables: ${missing_realsense_executables[*]} (attempting clean rebuild)"
+		pushd /app/ws >/dev/null
+		rm -rf build install log 2>/dev/null || true
+		colcon build --symlink-install --merge-install || {
+			red "[ERROR] Rebuild (RealSense IMU executable fix) failed"
+			exit 1
+		}
+		popd >/dev/null
+		set +u
+		# shellcheck source=/dev/null
+		source "$OVERLAY_SETUP"
+		set -u
+	fi
+
+	still_missing_realsense_executables=()
+	for executable in realsense_imu_transform imu_yaw_rate_corrector; do
+		if ! ros2 pkg executables "${PKG_NAME}" | awk '{print $2}' | grep -qx "${executable}"; then
+			still_missing_realsense_executables+=("${executable}")
+		fi
+	done
+	if [ "${#still_missing_realsense_executables[@]}" -gt 0 ]; then
+		red "[FATAL] RealSense IMU mode requires missing executables: ${still_missing_realsense_executables[*]}"
+		red "[FATAL] Rebuild/pull the sensor_fusion image that contains realsense_imu_transform and imu_yaw_rate_corrector."
+		exit 4
+	fi
+	green "[OK] RealSense IMU transform/corrector executables are installed."
 fi
 
 # Show path debugging

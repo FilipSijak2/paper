@@ -24,6 +24,7 @@ import rclpy
 from geometry_msgs.msg import Point, Quaternion, Twist
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
 from std_msgs.msg import String
 
@@ -455,7 +456,7 @@ class RobotRpiDirectBridge(Node):
                 Imu,
                 self.power_adapt_imu_topic,
                 self.imu_feedback_callback,
-                20,
+                qos_profile_sensor_data,
             )
 
         self._init_gpio()

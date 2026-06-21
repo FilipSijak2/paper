@@ -11,7 +11,9 @@ collision_monitor:
     cmd_vel_out_topic: "/cmd_vel"
     state_topic: "/collision_monitor_state"
 
-    transform_tolerance: 0.2
+    # Latest bags showed intermittent scan->base_link future extrapolation
+    # around recovery turns. Keep the monitor active, but allow modest TF lag.
+    transform_tolerance: 0.5
     source_timeout: 0.7
     base_shift_correction: true
     stop_pub_timeout: 1.0

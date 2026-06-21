@@ -18,6 +18,7 @@ def load_direct_bridge_module():
 
     rclpy = ModuleType("rclpy")
     rclpy_node = ModuleType("rclpy.node")
+    rclpy_qos = ModuleType("rclpy.qos")
 
     geometry_msgs = ModuleType("geometry_msgs")
     geometry_msgs_msg = ModuleType("geometry_msgs.msg")
@@ -65,6 +66,7 @@ def load_direct_bridge_module():
             pass
 
     setattr(rclpy_node, "Node", Node)
+    setattr(rclpy_qos, "qos_profile_sensor_data", object())
 
     setattr(geometry_msgs_msg, "Twist", Twist)
     setattr(geometry_msgs_msg, "Point", Point)
@@ -83,6 +85,7 @@ def load_direct_bridge_module():
 
     inject("rclpy", rclpy)
     inject("rclpy.node", rclpy_node)
+    inject("rclpy.qos", rclpy_qos)
     inject("geometry_msgs", geometry_msgs)
     inject("geometry_msgs.msg", geometry_msgs_msg)
     inject("nav_msgs", nav_msgs)
