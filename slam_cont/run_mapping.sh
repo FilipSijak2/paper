@@ -59,6 +59,9 @@ SAVE_SERVICE_TYPE=""                  # will be detected on first successful Sav
 USE_DIRECT_SLAM=${USE_DIRECT_SLAM:-1} # 1 => use ros2 run async_slam_toolbox_node with params file, bypass generic launch
 MAP_TOPIC_CANDIDATES=${MAP_TOPIC_CANDIDATES:-"/map /slam_toolbox/map /localized_map"}
 MAPPING_MONITOR_INTERVAL=${MAPPING_MONITOR_INTERVAL:-2}
+EXPECT_IMU_YAW_CORRECTION=${EXPECT_IMU_YAW_CORRECTION:-auto} # auto|1|0; auto requires it when ENCODERS_ENABLED=0
+IMU_YAW_PREFLIGHT_TOPIC=${IMU_YAW_PREFLIGHT_TOPIC:-/imu/base_link_corrected}
+MAPPING_EKF_ODOM_TOPIC=${MAPPING_EKF_ODOM_TOPIC:-/odometry/filtered}
 
 # Reentrancy lock for cleanup
 CLEANUP_LOCK=0
@@ -98,6 +101,17 @@ wait_for_ros_service() {
 	done
 }
 
+is_truthy() {
+	case "${1:-}" in
+	1 | true | TRUE | True | yes | YES | Yes | on | ON | On)
+		return 0
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
 topic_has_message() {
 	local topic="$1"
 	local timeout="${2:-8}"
@@ -126,6 +140,34 @@ preflight_mapping_odometry() {
 	err "/odom_rf2o is not publishing. Refusing to start mapping because the map would use bad/stale odometry."
 	err "Check slam_cont logs for rf2o_laser_odometry crashes and verify: ros2 topic hz /odom_rf2o"
 	return 1
+}
+
+preflight_mapping_imu_yaw_correction() {
+	local encoders="${ENCODERS_ENABLED:-1}"
+	local expect="${EXPECT_IMU_YAW_CORRECTION:-auto}"
+
+	if [[ "$expect" == "auto" ]]; then
+		[[ "$encoders" == "0" ]] || return 0
+	elif ! is_truthy "$expect"; then
+		info "EXPECT_IMU_YAW_CORRECTION=${expect} -> skipping corrected IMU yaw-rate preflight."
+		return 0
+	fi
+
+	info "Checking corrected IMU yaw-rate before mapping (${IMU_YAW_PREFLIGHT_TOPIC})..."
+	if ! topic_has_message "$IMU_YAW_PREFLIGHT_TOPIC" "${IMU_YAW_PREFLIGHT_TIMEOUT:-8}"; then
+		err "${IMU_YAW_PREFLIGHT_TOPIC} is not publishing. Refusing to start mapping because EKF would miss IMU yaw correction."
+		err "Check sensor_fusion_cont logs for imu_yaw_rate_corrector and verify: ros2 topic hz ${IMU_YAW_PREFLIGHT_TOPIC}"
+		return 1
+	fi
+	info "Corrected IMU yaw-rate is alive."
+
+	info "Checking EKF odometry before mapping (${MAPPING_EKF_ODOM_TOPIC})..."
+	if ! topic_has_message "$MAPPING_EKF_ODOM_TOPIC" "${EKF_PREFLIGHT_TIMEOUT:-8}"; then
+		err "${MAPPING_EKF_ODOM_TOPIC} is not publishing. Refusing to start mapping because slam_toolbox would use stale/missing odom->base_link TF."
+		err "Check robot_localization in sensor_fusion_cont and verify RF2O + corrected IMU inputs."
+		return 1
+	fi
+	info "EKF odometry is alive."
 }
 
 preflight_mapping_scan_topic() {
@@ -479,8 +521,9 @@ if [[ -n "$TOPICS_FILE" ]]; then
 	TOPICS=$(grep -Ev '^#|^$' "$TOPICS_FILE" | xargs || true)
 else
 	# Default essential topics for slam_toolbox map reproduction.
-	# Keep wheel_odom for legacy/debug, plus rf2o and EKF odometry used when encoders are disabled.
-	TOPICS="/tf /tf_static /wheel_odom /odom_rf2o /odometry/filtered /scan /scan_filtered /imu/data /robot_description /clock"
+	# Keep wheel_odom for legacy/debug, plus rf2o, EKF odometry, and the
+	# corrected IMU yaw-rate path used when encoders are disabled.
+	TOPICS="/tf /tf_static /wheel_odom /odom_rf2o /odometry/filtered /scan /scan_filtered /imu/data /imu/base_link /imu/base_link_corrected /cmd_vel_collision_in /robot_description /clock"
 fi
 info "Topics: $TOPICS"
 log "Root: $MAP_ROOT | session=$SESSION_ID (incremental=$INCREMENTAL_NAMES prefix=$NAME_PREFIX index=${SESSION_INDEX:-N/A})"
@@ -491,6 +534,7 @@ if [[ "$MANAGE_DOCKER_SERVICES" != "0" ]]; then
 fi
 
 preflight_mapping_odometry
+preflight_mapping_imu_yaw_correction
 preflight_mapping_scan_topic
 
 # Detect existing slam_toolbox instance (avoid parallel)
