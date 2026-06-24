@@ -1,109 +1,129 @@
-# Current Communication Analysis
+# Analiza komunikacije sustava
 
-This document describes the communication model that matches the current robot architecture.
+Ovaj dokument opisuje komunikacijski model aktualne arhitekture robota.
 
-## Summary
+## Sažetak
 
-The active system is split into two main computers:
+Sustav koristi tri komunikacijske cjeline:
 
-- Raspberry Pi 5: robot control, ROS 2 graph, LiDAR, SLAM, Nav2, camera publishing, rosbridge and foxglove_bridge
-- Jetson Orin: YOLO anomaly detection and anomaly artifact generation
+| Cjelina | Uloga |
+| --- | --- |
+| Raspberry Pi 5 | ROS 2 robot graph, LiDAR, kamera, SLAM, Nav2, motorni bridge, rosbridge i foxglove_bridge |
+| Jetson Orin | YOLO detekcija anomalija, lokalno spremanje artefakata i objava anomaly topic-a |
+| Foxglove | Vizualizacija robota, mape i anomaly podataka kroz Raspberry Pi foxglove_bridge |
 
-Jetson should **not** join the Raspberry Pi ROS 2 DDS graph directly. Earlier tests showed that direct DDS participation, especially with image topics, overloaded the Raspberry Pi. The current design uses rosbridge WebSocket for controlled topic exchange.
+Aktualna granica između Raspberry Pi računala i Jetsona je `rosbridge` WebSocket. ROS 2 DDS graph živi na Raspberry Pi robot runtimeu, a Jetson koristi aplikacijsku WebSocket vezu za odabrane topic-e.
 
-## Raspberry Pi Communication
+## Raspberry Pi komunikacijska uloga
 
-Raspberry Pi hosts:
+Raspberry Pi hosta:
 
 - ROS 2 robot graph
-- `rosbridge_server`, usually `ws://raspberry.local:9090`
-- `foxglove_bridge`, usually `ws://raspberry.local:8765`
+- `rosbridge_server`, obično `ws://raspberry.local:9090`
+- `foxglove_bridge`, obično `ws://raspberry.local:8765`
 
-Raspberry Pi publishes the robot topics needed by Jetson:
+Raspberry Pi prema Jetsonu izlaže odabrane podatke:
 
-- `/camera/.../compressed` for YOLO input
-- `/map` for map snapshot generation
-- `/robot_pose_map` or `/amcl_pose` for anomaly localization
+- `/camera/.../compressed` za YOLO input
+- `/map` za izradu slike mape s oznakom anomalije
+- `/robot_pose_map` ili `/amcl_pose` za procjenu pozicije anomalije
 
-Raspberry Pi also receives anomaly visualization topics from Jetson through rosbridge:
+Raspberry Pi kroz rosbridge prima anomaly topic-e koje Jetson objavljuje:
 
 - `/anomaly/events`
 - `/anomaly/markers`
 - `/anomaly/debug_image/compressed`
 - `/anomaly/map_snapshot/compressed`
 
-## Jetson Communication
+## Jetson komunikacijska uloga
 
-Jetson connects to Raspberry Pi rosbridge as a WebSocket client.
+Jetson koristi rosbridge WebSocket klijent prema Raspberry Pi računalu.
 
-Jetson subscribes to:
+Jetson prima:
 
-- compressed camera image topic
-- map topic
-- robot pose topic
+- komprimirani slikovni tok kamere
+- kartu prostora
+- pozu robota u mapi
 
-Jetson publishes back:
+Jetson objavljuje:
 
-- JSON anomaly events
-- visualization markers in `map` frame
-- annotated camera image preview
-- map snapshot preview
+- JSON anomaly evente
+- vizualizacijske markere u `map` frameu
+- anotiranu sliku kamere
+- sliku mape s oznakom anomalije
 
-Jetson saves the actual artifact files locally:
+Jetson lokalno sprema:
 
-- original image
-- annotated image
+- originalnu sliku
+- anotiranu sliku
 - map snapshot PNG
-- events JSONL
+- `events.jsonl`
 
-## Foxglove Communication
+## Foxglove komunikacijska uloga
 
-Foxglove should connect to the Raspberry Pi foxglove_bridge endpoint, not to Jetson DDS:
+Foxglove koristi Raspberry Pi `foxglove_bridge` endpoint:
 
 ```text
 ws://raspberry.local:8765
 ```
 
-Foxglove can then display normal robot topics and the anomaly topics that Jetson has published back to the Raspberry Pi through rosbridge.
+Foxglove prikazuje normalne robot topic-e i anomaly topic-e koje Jetson objavljuje kroz rosbridge.
 
-Recommended Foxglove topics:
+Preporučeni topic-i za Foxglove prikaz:
 
 - `/map`
 - `/tf`
 - `/tf_static`
-- `/scan` or `/scan_filtered`
+- `/scan` ili `/scan_filtered`
 - `/odom`
-- `/robot_pose_map` if available
+- `/robot_pose_map` ili `/amcl_pose`
 - `/anomaly/markers`
 - `/anomaly/events`
 - `/anomaly/debug_image/compressed`
 - `/anomaly/map_snapshot/compressed`
 
-## Motor / Sensor Communication
+## Slikovni tok
 
-The active motor path is direct Raspberry Pi GPIO:
+Slikovni tok za Jetson inference koristi compressed image topic-e. Osnovni tok je:
 
 ```text
-Raspberry Pi GPIO -> DRV8833 -> motors
+Raspberry Pi camera publisher
+    -> /camera/.../compressed
+    -> rosbridge_server :9090
+    -> Jetson YOLO anomaly client
 ```
 
-The active runtime does not use:
+Anotirani rezultat koristi zaseban compressed image topic:
 
-- wheel encoder feedback
-- AS5600 encoders
-- TCA9548A I2C multiplexer
-- Nano ESP32 serial bridge as the main motor path
+```text
+Jetson YOLO anomaly client
+    -> /anomaly/debug_image/compressed
+    -> rosbridge_server :9090
+    -> Raspberry Pi ROS graph
+    -> foxglove_bridge :8765
+    -> Foxglove
+```
 
-Legacy serial and encoder-related code may remain in the repository, but it is not part of the current communication model.
+## Motorna i senzorska komunikacija
 
-## AI Kit / Hailo Status
+Motorni put koristi direktni Raspberry Pi GPIO bridge:
 
-Raspberry Pi AI Kit / Hailo inference is not the active anomaly detection path. The active path is Jetson YOLO over rosbridge.
+```text
+Raspberry Pi GPIO -> DRV8833 -> motori
+```
 
-## Recommended Runtime Boundaries
+Senzorski i navigacijski tokovi:
 
-- Keep Raspberry Pi responsible for navigation and ROS robot state.
-- Keep Jetson responsible for YOLO and anomaly artifacts.
-- Do not stream raw images over rosbridge; use compressed image topics.
-- Do not connect Jetson to the DDS graph unless there is a specific controlled test.
-- Use Foxglove only through Raspberry Pi foxglove_bridge.
+```text
+RPLidar /scan -> SLAM / AMCL / Nav2 -> /map + lokalizacija
+RealSense / kamera -> compressed image topic-i -> Jetson inference
+Nav2 / cmd_vel -> bridge_cont -> DRV8833 -> motori
+```
+
+## Runtime granice
+
+- Raspberry Pi vodi robotiku, navigaciju, mapu, ROS 2 graph, rosbridge i foxglove_bridge.
+- Jetson vodi YOLO inference, anomaly logiku i spremanje artefakata.
+- Foxglove koristi Raspberry Pi foxglove_bridge kao jedinstveni ulaz u prikaz sustava.
+- Compressed image topic-i čine osnovni slikovni transport prema Jetsonu.
+- Anomaly topic-i čine osnovni transport rezultata prema Foxglove prikazu.
