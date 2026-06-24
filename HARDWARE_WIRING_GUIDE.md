@@ -1,68 +1,94 @@
-# Hardware Wiring Guide
+# Vodič za fizičko ožičenje
 
-This guide describes the current active wiring for the robot.
+Ovaj dokument služi kao praktična checklista za spajanje i provjeru fizičkog ožičenja robota. Detaljna shema i tablica GPIO pinova nalaze se u [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md).
 
-## Current Active Wiring
+## Aktualni fizički sklop
 
 ```text
-Raspberry Pi 5 -> GPIO -> DRV8833 -> motors
+Raspberry Pi 5 -> GPIO -> DRV8833 -> lijevi i desni motor
 ```
 
-Current assumptions:
+Sustav koristi:
 
-- Raspberry Pi 5 is the motor-control computer.
-- `bridge_cont` runs in `BRIDGE_MODE=rpi_direct`.
-- The motor driver is DRV8833.
-- Bridge configuration uses `ENCODERS_ENABLED=0`.
-- Robot pose for navigation comes from LiDAR, SLAM, AMCL/Nav2 and available ROS pose topics.
+- Raspberry Pi 5 kao računalo za motorni bridge
+- DRV8833 kao driver lijevog i desnog motora
+- vanjsko napajanje za motore
+- zajedničku masu između Raspberry Pi računala, DRV8833 modula i motornog napajanja
 
-## DRV8833 Pin Mapping
+## Korišteni upravljački signali
 
-| Raspberry Pi signal | Physical pin | DRV8833 pin / function | Role |
-| --- | ---: | --- | --- |
-| GPIO17 | 11 | `SLP` / `nSLEEP` | enables DRV8833 |
-| GPIO24 | 18 | `BIN2` | right motor input 2 |
-| GPIO19 | 35 | `BIN1` | right motor input 1 |
-| GPIO23 | 16 | `AIN2` | left motor input 2 |
-| GPIO18 | 12 | `AIN1` | left motor input 1 |
-| GND | e.g. 6 | `GND` | common ground |
+Aktualni upravljački signali prema DRV8833 modulu su:
 
-## DRV8833 Wiring Notes
+```text
+GPIO17 -> SLP / nSLEEP
+GPIO24 -> BIN2
+GPIO19 -> BIN1
+GPIO23 -> AIN2
+GPIO18 -> AIN1
+GND    -> zajednička masa
+```
 
-- Connect Raspberry Pi GPIO outputs to the DRV8833 input pins listed above.
-- Connect `AOUT1` / `AOUT2` to the left motor.
-- Connect `BOUT1` / `BOUT2` to the right motor.
-- Power the motors from a motor-suitable external supply.
-- Connect Raspberry Pi GND, DRV8833 logic GND and motor supply GND together.
-- Hold `SLP` / `nSLEEP` on DRV8833 HIGH through GPIO17.
-- Keep motor voltage isolated from Raspberry Pi GPIO pins.
+Fizički pinovi i uloge pojedinih signala navedeni su u [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md#korišteni-pinovi).
 
-## Power Safety
+## Checklista prije spajanja
 
-Use a stable supply for the Raspberry Pi and SSD. Before disconnecting power, run:
+1. Isključi USB-C napajanje Raspberry Pi računala.
+2. Isključi vanjsko napajanje motora.
+3. Provjeri orijentaciju DRV8833 modula i oznake pinova.
+4. Provjeri kontinuitet GND vodova multimetrom.
+5. Provjeri da motorno napajanje ide samo na `VM` / `VIN+` i `GND` dio DRV8833 modula.
+6. Provjeri da GPIO pinovi Raspberry Pi računala idu samo na logičke ulaze DRV8833 modula.
+
+## Redoslijed spajanja
+
+1. Spoji GND Raspberry Pi računala na GND DRV8833 modula.
+2. Spoji GND vanjskog motornog napajanja na zajednički GND.
+3. Spoji `VM` / `VIN+` DRV8833 modula na pozitivni pol vanjskog motornog napajanja.
+4. Spoji `AOUT1` / `AOUT2` na lijevi motor.
+5. Spoji `BOUT1` / `BOUT2` na desni motor.
+6. Spoji GPIO signale s Raspberry Pi računala na DRV8833 ulaze prema tablici pinova.
+7. Pokreni Raspberry Pi i provjeri motorni bridge bez opterećenja robota.
+8. Pokreni kratki test lijevog i desnog motora pri maloj brzini.
+
+## Provjera nakon spajanja
+
+```text
+zajednička masa: Raspberry Pi GND <-> DRV8833 GND <-> motor supply GND
+motorno napajanje: supply + -> DRV8833 VM/VIN+
+lijevi motor: DRV8833 AOUT1/AOUT2
+right motor: DRV8833 BOUT1/BOUT2
+SLP/nSLEEP: GPIO17
+```
+
+Preporučena softverska provjera:
+
+```bash
+cd ~/robot-stack
+cat config/containers/cmd_vel_safety_filter.env 2>/dev/null || true
+```
+
+Aktualna konfiguracija bridgea:
+
+```env
+BRIDGE_MODE=rpi_direct
+GPIOCHIP=/dev/gpiochip4
+DRIVER=drv8833
+ENCODERS_ENABLED=0
+CMD_VEL_TOPIC=/cmd_vel
+```
+
+## Sigurno gašenje
+
+Prije prekida napajanja pokreni:
 
 ```bash
 sudo shutdown -h now
 ```
 
-Then wait until the system has stopped before disconnecting the powerbank or power supply.
+Nakon što se sustav zaustavi, isključi powerbank ili napajanje. Ovaj redoslijed čuva filesystem, SSD i boot particiju.
 
-## Jetson Wiring / Networking
+## Povezani dokumenti
 
-Jetson Orin is an external AI computer for anomaly detection. It communicates with the Raspberry Pi through rosbridge WebSocket:
-
-```text
-Raspberry Pi camera/map/pose topics -> rosbridge WebSocket -> Jetson YOLO
-Jetson anomaly topics -> rosbridge WebSocket -> Raspberry Pi -> Foxglove
-```
-
-Jetson can connect over Wi-Fi, Ethernet or Tailscale. Foxglove connects to the Raspberry Pi `foxglove_bridge` endpoint.
-
-## Current Visualization Topics
-
-Jetson publishes these anomaly topics back to the Raspberry Pi ROS graph through rosbridge:
-
-- `/anomaly/events`
-- `/anomaly/markers`
-- `/anomaly/debug_image/compressed`
-- `/anomaly/map_snapshot/compressed`
+- [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md) — fizička shema i pinovi
+- [HARDWARE_COMPONENTS.md](./HARDWARE_COMPONENTS.md) — hardverske komponente
+- [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md) — cjelokupna arhitektura sustava
