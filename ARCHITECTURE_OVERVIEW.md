@@ -1,6 +1,6 @@
 # Robot System Architecture Overview
 
-This document summarizes the **current** project architecture as implemented across this repository, the sibling runtime stack and the Jetson anomaly stack.
+This document summarizes the current project architecture across this repository, the robot runtime stack and the Jetson anomaly stack.
 
 ## High-Level Architecture
 
@@ -21,10 +21,10 @@ Jetson Orin
 └─ publishes anomaly visualization topics back to Raspberry Pi
 
 Foxglove
-└─ connects to Raspberry Pi foxglove_bridge and displays both normal robot topics and Jetson anomaly topics
+└─ connects to Raspberry Pi foxglove_bridge and displays robot topics and Jetson anomaly topics
 ```
 
-The Jetson does **not** join the ROS 2 DDS graph directly. Earlier testing showed that direct DDS participation from Jetson unnecessarily overloaded the Raspberry Pi, especially when image topics were involved.
+The selected Jetson <-> Raspberry Pi communication boundary is rosbridge WebSocket. This keeps Jetson inference traffic controlled and exposes only the topics needed for the thesis anomaly workflow.
 
 ## Current Hardware Path
 
@@ -34,23 +34,23 @@ The active motor/control path is:
 Raspberry Pi 5 -> GPIO -> DRV8833 -> motors
 ```
 
-Active assumptions:
+Current assumptions:
 
 - `BRIDGE_MODE=rpi_direct`
 - `GPIOCHIP=/dev/gpiochip4`
 - `DRIVER=drv8833`
-- wheel encoders are disabled and not used in the active setup
-- TCA9548A I2C multiplexer is not used
-- AS5600 encoders are not used
-- serial legacy firmware for Nano ESP32 is not the active motor path
+- `ENCODERS_ENABLED=0`
+- motor driver: DRV8833
+- motor command interface: Raspberry Pi GPIO through `bridge_cont`
+- robot pose sources: LiDAR, SLAM, AMCL/Nav2 and available ROS pose topics
 
-The robot navigation stack uses LiDAR/SLAM/AMCL/Nav2 and available ROS pose sources rather than wheel encoder feedback.
+The detailed wiring and pin list are in [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md).
 
 ## ROS 2 Runtime Components
 
 | Component | Role |
 | --- | --- |
-| `bridge_cont` | Direct Raspberry Pi GPIO motor bridge for DRV8833; publishes bridge status and wheel odometry placeholder/open-loop data if configured |
+| `bridge_cont` | Direct Raspberry Pi GPIO motor bridge for DRV8833; configured with `ENCODERS_ENABLED=0` |
 | `laser_driver_cont` | RPLidar A1 driver publishing `/scan` |
 | `slam_cont` | SLAM Toolbox, map generation and map save/export |
 | `nav_cont` | Nav2, AMCL, goal forwarding, cmd_vel mux/safety logic |
@@ -58,7 +58,7 @@ The robot navigation stack uses LiDAR/SLAM/AMCL/Nav2 and available ROS pose sour
 | `sensor_fusion_cont` | IMU filtering and robot_localization when enabled |
 | `rosbridge_cont` | WebSocket bridge on port `9090` for Jetson and selected clients |
 | `foxglove_bridge_cont` | WebSocket bridge on port `8765` for Foxglove visualization |
-| `ai_kit_cont` | Legacy/experimental Hailo path; not the active anomaly pipeline |
+| `ai_kit_cont` | Archived/experimental Hailo path in the repository |
 
 ## Anomaly Detection Architecture
 
@@ -92,7 +92,7 @@ The first real scenario treats `bottle` as the anomaly object. Jetson publishes:
 - `/anomaly/debug_image/compressed` (`sensor_msgs/CompressedImage`)
 - `/anomaly/map_snapshot/compressed` (`sensor_msgs/CompressedImage`)
 
-The marker text should be `ANOMALY: bottle` and remain visible in Foxglove for 180 seconds.
+The marker text is `ANOMALY: bottle` and the marker TTL is 180 seconds.
 
 Detailed anomaly documentation is in [ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PIPELINE.md).
 
@@ -118,9 +118,9 @@ Detailed anomaly documentation is in [ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_R
     -> Foxglove
 ```
 
-## Legacy / Deprecated References
+## Archived / Experimental References
 
-The repository still contains some code and documentation for earlier experiments:
+The repository also contains archived or experimental material for earlier prototypes:
 
 - `TCA9548A` I2C multiplexer
 - `AS5600` wheel encoders
@@ -128,4 +128,4 @@ The repository still contains some code and documentation for earlier experiment
 - `serial_legacy` Nano ESP32 bridge
 - Raspberry Pi AI Kit / Hailo anomaly processing
 
-These references are retained for history or optional experiments but should not be treated as the current thesis architecture. The current architecture is direct RPi GPIO motor control plus Jetson-based YOLO anomaly detection through rosbridge.
+The thesis baseline described in the current documentation is direct Raspberry Pi GPIO motor control plus Jetson-based YOLO anomaly detection through rosbridge.
