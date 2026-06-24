@@ -1,235 +1,131 @@
 # Robot System Architecture Overview
 
-This document summarizes the current project architecture as implemented in this
-repository and the sibling runtime stack in `../stack/`.
+This document summarizes the **current** project architecture as implemented across this repository, the sibling runtime stack and the Jetson anomaly stack.
 
-## 1. Current High-Level Model
-
-The project is a ROS 2 based robot stack orchestrated with Docker Compose on
-the host side. The active runtime in `../stack/.env` is currently
-`BRIDGE_MODE=rpi_direct`, so the Raspberry Pi drives the motor driver
-directly. Encoder hardware is present in the wiring, but the current stack has
-`ENCODERS_ENABLED=0`, so runtime odometry relies on open-loop bridge odometry
-and rf2o laser odometry.
-
-Current control chain:
+## High-Level Architecture
 
 ```text
-Raspberry Pi / Docker stack
-  |
-  +-- robot_bridge (BRIDGE_MODE=rpi_direct) <-> DRV8833 <-> motors
-  |                                    |
-  |                                    \-> TCA9548A -> AS5600 LEFT / RIGHT
-  |
-  +-- laser_driver -> /scan
-  +-- realsense_cont -> sensor_fusion_cont -> /imu/data
-  +-- slam_cont / nav_cont / rosbridge / foxglove / database
+Raspberry Pi 5
+├─ main ROS 2 robot computer
+├─ LiDAR, SLAM, localization, navigation and camera publishing
+├─ motor bridge in rpi_direct mode
+├─ rosbridge_server for selected WebSocket topic exchange
+└─ foxglove_bridge for visualization
+
+Jetson Orin
+├─ external AI computer
+├─ connects to Raspberry Pi through rosbridge WebSocket
+├─ runs YOLO inference
+├─ detects bottle as the first anomaly class
+├─ saves anomaly images, map snapshots and JSONL events locally
+└─ publishes anomaly visualization topics back to Raspberry Pi
+
+Foxglove
+└─ connects to Raspberry Pi foxglove_bridge and displays both normal robot topics and Jetson anomaly topics
 ```
 
-Legacy serial control chain still supported in software:
+The Jetson does **not** join the ROS 2 DDS graph directly. Earlier testing showed that direct DDS participation from Jetson unnecessarily overloaded the Raspberry Pi, especially when image topics were involved.
+
+## Current Hardware Path
+
+The active motor/control path is:
 
 ```text
-Raspberry Pi / Docker stack
-  |
-  +-- robot_bridge (BRIDGE_MODE=serial_legacy) <-> Nano ESP32 <-> DRV8833 <-> motors
-  |                                                     |
-  |                                                     \-> TCA9548A -> AS5600 LEFT / RIGHT
-  |
-  +-- laser_driver -> /scan
-  +-- realsense_cont -> sensor_fusion_cont -> /imu/data
-  +-- slam_cont / nav_cont / rosbridge / foxglove / database
+Raspberry Pi 5 -> GPIO -> DRV8833 -> motors
 ```
 
-## 2. Hardware Architecture
+Active assumptions:
 
-### Active controller path
+- `BRIDGE_MODE=rpi_direct`
+- `GPIOCHIP=/dev/gpiochip4`
+- `DRIVER=drv8833`
+- wheel encoders are disabled and not used in the active setup
+- TCA9548A I2C multiplexer is not used
+- AS5600 encoders are not used
+- serial legacy firmware for Nano ESP32 is not the active motor path
 
-- `Raspberry Pi 5`
-  - runs the Docker stack
-  - `robot_bridge` drives `DRV8833` through GPIO PWM
-  - encoder I2C wiring is available, but current config disables encoder reads
+The robot navigation stack uses LiDAR/SLAM/AMCL/Nav2 and available ROS pose sources rather than wheel encoder feedback.
 
-### Legacy controller path
+## ROS 2 Runtime Components
 
-- `Arduino Nano ESP32`
-  - supported by `BRIDGE_MODE=serial_legacy`
-  - receives motion commands over USB serial when that mode is used
-  - reads wheel encoders
-  - optionally reads onboard IMU
-  - computes wheel odometry
-  - directly controls the `DRV8833`
+| Component | Role |
+| --- | --- |
+| `bridge_cont` | Direct Raspberry Pi GPIO motor bridge for DRV8833; publishes bridge status and wheel odometry placeholder/open-loop data if configured |
+| `laser_driver_cont` | RPLidar A1 driver publishing `/scan` |
+| `slam_cont` | SLAM Toolbox, map generation and map save/export |
+| `nav_cont` | Nav2, AMCL, goal forwarding, cmd_vel mux/safety logic |
+| `realsense_cont` | RealSense/camera RGB/depth/camera_info/IMU topics |
+| `sensor_fusion_cont` | IMU filtering and robot_localization when enabled |
+| `rosbridge_cont` | WebSocket bridge on port `9090` for Jetson and selected clients |
+| `foxglove_bridge_cont` | WebSocket bridge on port `8765` for Foxglove visualization |
+| `ai_kit_cont` | Legacy/experimental Hailo path; not the active anomaly pipeline |
 
-### Motor stage
+## Anomaly Detection Architecture
 
-- `DRV8833`
-  - dual H-bridge
-  - in the active stack, wired to Raspberry Pi GPIO
-  - in serial legacy mode, wired to Nano GPIO
-  - powered from an external motor supply
-
-### Encoder stage
-
-- `TCA9548A`
-- `2x AS5600`
-
-Current channel mapping:
-
-- `CH0` = left encoder
-- `CH4` = right encoder
-
-### Host-side sensors
-
-- `RPLidar` for `/scan`
-- `RealSense D455` as the default source path for `/imu/data`
-
-## 3. Runtime Services
-
-Current runtime stack in `../stack/docker-compose.yaml` includes at least:
-
-- `robot_bridge`
-- `laser_driver`
-- `slam_cont`
-- `nav_cont`
-- `sensor_fusion_cont`
-- `realsense_cont`
-- `ai_kit_cont`
-- `rosbridge_websocket`
-- `foxglove_bridge`
-- `database_cont`
-- `bag_recorder_cont`
-- `bag_browser_cont`
-- `container_log_collector_cont`
-- `healthcheck_cont`
-
-## 4. Main Data Flows
-
-### Motion commands
+The active anomaly detection design is Jetson-based:
 
 ```text
-/cmd_vel
-  -> robot_bridge
-  -> Raspberry Pi GPIO PWM
-  -> DRV8833
-  -> motors
+RPi camera/map/pose topics
+        |
+        | rosbridge WebSocket
+        v
+Jetson YOLO anomaly client
+        |
+        +--> local Jetson artifact saving
+        |    ├─ original image
+        |    ├─ annotated image
+        |    ├─ map snapshot PNG
+        |    └─ events.jsonl
+        |
+        | rosbridge WebSocket
+        v
+RPi ROS graph
+        |
+        v
+Foxglove visualization through foxglove_bridge
 ```
 
-### Robot feedback
+The first real scenario treats `bottle` as the anomaly object. Jetson publishes:
+
+- `/anomaly/events` (`std_msgs/String`, JSON)
+- `/anomaly/markers` (`visualization_msgs/MarkerArray`)
+- `/anomaly/debug_image/compressed` (`sensor_msgs/CompressedImage`)
+- `/anomaly/map_snapshot/compressed` (`sensor_msgs/CompressedImage`)
+
+The marker text should be `ANOMALY: bottle` and remain visible in Foxglove for 180 seconds.
+
+Detailed anomaly documentation is in [ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PIPELINE.md).
+
+## Data Flow Summary
 
 ```text
-Raspberry Pi I2C
-  -> TCA9548A
-  -> AS5600 LEFT / RIGHT
-  -> robot_bridge
-  -> /wheel_odom
-  -> /robot_status
+/cmd_vel / goals
+    -> Nav2 / cmd_vel mux
+    -> bridge_cont
+    -> DRV8833 / motors
+
+/scan
+    -> SLAM / AMCL / Nav2
+    -> /map and localization
+
+/camera/.../compressed + /map + /robot_pose_map or /amcl_pose
+    -> rosbridge
+    -> Jetson YOLO anomaly client
+    -> anomaly visualization topics
+    -> rosbridge
+    -> Raspberry Pi ROS graph
+    -> foxglove_bridge
+    -> Foxglove
 ```
 
-In `serial_legacy` mode, the Nano publishes the same `/wheel_odom` and
-`/robot_status` feedback through the bridge, plus `/imu/arduino`.
+## Legacy / Deprecated References
 
-### Default IMU path for navigation and SLAM
+The repository still contains some code and documentation for earlier experiments:
 
-```text
-RealSense
-  -> sensor_fusion_cont
-  -> /imu/data
-```
+- `TCA9548A` I2C multiplexer
+- `AS5600` wheel encoders
+- `ENCODERS_ENABLED=1`
+- `serial_legacy` Nano ESP32 bridge
+- Raspberry Pi AI Kit / Hailo anomaly processing
 
-### Mapping path
-
-```text
-/scan + /tf + odometry + /imu/data
-  -> slam_cont
-  -> /map
-  -> saved map artifacts
-  -> database insert
-```
-
-## 5. Important Current Topics
-
-### Robot bridge topics
-
-- `/cmd_vel`
-- `/wheel_odom`
-- `/robot_status`
-
-In active `rpi_direct` mode, `/imu/arduino` is not published by
-`robot_bridge`. It exists only in serial legacy mode.
-
-### Mapping and navigation topics
-
-- `/scan`
-- `/tf`
-- `/tf_static`
-- `/map`
-- `/imu/data`
-
-## 6. Important Current Notes
-
-### `/wheel_odom` vs `/odom`
-
-The robot bridge publishes:
-
-- `/wheel_odom`
-
-Some legacy configs and older documents still mention:
-
-- `/odom`
-
-When documenting the current implementation, `/wheel_odom` is the correct
-bridge output topic. If a consumer expects `/odom`, use a remap or adapter.
-
-### EKF odometry input
-
-The active stack now has `ENCODERS_ENABLED=0` in both
-`bridge_rpi_direct.env` and `slam_cont.env`. That means
-`robot_bridge` runs open-loop wheel odometry from `/cmd_vel`, while
-`slam_cont` starts `rf2o_laser_odometry` automatically because
-`START_RF2O=auto`. This matches
-`../stack/config/containers/robot_localization.yaml`, where EKF `odom0` is
-`/odom_rf2o`.
-
-### RealSense IMU vs Nano IMU
-
-Default stack behavior:
-
-- `/imu/data` comes from `sensor_fusion_cont` using RealSense IMU input
-
-The Arduino/Nano IMU stream in serial legacy mode:
-
-- is available on `/imu/arduino`
-- is useful for debugging and recording
-- is not the default fused IMU source
-
-### Legacy items no longer in the main path
-
-The following appear in older project notes but are not part of the current
-main implementation:
-
-- `UNO R4` as active motor controller
-- `Nano <-> UNO` UART chain
-- `BTS7960 / IBT-2`
-- `micro-ROS agent`
-
-## 7. Deployment Summary
-
-Typical deployment:
-
-1. Build or pull images for the runtime services.
-2. Start the stack from `../stack/`.
-3. Confirm `/dev/i2c-1` and `/dev/gpiochip4` are available on the host.
-4. Confirm `robot_bridge` starts in `rpi_direct` mode.
-5. Verify `/wheel_odom`, `/robot_status`, and `/scan`.
-6. Run mapping or navigation workflows.
-
-If intentionally using serial legacy mode, confirm the Nano is visible as
-`/dev/ttyACM0` and verify `/imu/arduino`.
-
-## 8. Related Documents
-
-- `README.hr.md`
-- `README.en.md`
-- `CURRENT_WIRING_DIAGRAM.md`
-- `HARDWARE_WIRING_GUIDE.md`
-- `HARDWARE_SETUP_CUSTOM_PROTOCOL.md`
-- `COMMUNICATION_ANALYSIS.md`
+These references are retained for history or optional experiments but should not be treated as the current thesis architecture. The current architecture is direct RPi GPIO motor control plus Jetson-based YOLO anomaly detection through rosbridge.
