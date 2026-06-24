@@ -29,33 +29,35 @@ Aktualna komunikacijska granica između Jetsona i Raspberry Pi računala je `ros
 ## Vizualizacija arhitekture sustava
 
 ```mermaid
-flowchart LR
-    CAM["RealSense / camera<br/>compressed image stream"]
-    LIDAR["RPLidar A1<br/>/scan"]
-    RPI["Raspberry Pi 5<br/>ROS 2 robot host<br/>robot_bridge rpi_direct"]
-    MOTOR["DRV8833<br/>left + right motors"]
-    NAV["SLAM / AMCL / Nav2<br/>mapiranje, lokalizacija, navigacija"]
-    ROBOTDATA["Robot state topics<br/>/map<br/>/robot_pose_map ili /amcl_pose<br/>/tf + /tf_static<br/>/odom"]
-    ROSB["rosbridge_server<br/>ws://raspberry.local:9090"]
-    JETSON["Jetson Orin<br/>YOLO anomaly detection<br/>rosbridge / WebSocket"]
-    STORE["Jetson local artifact storage<br/>original image<br/>annotated image<br/>map snapshot<br/>events.jsonl"]
-    ANOM["Anomaly topics<br/>/anomaly/events<br/>/anomaly/markers<br/>/anomaly/debug_image/compressed<br/>/anomaly/map_snapshot/compressed"]
-    FGB["foxglove_bridge<br/>ws://raspberry.local:8765"]
-    FOX["Foxglove client<br/>map + robot + anomaly visualization"]
+flowchart TB
+    CAMERA[Camera compressed image]
+    LIDAR[RPLidar scan]
+    RPI[Raspberry Pi 5]
+    MOTOR[DRV8833 and motors]
+    NAV[SLAM AMCL Nav2]
+    STATE[Map pose tf odom]
+    ROSB[Rosbridge server port 9090]
+    JETSON[Jetson Orin YOLO]
+    STORE[Jetson artifact storage]
+    ANOM[Anomaly topics]
+    FGB[Foxglove bridge port 8765]
+    FOX[Foxglove client]
 
-    CAM -->|"/camera/.../compressed"| RPI
-    LIDAR -->|"/scan"| RPI
+    CAMERA --> RPI
+    LIDAR --> RPI
     RPI --> MOTOR
     RPI --> NAV
-    NAV --> ROBOTDATA
-    ROBOTDATA --> ROSB
+    NAV --> STATE
     RPI --> ROSB
-    ROSB -->|"camera + map + pose"| JETSON
+    STATE --> ROSB
+    ROSB --> JETSON
     JETSON --> STORE
-    JETSON -->|"anomaly visualization topics"| ANOM
+    JETSON --> ANOM
     ANOM --> ROSB
     ROSB --> RPI
     RPI --> FGB
+    STATE --> FGB
+    LIDAR --> FGB
     FGB --> FOX
 ```
 
