@@ -1,6 +1,6 @@
 # Diplomski rad
 
-Ovaj repozitorij sadrzi dokumentaciju i softverske komponente za ROS 2 robotski sustav diplomskog rada. Raspberry Pi ostaje glavno robotsko racunalo za kretanje, SLAM, Nav2, mapu, LiDAR i kameru, dok je detekcija anomalija prebacena na Jetson Orin.
+Ovaj repozitorij sadrzi dokumentaciju i softverske komponente za ROS 2 robotski sustav diplomskog rada. Raspberry Pi 5 je glavno robotsko racunalo za kretanje, SLAM, Nav2, mapu, LiDAR i kameru. Jetson Orin je vanjsko AI racunalo za YOLO detekciju anomalija.
 
 ## Aktualna odluka arhitekture
 
@@ -20,35 +20,31 @@ Jetson Orin
 ├─ pokrece YOLO detekciju anomalija
 ├─ za prvi scenarij tretira bottle/bocu kao anomaliju
 ├─ lokalno sprema originalnu sliku, anotiranu sliku, map snapshot i JSONL log
-└─ vraca samo anomaly vizualizacijske topice prema Raspberry Pi-ju
+└─ vraca anomaly vizualizacijske topice prema Raspberry Pi-ju
 
 Foxglove
 └─ spaja se na Raspberry Pi foxglove_bridge i prikazuje mapu, robota i anomaly topice
 ```
 
-Jetson se **ne spaja direktno u ROS 2 DDS mrezu** jer je to u ranijim testovima nepotrebno opteretilo Raspberry Pi. Umjesto toga koristi se `rosbridge` WebSocket kanal.
+Komunikacijski kanal Jetson <-> Raspberry Pi je `rosbridge` WebSocket. Foxglove se spaja na Raspberry Pi `foxglove_bridge`.
 
 ## Trenutna hardverska arhitektura
 
-Aktualna motorna arhitektura vise ne koristi wheel enkodere ni I2C multiplexor:
+Aktualni motorni put je:
 
 ```text
 Raspberry Pi 5 -> GPIO -> DRV8833 -> motori
 ```
 
-Napomene:
+Trenutno stanje:
 
 - `BRIDGE_MODE=rpi_direct` je aktivni bridge mode.
 - `DRV8833` je trenutni motor driver.
-- wheel enkoderi se trenutno **ne koriste**.
-- `TCA9548A` I2C multiplexor se trenutno **ne koristi**.
-- AS5600 enkoderi i encoder mux dokumenti su legacy/eksperimentalni.
-- `UNO R4` i `Nano ESP32 serial_legacy` put vise nisu glavni aktivni motorni put.
-- odometrija/navigacija oslanja se na LiDAR/SLAM/AMCL/Nav2 i postojece ROS izvore poze, a ne na wheel enkodere.
+- `ENCODERS_ENABLED=0` je konfiguracija bridgea.
+- Odometrija/navigacija oslanja se na LiDAR, SLAM, AMCL/Nav2 i dostupne ROS izvore poze.
+- Povezivanje motora opisuje [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md), ukljucujuci pinove i Mermaid vizualizaciju.
 
 ## AI / anomaly detection
-
-Aktivna odluka je da se anomaly detection ne izvodi preko Raspberry Pi AI Kita / Hailo-a. AI Kit/Hailo dokumentaciju i container treba tretirati kao legacy/eksperimentalni dio.
 
 Aktivni anomaly workflow je:
 
@@ -58,7 +54,7 @@ Raspberry Pi compressed camera + map + robot pose
         v
 Jetson Orin YOLO
         |
-        +--> sprema slike i logove lokalno na Jetsonu
+        +--> lokalno sprema slike, map snapshot i logove na Jetsonu
         |
         v
 /anomaly/events
@@ -76,7 +72,7 @@ Detaljan opis nalazi se u [ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PI
 
 | Komponenta | Trenutna uloga |
 | --- | --- |
-| `bridge_cont` | Raspberry Pi direct GPIO motor bridge za DRV8833; bez aktivnih wheel enkodera |
+| `bridge_cont` | Raspberry Pi direct GPIO motor bridge za DRV8833, konfiguriran s `ENCODERS_ENABLED=0` |
 | `laser_driver_cont` | RPLidar ROS 2 driver, objavljuje `/scan` |
 | `realsense_cont` | RealSense/camera topics za RGB/depth/camera_info/IMU |
 | `slam_cont` | SLAM Toolbox, mapa `/map`, map save/export |
@@ -84,7 +80,7 @@ Detaljan opis nalazi se u [ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PI
 | `sensor_fusion_cont` | IMU/filter/robot_localization, ovisno o aktivnim izvorima |
 | `rosbridge_cont` | WebSocket pristup odabranim ROS topicima, port `9090` |
 | `foxglove_bridge_cont` | Foxglove prikaz preko WebSocketa, port `8765` |
-| `ai_kit_cont` | Legacy/eksperimentalni Hailo path; nije aktivni anomaly pipeline |
+| `ai_kit_cont` | Arhivski/eksperimentalni Hailo path u repozitoriju |
 | `bag_recorder_cont` | Snimanje ROS bagova |
 | `db_cont` | PostgreSQL/PostGIS baza |
 | `healthcheck_cont` | Provjera stanja kontejnera i ROS grafa |
@@ -92,18 +88,16 @@ Detaljan opis nalazi se u [ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PI
 ## Vazni dokumenti
 
 - [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md) - aktualni pregled arhitekture.
-- [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md) - aktualna shema ozicenja bez enkodera/multiplexora.
+- [CURRENT_WIRING_DIAGRAM.md](./CURRENT_WIRING_DIAGRAM.md) - aktualna shema ozicenja s Mermaid vizualizacijom i popisom pinova.
 - [HARDWARE_WIRING_GUIDE.md](./HARDWARE_WIRING_GUIDE.md) - preporuceno ozicenje.
 - [HARDWARE_COMPONENTS.md](./HARDWARE_COMPONENTS.md) - aktualne hardverske komponente.
 - [ANOMALY_ROSBRIDGE_PIPELINE.md](./ANOMALY_ROSBRIDGE_PIPELINE.md) - Jetson YOLO anomaly pipeline.
 - [COMMUNICATION_ANALYSIS.md](./COMMUNICATION_ANALYSIS.md) - komunikacijski model izmedju RPi, Jetsona i Foxglovea.
 
-## Legacy napomene
-
-Ako dokument ili kod spominje `TCA9548A`, `AS5600`, `ENCODERS_ENABLED=1`, `Hailo`, `AI Kit` ili `serial_legacy`, to ne treba tumaciti kao trenutno aktivni smjer sustava. Trenutni smjer je:
+## Trenutni smjer sustava
 
 ```text
-Raspberry Pi: navigacija + senzori + ROS bridge
+Raspberry Pi: navigacija + senzori + ROS bridge + Foxglove bridge
 Jetson: YOLO anomaly detection + spremanje slika/snapshotova/logova
 Foxglove: vizualizacija preko Raspberry Pi foxglove_bridge
 ```
