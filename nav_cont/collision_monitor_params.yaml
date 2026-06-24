@@ -1,4 +1,15 @@
-# Default Nav2 Collision Monitor configuration for muxed manual/auto cmd_vel.
+# Active Nav2 Collision Monitor configuration for muxed manual/auto cmd_vel.
+#
+# Command chain:
+#   Nav2 /cmd_vel_auto or teleop /cmd_vel_joy
+#     -> cmd_vel_mux
+#     -> /cmd_vel_collision_in
+#     -> collision_monitor
+#     -> robot_bridge /cmd_vel
+#
+# The monitor uses /scan_filtered as the fast last-line stop/slow source. Nav2
+# autonomous driving still uses local/global costmaps with static map, LaserScan,
+# RealSense pointcloud, AI obstacle pointcloud, footprint critics, and inflation.
 
 collision_monitor:
   ros__parameters:
@@ -24,24 +35,30 @@ collision_monitor:
 
     front_stop:
       type: "polygon"
-      points: [0.29, 0.15, 0.29, -0.15, 0.06, -0.15, 0.06, 0.15]
+      # Keep the hard stop centered in front of the robot. The 2026-06-24
+      # hallway bag showed diagonal wall returns at the old +/-0.14 m edges,
+      # which held the monitor in stop and prevented reverse recovery.
+      points: [0.24, 0.10, 0.24, -0.10, 0.08, -0.10, 0.08, 0.10]
       action_type: "stop"
-      max_points: 1
+      max_points: 4
       visualize: true
       polygon_pub_topic: "/collision_monitor/front_stop"
       enabled: true
 
     front_slow:
       type: "polygon"
-      points: [0.55, 0.24, 0.55, -0.24, 0.10, -0.24, 0.10, 0.24]
+      # Narrower than before so normal hallway walls do not constantly toggle
+      # the slowdown state. Directional prediction is still handled by the
+      # footprint_approach polygon below.
+      points: [0.42, 0.16, 0.42, -0.16, 0.12, -0.16, 0.12, 0.16]
       action_type: "slowdown"
       # Keep a warning zone, but do not starve in-place rotations of torque.
       # With 0.55 the 2026-06-21 180-degree turn bags were reduced to ~0.13
       # rad/s and the drivetrain stalled.
-      slowdown_ratio: 0.80
+      slowdown_ratio: 0.90
       # Require a small cluster before slowdown so scan speckles do not keep
       # toggling velocity while Nav2 is trying to finish a goal.
-      max_points: 4
+      max_points: 12
       visualize: true
       polygon_pub_topic: "/collision_monitor/front_slow"
       enabled: true
@@ -59,9 +76,11 @@ collision_monitor:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      time_before_collision: 1.5
-      simulation_time_step: 0.02
-      max_points: 3
+      # At the current slow speeds, 1.0 s prediction is enough and avoids
+      # over-conservative braking while backing away from a front obstacle.
+      time_before_collision: 1.0
+      simulation_time_step: 0.05
+      max_points: 5
       visualize: false
       enabled: true
 

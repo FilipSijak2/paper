@@ -216,9 +216,9 @@ class CmdVelSafetyFilter(Node):
         self.input_topic = self.declare_parameter("input_topic", "/cmd_vel_muxed").get_parameter_value().string_value
         self.output_topic = self.declare_parameter("output_topic", "/cmd_vel").get_parameter_value().string_value
         self.status_topic = self.declare_parameter("status_topic", "/cmd_vel_safety_status").get_parameter_value().string_value
-        self.forward_max_speed = self.declare_parameter("forward_max_speed", 0.22).get_parameter_value().double_value
-        self.reverse_max_speed = self.declare_parameter("reverse_max_speed", 0.22).get_parameter_value().double_value
-        self.angular_max_speed = self.declare_parameter("angular_max_speed", 0.40).get_parameter_value().double_value
+        self.forward_max_speed = self.declare_parameter("forward_max_speed", 0.08).get_parameter_value().double_value
+        self.reverse_max_speed = self.declare_parameter("reverse_max_speed", 0.06).get_parameter_value().double_value
+        self.angular_max_speed = self.declare_parameter("angular_max_speed", 0.25).get_parameter_value().double_value
         self.forbid_reverse_turning = self.declare_parameter("forbid_reverse_turning", False).get_parameter_value().bool_value
         self.angular_deadband = self.declare_parameter("angular_deadband", 1e-4).get_parameter_value().double_value
         self.publish_unchanged_status = self.declare_parameter("publish_unchanged_status", False).get_parameter_value().bool_value
@@ -226,17 +226,17 @@ class CmdVelSafetyFilter(Node):
 
         self.scan_stop_enabled = self.declare_parameter("scan_stop_enabled", False).get_parameter_value().bool_value
         self.scan_topic = self.declare_parameter("scan_topic", "/scan_filtered").get_parameter_value().string_value
-        self.front_stop_distance = self.declare_parameter("front_stop_distance", 0.28).get_parameter_value().double_value
-        self.rear_stop_distance = self.declare_parameter("rear_stop_distance", 0.22).get_parameter_value().double_value
-        self.scan_half_angle_deg = self.declare_parameter("scan_half_angle_deg", 28.0).get_parameter_value().double_value
-        self.scan_min_points = self.declare_parameter("scan_min_points", 2).get_parameter_value().integer_value
+        self.front_stop_distance = self.declare_parameter("front_stop_distance", 0.24).get_parameter_value().double_value
+        self.rear_stop_distance = self.declare_parameter("rear_stop_distance", 0.20).get_parameter_value().double_value
+        self.scan_half_angle_deg = self.declare_parameter("scan_half_angle_deg", 14.0).get_parameter_value().double_value
+        self.scan_min_points = self.declare_parameter("scan_min_points", 5).get_parameter_value().integer_value
         self.scan_stale_timeout_s = self.declare_parameter("scan_stale_timeout_s", 0.6).get_parameter_value().double_value
 
         self.map_stop_enabled = self.declare_parameter("map_stop_enabled", False).get_parameter_value().bool_value
         self.map_topic = self.declare_parameter("map_topic", "/map").get_parameter_value().string_value
         self.pose_topic = self.declare_parameter("pose_topic", "/amcl_pose").get_parameter_value().string_value
-        self.map_lookahead_m = self.declare_parameter("map_lookahead_m", 0.30).get_parameter_value().double_value
-        self.map_half_width_m = self.declare_parameter("map_half_width_m", 0.18).get_parameter_value().double_value
+        self.map_lookahead_m = self.declare_parameter("map_lookahead_m", 0.22).get_parameter_value().double_value
+        self.map_half_width_m = self.declare_parameter("map_half_width_m", 0.10).get_parameter_value().double_value
         self.map_occupied_threshold = self.declare_parameter("map_occupied_threshold", 65).get_parameter_value().integer_value
         self.map_unknown_is_obstacle = self.declare_parameter("map_unknown_is_obstacle", False).get_parameter_value().bool_value
         self.map_pose_stale_timeout_s = self.declare_parameter("map_pose_stale_timeout_s", 2.0).get_parameter_value().double_value

@@ -1,7 +1,8 @@
 <?xml version="1.0"?>
 <!--
   Nav2 tree for small indoor goals where periodic global replanning causes
-  visible path churn. It computes one global path for the goal and follows it.
+  visible path churn. It computes one global path, smooths it once, and follows
+  the smoothed path.
   A new path is computed only after FollowPath/recovery fails or a new goal is
   received. Local costmaps and collision_monitor still react to near obstacles.
 
@@ -12,8 +13,11 @@
   <BehaviorTree ID="MainTree">
     <RecoveryNode number_of_retries="4" name="NavigateRecovery">
       <Sequence name="NavigateWithStablePlan">
-        <RecoveryNode number_of_retries="1" name="ComputePathToPose">
-          <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+        <RecoveryNode number_of_retries="1" name="ComputeAndSmoothPath">
+          <Sequence name="ComputePathThenSmooth">
+            <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
+            <SmoothPath unsmoothed_path="{path}" smoothed_path="{path}" max_smoothing_duration="1.0" smoother_id="simple_smoother" check_for_collisions="true"/>
+          </Sequence>
           <ClearEntireCostmap name="ClearGlobalCostmap-Context" service_name="global_costmap/clear_entirely_global_costmap"/>
         </RecoveryNode>
 
@@ -30,7 +34,7 @@
             <ClearEntireCostmap name="ClearLocalCostmap-Subtree" service_name="local_costmap/clear_entirely_local_costmap"/>
             <ClearEntireCostmap name="ClearGlobalCostmap-Subtree" service_name="global_costmap/clear_entirely_global_costmap"/>
           </Sequence>
-          <BackUp backup_dist="0.15" backup_speed="0.03"/>
+          <BackUp backup_dist="0.20" backup_speed="0.025"/>
           <Wait wait_duration="2"/>
         </RoundRobin>
       </ReactiveFallback>
