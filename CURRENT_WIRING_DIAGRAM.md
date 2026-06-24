@@ -13,27 +13,37 @@ Raspberry Pi 5 upravlja motorima preko GPIO pinova i `libgpiod` sučelja. DRV883
 ## Vizualizacija
 
 ```mermaid
-flowchart LR
-    SUPPLY["External motor supply"]
-    RPI["Raspberry Pi 5<br/>robot_bridge (rpi_direct)<br/>GPIO"]
-    DRV["DRV8833"]
-    LEFT["LEFT motor"]
-    RIGHT["RIGHT motor"]
-    GND(("Common GND"))
+flowchart TB
+    SUPPLY[External motor supply]
+    RPI[Raspberry Pi 5]
+    DRV[DRV8833]
+    LEFT[Left motor]
+    RIGHT[Right motor]
+    GND((Common GND))
 
-    SUPPLY -->|"VM / VIN+"| DRV
-    SUPPLY -->|"GND"| GND
+    SUPPLY --> VM[VM or VIN plus]
+    VM --> DRV
+    SUPPLY --> GND
 
-    RPI -->|"GPIO17 / pin 11 -> SLP"| DRV
-    RPI -->|"GPIO24 / pin 18 -> BIN2"| DRV
-    RPI -->|"GPIO19 / pin 35 -> BIN1"| DRV
-    RPI -->|"GPIO23 / pin 16 -> AIN2"| DRV
-    RPI -->|"GPIO18 / pin 12 -> AIN1"| DRV
-    RPI -->|"GND / npr. pin 6"| GND
+    RPI --> P17[GPIO17 pin 11 to SLP]
+    RPI --> P24[GPIO24 pin 18 to BIN2]
+    RPI --> P19[GPIO19 pin 35 to BIN1]
+    RPI --> P23[GPIO23 pin 16 to AIN2]
+    RPI --> P18[GPIO18 pin 12 to AIN1]
+    RPI --> RPIGND[GND pin 6]
 
-    DRV -->|"AOUT1 / AOUT2"| LEFT
-    DRV -->|"BOUT1 / BOUT2"| RIGHT
-    DRV -->|"GND"| GND
+    P17 --> DRV
+    P24 --> DRV
+    P19 --> DRV
+    P23 --> DRV
+    P18 --> DRV
+    RPIGND --> GND
+    DRV --> GND
+
+    DRV --> AOUT[AOUT1 and AOUT2]
+    DRV --> BOUT[BOUT1 and BOUT2]
+    AOUT --> LEFT
+    BOUT --> RIGHT
 ```
 
 ## Korišteni pinovi
