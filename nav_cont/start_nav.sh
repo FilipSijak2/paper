@@ -42,6 +42,7 @@ echo "============================================================"
 : "${ENABLE_CMD_VEL_SAFETY_FILTER:=1}"
 : "${CMD_VEL_SAFETY_INPUT:=/cmd_vel_safety_in}"
 : "${CMD_VEL_SAFETY_STATUS:=/cmd_vel_safety_status}"
+: "${CMD_VEL_PUBLISH_UNCHANGED_STATUS:=true}"
 : "${CMD_VEL_FORWARD_MAX_SPEED:=0.08}"
 : "${CMD_VEL_REVERSE_MAX_SPEED:=0.06}"
 : "${CMD_VEL_ANGULAR_MAX_SPEED:=0.25}"
@@ -259,6 +260,7 @@ if [ "${ENABLE_CMD_VEL_SAFETY_FILTER}" = "1" ]; then
 		-p input_topic:="${POST_COLLISION_CMD_VEL_OUT}" \
 		-p output_topic:="${FINAL_CMD_VEL_OUT}" \
 		-p status_topic:="${CMD_VEL_SAFETY_STATUS}" \
+		-p publish_unchanged_status:="${CMD_VEL_PUBLISH_UNCHANGED_STATUS}" \
 		-p forward_max_speed:="${CMD_VEL_FORWARD_MAX_SPEED}" \
 		-p reverse_max_speed:="${CMD_VEL_REVERSE_MAX_SPEED}" \
 		-p angular_max_speed:="${CMD_VEL_ANGULAR_MAX_SPEED}" \

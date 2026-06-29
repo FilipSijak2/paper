@@ -1,3 +1,4 @@
+import importlib.util
 import shlex
 import shutil
 import subprocess
@@ -8,6 +9,7 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = REPO_ROOT / "bag_recorder_cont" / "bag_recorder.sh"
+EVENT_SCRIPT_PATH = REPO_ROOT / "bag_recorder_cont" / "experiment_event.py"
 STACK_RECORDED_TOPICS_PATH = REPO_ROOT.parent / "stack" / "config" / "containers" / "recorded_topics.yaml"
 
 
@@ -84,6 +86,50 @@ def test_stack_recorded_topics_include_corrected_imu_streams():
 
     assert "/imu/base_link" in topics
     assert "/imu/base_link_corrected" in topics
+
+
+def test_stack_recorded_topics_include_ml_anomaly_dataset_streams():
+    if not STACK_RECORDED_TOPICS_PATH.exists():
+        pytest.skip("Sibling stack recorded topics file is not available")
+
+    content = STACK_RECORDED_TOPICS_PATH.read_text(encoding="utf-8")
+    topics = {
+        line.split("#", 1)[0].strip()[2:].strip()
+        for line in content.splitlines()
+        if line.split("#", 1)[0].strip().startswith("- ")
+    }
+    required_topics = {
+        "/cmd_vel",
+        "/cmd_vel_auto",
+        "/cmd_vel_collision_in",
+        "/cmd_vel_safety_in",
+        "/scan",
+        "/scan_filtered",
+        "/imu/data",
+        "/wheel_odom",
+        "/odometry/filtered",
+        "/robot_status",
+        "/cmd_vel_safety_status",
+        "/tf",
+        "/tf_static",
+        "/experiment_event",
+    }
+
+    assert required_topics <= topics
+
+
+def test_experiment_event_labels_are_validated_without_ros_runtime():
+    spec = importlib.util.spec_from_file_location("experiment_event", EVENT_SCRIPT_PATH)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.resolve_event("normal_straight", "start") == "normal_straight_start"
+    assert module.resolve_event("collision_end", None) == "collision_end"
+    assert module.resolve_event("unstable", None) is None
+
+    with pytest.raises(ValueError):
+        module.resolve_event("normal_strait", "start")
 
 
 def test_refresh_topic_resolution_resolves_aliases_to_active_topics():

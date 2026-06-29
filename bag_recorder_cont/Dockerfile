@@ -21,7 +21,8 @@ RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc \
 WORKDIR /app
 
 COPY bag_recorder.sh /app/bag_recorder.sh
-RUN chmod +x /app/bag_recorder.sh
+COPY experiment_event.py /app/experiment_event.py
+RUN chmod +x /app/bag_recorder.sh /app/experiment_event.py
 
 ENV TOPICS_FILE=/config/recorded_topics.yaml \
     BAG_OUTPUT_DIR=/bags \

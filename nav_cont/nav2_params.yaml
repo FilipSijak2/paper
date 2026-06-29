@@ -123,8 +123,9 @@ bt_navigator:
 controller_server:
   ros__parameters:
     use_sim_time: false
-    # Keep the controller light on the Pi. The 2026-06-24 hallway run still
-    # missed 5 Hz ticks while stuck, so run DWB slower with fewer samples below.
+    # Keep the controller light on the Pi. A 2026-06-29 run held 4 Hz reliably,
+    # but DWB changed rotation direction seven times while the path was behind
+    # the robot. Rotation shim below now handles that initial alignment.
     controller_frequency: 4.0
     min_x_velocity_threshold: 0.001
     min_y_velocity_threshold: 0.5
@@ -150,10 +151,21 @@ controller_server:
       yaw_goal_tolerance: 0.45
 
     FollowPath:
-      plugin: "dwb_core::DWBLocalPlanner"
-      max_angular_accel: 0.25
-      rotate_to_goal_heading: false
+      # NavFn is not kinematically feasible and may begin directly behind the
+      # robot. Rotate toward its initial heading once, then hand the path to DWB
+      # instead of asking DWB to alternate left/right while finding an arc.
+      plugin: "nav2_rotation_shim_controller::RotationShimController"
+      primary_controller: "dwb_core::DWBLocalPlanner"
+      angular_dist_threshold: 0.35
+      forward_sampling_distance: 0.40
+      rotate_to_heading_angular_vel: 0.08
+      max_angular_accel: 0.12
       simulate_ahead_time: 1.0
+      rotate_to_goal_heading: false
+      # /odometry/filtered angular velocity is noisy during low-speed turns.
+      # Open-loop ramping uses the previous command and avoids reacting to those
+      # spikes; velocity_smoother still applies the final acceleration limits.
+      closed_loop: false
       debug_trajectory_details: false
       # Keep normal path following forward-only. Reverse is handled by the BT
       # BackUp recovery, which is easier to reason about with collision monitor.
@@ -161,7 +173,7 @@ controller_server:
       min_vel_y: 0.0
       max_vel_x: 0.08
       max_vel_y: 0.0
-      max_vel_theta: 0.16
+      max_vel_theta: 0.10
       min_speed_xy: 0.0
       max_speed_xy: 0.08
       # Let DWB sample true straight and very slow in-place rotations; the
@@ -171,16 +183,18 @@ controller_server:
       # https://github.com/ROBOTIS-GIT/turtlebot3_simulations/issues/75
       acc_lim_x: 0.12
       acc_lim_y: 0.0
-      acc_lim_theta: 0.25
+      acc_lim_theta: 0.12
       decel_lim_x: -0.14
       decel_lim_y: 0.0
-      decel_lim_theta: -0.25
+      decel_lim_theta: -0.14
       # Fewer samples keep DWB deterministic on the Pi and reduce left/right
       # command churn. vy is unused on this differential-drive robot.
-      vx_samples: 12
+      vx_samples: 10
       vy_samples: 1
-      vtheta_samples: 16
-      sim_time: 1.0
+      vtheta_samples: 12
+      # Look farther ahead while evaluating fewer total trajectories. This is
+      # smoother in a corridor and remains lighter than the previous sampling.
+      sim_time: 1.4
       linear_granularity: 0.05
       angular_granularity: 0.02
       transform_tolerance: 0.5
@@ -209,8 +223,8 @@ controller_server:
       PathAlign.forward_point_distance: 0.85
       GoalAlign.scale: 0.8
       GoalAlign.forward_point_distance: 0.85
-      PathDist.scale: 28.0
-      GoalDist.scale: 22.0
+      PathDist.scale: 22.0
+      GoalDist.scale: 26.0
       RotateToGoal.scale: 24.0
       RotateToGoal.slowing_factor: 18.0
       RotateToGoal.lookahead_time: 0.5
@@ -218,7 +232,9 @@ controller_server:
       # oscillation. Default 0.2 rad triggers too early on carpet where traction
       # resistance causes small back-and-forth twitches.
       Oscillation.oscillation_reset_angle: 0.45
-      Oscillation.oscillation_reset_dist: 0.05
+      # In-place rotation causes a small apparent translation in localization.
+      # Do not let that immediately reset the left/right oscillation lock.
+      Oscillation.oscillation_reset_dist: 0.12
 
 local_costmap:
   local_costmap:
@@ -408,9 +424,9 @@ behavior_server:
     transform_tolerance: 0.5
     use_sim_time: false
     simulate_ahead_time: 2.0
-    max_rotational_vel: 0.16
-    min_rotational_vel: 0.06
-    rotational_acc_lim: 0.30
+    max_rotational_vel: 0.10
+    min_rotational_vel: 0.04
+    rotational_acc_lim: 0.15
 
 robot_state_publisher:
   ros__parameters:
@@ -433,10 +449,10 @@ velocity_smoother:
     smoothing_frequency: 10.0
     scale_velocities: false
     feedback: "OPEN_LOOP"
-    max_velocity: [0.08, 0.0, 0.16]
-    min_velocity: [-0.06, 0.0, -0.16]
-    max_accel: [0.12, 0.0, 0.20]
-    max_decel: [-0.14, 0.0, -0.22]
+    max_velocity: [0.08, 0.0, 0.10]
+    min_velocity: [-0.06, 0.0, -0.10]
+    max_accel: [0.12, 0.0, 0.12]
+    max_decel: [-0.14, 0.0, -0.14]
     odom_topic: "/odometry/filtered"
     odom_duration: 0.3
     deadband_velocity: [0.0, 0.0, 0.0]

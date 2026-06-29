@@ -221,7 +221,7 @@ class CmdVelSafetyFilter(Node):
         self.angular_max_speed = self.declare_parameter("angular_max_speed", 0.25).get_parameter_value().double_value
         self.forbid_reverse_turning = self.declare_parameter("forbid_reverse_turning", False).get_parameter_value().bool_value
         self.angular_deadband = self.declare_parameter("angular_deadband", 1e-4).get_parameter_value().double_value
-        self.publish_unchanged_status = self.declare_parameter("publish_unchanged_status", False).get_parameter_value().bool_value
+        self.publish_unchanged_status = self.declare_parameter("publish_unchanged_status", True).get_parameter_value().bool_value
         self.linear_deadband = self.declare_parameter("linear_deadband", 0.01).get_parameter_value().double_value
 
         self.scan_stop_enabled = self.declare_parameter("scan_stop_enabled", False).get_parameter_value().bool_value
