@@ -27,10 +27,12 @@
             <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
             <!--
               A close frontal obstacle can correctly block rotation in place.
-              Move back enough to clear front_stop before retrying the same
-              path; the rotation shim is engaged again on the retry.
+              Move straight back far enough to clear a close object before
+              retrying the same path; the rotation shim is engaged again.
+              Nav2 behavior collision checks and the directional safety filter
+              reject this command when the rear side is not clear.
             -->
-            <BackUp backup_dist="0.12" backup_speed="0.025"/>
+            <BackUp backup_dist="0.18" backup_speed="0.025"/>
           </Sequence>
         </RecoveryNode>
       </Sequence>

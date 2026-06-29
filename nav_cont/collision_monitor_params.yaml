@@ -7,9 +7,10 @@
 #     -> collision_monitor
 #     -> robot_bridge /cmd_vel
 #
-# The monitor uses /scan_filtered as the fast last-line stop/slow source. Nav2
-# autonomous driving still uses local/global costmaps with static map, LaserScan,
-# RealSense pointcloud, AI obstacle pointcloud, footprint critics, and inflation.
+# The monitor uses /scan_filtered for slowdown and predictive footprint checks.
+# Directional hard stops are applied by cmd_vel_safety_filter after this node.
+# Nav2 also uses local/global costmaps with static map, LaserScan, RealSense
+# pointcloud, AI obstacle pointcloud, footprint critics, and inflation.
 
 collision_monitor:
   ros__parameters:
@@ -31,10 +32,17 @@ collision_monitor:
     enable_stamped_cmd_vel: false
     use_realtime_priority: false
 
-    polygons: ["front_stop", "front_slow", "rear_stop", "footprint_approach"]
+    # Fixed stop polygons are not direction-aware: a front obstacle would also
+    # suppress a safe reverse recovery and deadlock the robot. Directional hard
+    # stops are enforced after this node by cmd_vel_safety_filter (front only
+    # while moving forward, rear only while reversing). Keep predictive
+    # footprint collision checking active for every command.
+    polygons: ["front_slow", "footprint_approach"]
 
     front_stop:
       type: "polygon"
+      # Reference tuning geometry. Not in the active polygons list;
+      # cmd_vel_safety_filter owns the directional hard stop.
       # Keep the hard stop centered in front of the robot. The 2026-06-24
       # hallway bag showed diagonal wall returns at the old +/-0.14 m edges,
       # which held the monitor in stop and prevented reverse recovery.
@@ -65,6 +73,8 @@ collision_monitor:
 
     rear_stop:
       type: "polygon"
+      # Reference tuning geometry. Directional rear stop is enforced by
+      # cmd_vel_safety_filter only while the commanded motion is reverse.
       points: [-0.08, 0.15, -0.08, -0.15, -0.26, -0.15, -0.26, 0.15]
       action_type: "stop"
       max_points: 1
