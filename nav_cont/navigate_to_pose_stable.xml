@@ -23,7 +23,15 @@
 
         <RecoveryNode number_of_retries="1" name="FollowPath">
           <FollowPath path="{path}" controller_id="FollowPath" goal_checker_id="general_goal_checker"/>
-          <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+          <Sequence name="MakeRoomAndRetryPath">
+            <ClearEntireCostmap name="ClearLocalCostmap-Context" service_name="local_costmap/clear_entirely_local_costmap"/>
+            <!--
+              A close frontal obstacle can correctly block rotation in place.
+              Move back enough to clear front_stop before retrying the same
+              path; the rotation shim is engaged again on the retry.
+            -->
+            <BackUp backup_dist="0.12" backup_speed="0.025"/>
+          </Sequence>
         </RecoveryNode>
       </Sequence>
 

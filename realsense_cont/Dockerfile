@@ -30,7 +30,8 @@ ENV TZ=Europe/Zagreb
 WORKDIR /app
 
 COPY start_realsense.sh /app/start_realsense.sh
-RUN chmod +x /app/start_realsense.sh
+COPY realsense_watchdog.py /app/realsense_watchdog.py
+RUN chmod +x /app/start_realsense.sh /app/realsense_watchdog.py
 
 ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     RS_CAMERA_NAME=realsense \
@@ -49,6 +50,10 @@ ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp \
     RS_GYRO_FPS=200 \
     RS_ACCEL_FPS=100 \
     RS_ALIGN_DEPTH=true \
-    RS_ENABLE_POINTCLOUD=true
+    RS_ENABLE_POINTCLOUD=true \
+    RS_DISABLE_USB_AUTOSUSPEND=true \
+    RS_WATCHDOG_ENABLED=true \
+    RS_WATCHDOG_STARTUP_TIMEOUT_S=60 \
+    RS_WATCHDOG_STALE_TIMEOUT_S=15
 
 CMD ["/app/start_realsense.sh"]

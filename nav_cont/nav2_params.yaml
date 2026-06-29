@@ -137,18 +137,22 @@ controller_server:
 
     # Progress checker parameters
     progress_checker:
-      plugin: "nav2_controller::SimpleProgressChecker"
-      # Tight turns near the goal may rotate more than translate. Avoid false
-      # recovery cycles while the robot is still making slow corrective motion.
+      # Count either translation or rotation as progress. This lets the
+      # rotation shim turn in place, while still detecting a collision-monitor
+      # stop where neither pose component changes.
+      plugin: "nav2_controller::PoseProgressChecker"
       required_movement_radius: 0.04
-      movement_time_allowance: 60.0
+      required_movement_angle: 0.10
+      movement_time_allowance: 10.0
 
     # Goal checker parameters
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25
-      yaw_goal_tolerance: 0.45
+      # The 2026-06-29 22:34 run stopped about 0.17 m from the requested goal
+      # because the previous 0.25 m tolerance accepted the visible offset.
+      xy_goal_tolerance: 0.12
+      yaw_goal_tolerance: 0.30
 
     FollowPath:
       # NavFn is not kinematically feasible and may begin directly behind the
@@ -158,7 +162,7 @@ controller_server:
       primary_controller: "dwb_core::DWBLocalPlanner"
       angular_dist_threshold: 0.35
       forward_sampling_distance: 0.40
-      rotate_to_heading_angular_vel: 0.08
+      rotate_to_heading_angular_vel: 0.10
       max_angular_accel: 0.12
       simulate_ahead_time: 1.0
       rotate_to_goal_heading: false
@@ -198,7 +202,7 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.02
       transform_tolerance: 0.5
-      xy_goal_tolerance: 0.25
+      xy_goal_tolerance: 0.12
       trans_stopped_velocity: 0.03
       short_circuit_trajectory_evaluation: true
       stateful: true

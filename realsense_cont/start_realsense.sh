@@ -32,6 +32,11 @@ set -u
 : "${RS_ALIGN_DEPTH:=true}"
 : "${RS_ENABLE_POINTCLOUD:=false}"
 : "${RS_COMPRESSED_JPEG_QUALITY:=40}"
+: "${RS_DISABLE_USB_AUTOSUSPEND:=true}"
+: "${RS_WATCHDOG_ENABLED:=true}"
+: "${RS_WATCHDOG_TOPIC:=}"
+: "${RS_WATCHDOG_STARTUP_TIMEOUT_S:=60}"
+: "${RS_WATCHDOG_STALE_TIMEOUT_S:=15}"
 
 if [ -z "${RS_BASE_FRAME_ID}" ]; then
 	RS_BASE_FRAME_ID="${RS_CAMERA_NAME}_link"
@@ -91,6 +96,50 @@ extract_physical_ports() {
 		awk -F': ' '/^[[:space:]]*Physical Port[[:space:]]*:/ {print $2}' |
 		tr -d '\r' ||
 		true
+}
+
+detected_usb_device_id() {
+	extract_physical_ports |
+		sed -nE 's#.*\/usb[0-9]+\/([0-9]+-[0-9]+(\.[0-9]+)*)\/.*#\1#p' |
+		head -n1
+}
+
+disable_usb_autosuspend() {
+	case "${RS_DISABLE_USB_AUTOSUSPEND,,}" in
+	1 | true | yes | on) ;;
+	*) return 0 ;;
+	esac
+
+	local usb_device_id=""
+	local power_dir=""
+	if [ -n "${RS_USB_PORT_ID}" ] && [ -d "/sys/bus/usb/devices/${RS_USB_PORT_ID}/power" ]; then
+		usb_device_id="${RS_USB_PORT_ID}"
+	elif have_cmd rs-enumerate-devices; then
+		usb_device_id="$(detected_usb_device_id)"
+	fi
+
+	if [ -z "${usb_device_id}" ]; then
+		echo "[realsense] WARN: Could not identify USB device path; autosuspend setting unchanged." >&2
+		return 0
+	fi
+
+	power_dir="/sys/bus/usb/devices/${usb_device_id}/power"
+	local changed=false
+	if [ -w "${power_dir}/control" ]; then
+		if printf 'on\n' >"${power_dir}/control"; then
+			changed=true
+		fi
+	fi
+	if [ -w "${power_dir}/autosuspend" ]; then
+		if printf '%s\n' '-1' >"${power_dir}/autosuspend"; then
+			changed=true
+		fi
+	fi
+	if [[ "${changed}" == true ]]; then
+		echo "[realsense] USB autosuspend disabled for ${usb_device_id}"
+	else
+		echo "[realsense] WARN: USB power settings are not writable for ${usb_device_id}; autosuspend setting unchanged." >&2
+	fi
 }
 
 realsense_detected() {
@@ -169,6 +218,8 @@ if have_cmd rs-enumerate-devices; then
 	fi
 fi
 
+disable_usb_autosuspend
+
 if [ -n "${RS_USB_PORT_ID}" ] && have_cmd rs-enumerate-devices; then
 	PHYSICAL_PORTS="$(extract_physical_ports | sed '/^$/d' || true)"
 	if [ -n "${PHYSICAL_PORTS}" ] && ! printf "%s\n" "${PHYSICAL_PORTS}" | grep -Fq "${RS_USB_PORT_ID}"; then
@@ -210,6 +261,10 @@ fi
 
 echo "[realsense] Starting RealSense camera: ${RS_CAMERA_NAME}"
 
+if [ -z "${RS_WATCHDOG_TOPIC}" ]; then
+	RS_WATCHDOG_TOPIC="/camera/${RS_CAMERA_NAME}/color/camera_info"
+fi
+
 apply_runtime_compression_tuning() {
 	local node="/camera/${RS_CAMERA_NAME}"
 	local attempts=60
@@ -247,13 +302,43 @@ apply_runtime_compression_tuning() {
 	return 0
 }
 
+stop_process() {
+	local pid="${1:-}"
+	local label="${2:-process}"
+	local attempt
+	[[ -z "${pid}" ]] && return 0
+	if ! kill -0 "${pid}" 2>/dev/null; then
+		wait "${pid}" 2>/dev/null || true
+		return 0
+	fi
+
+	kill -TERM "${pid}" 2>/dev/null || true
+	for ((attempt = 0; attempt < 50; attempt++)); do
+		if ! kill -0 "${pid}" 2>/dev/null; then
+			wait "${pid}" 2>/dev/null || true
+			return 0
+		fi
+		sleep 0.2
+	done
+
+	echo "[realsense] WARN: ${label} did not stop after 10s; sending SIGKILL." >&2
+	kill -KILL "${pid}" 2>/dev/null || true
+	wait "${pid}" 2>/dev/null || true
+}
+
 # shellcheck disable=SC2329
 terminate() {
-	if [[ -n "${RS_PID:-}" ]] && kill -0 "${RS_PID}" 2>/dev/null; then
-		kill -TERM "${RS_PID}" 2>/dev/null || true
-		wait "${RS_PID}" 2>/dev/null || true
-	fi
+	stop_process "${WATCHDOG_PID:-}" "frame watchdog"
+	stop_process "${TUNER_PID:-}" "compression tuner"
+	stop_process "${RS_PID:-}" "RealSense launch"
 	exit 0
+}
+
+cleanup_helpers() {
+	if [[ -n "${WATCHDOG_PID:-}" ]] && [[ "${FINISHED_PID:-}" != "${WATCHDOG_PID}" ]]; then
+		stop_process "${WATCHDOG_PID}" "frame watchdog"
+	fi
+	stop_process "${TUNER_PID:-}" "compression tuner"
 }
 
 ros2 launch realsense2_camera rs_launch.py "${args[@]}" &
@@ -263,10 +348,43 @@ trap terminate SIGINT SIGTERM
 apply_runtime_compression_tuning &
 TUNER_PID=$!
 
+WATCHDOG_PID=""
+case "${RS_WATCHDOG_ENABLED,,}" in
+1 | true | yes | on)
+	echo "[realsense] Starting frame watchdog topic=${RS_WATCHDOG_TOPIC} startup_timeout=${RS_WATCHDOG_STARTUP_TIMEOUT_S}s stale_timeout=${RS_WATCHDOG_STALE_TIMEOUT_S}s"
+	python3 /app/realsense_watchdog.py \
+		--topic "${RS_WATCHDOG_TOPIC}" \
+		--startup-timeout "${RS_WATCHDOG_STARTUP_TIMEOUT_S}" \
+		--stale-timeout "${RS_WATCHDOG_STALE_TIMEOUT_S}" &
+	WATCHDOG_PID=$!
+	;;
+*)
+	echo "[realsense] Frame watchdog disabled."
+	;;
+esac
+
 set +e
-wait "${RS_PID}"
-RS_STATUS=$?
+if [[ -n "${WATCHDOG_PID}" ]]; then
+	FINISHED_PID=""
+	wait -n -p FINISHED_PID "${RS_PID}" "${WATCHDOG_PID}"
+	FIRST_STATUS=$?
+
+	if [[ "${FINISHED_PID}" == "${WATCHDOG_PID}" ]]; then
+		WATCHDOG_STATUS="${FIRST_STATUS}"
+		if [[ "${WATCHDOG_STATUS}" -eq 0 ]]; then
+			WATCHDOG_STATUS=22
+		fi
+		echo "[realsense] Frame watchdog exited with status ${WATCHDOG_STATUS}; stopping camera launch for Docker restart." >&2
+		stop_process "${RS_PID}" "RealSense launch"
+		RS_STATUS="${WATCHDOG_STATUS}"
+	else
+		RS_STATUS="${FIRST_STATUS}"
+	fi
+else
+	wait "${RS_PID}"
+	RS_STATUS=$?
+fi
 set -e
 
-wait "${TUNER_PID}" 2>/dev/null || true
+cleanup_helpers
 exit "${RS_STATUS}"
