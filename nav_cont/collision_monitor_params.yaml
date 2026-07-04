@@ -86,9 +86,11 @@ collision_monitor:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      # At the current slow speeds, 1.0 s prediction is enough and avoids
+      # At the current slow speeds, 0.8 s prediction is enough and avoids
       # over-conservative braking while backing away from a front obstacle.
-      time_before_collision: 1.0
+      # At 0.08 m/s this still predicts about 6.4 cm ahead, while reducing
+      # false braking caused by corridor walls during small steering commands.
+      time_before_collision: 0.8
       simulation_time_step: 0.05
       max_points: 5
       visualize: false

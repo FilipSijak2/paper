@@ -151,14 +151,42 @@ ros2 service call /set_manual_mode std_srvs/srv/SetBool "{data: false}"
 
 1. Footprint je trenutno definiran kao poligon u `nav2_params.yaml`.
 
-- Trenutna vrijednost je asimetricna: okvirno `27 cm x 33 cm`, s dodatnih
-  `5 cm` sigurnosnog margina naprijed, lijevo i desno uz mali padding.
+- Trenutna vrijednost je asimetricna: okvirno `27 cm x 33 cm`, uz `1 cm`
+  costmap paddinga sa svake strane.
 - Za pouzdano zaobilazenje treba potvrditi stvarne dimenzije robota i
   sigurnosni margin kroz test voznju.
 
 1. Placeholder mapa je fallback za podizanje stacka.
 
 - Za stvarnu navigaciju treba koristiti stvarnu mapu (`MAP_FILE` ili `MAP_SESSION`).
+
+## Profil za uski hodnik
+
+Aktivni profil je namjerno blazi, ali ne mijenja fizicki footprint ni neposredne
+LiDAR stop-udaljenosti:
+
+- DWB koristi `vtheta_samples: 15`, pa medu kandidatima postoji i potpuno ravna
+  putanja bez prisilnog skretanja prema jednom zidu.
+- Lokalni inflation je `0.25 m / 6.0`, a globalni `0.33 m / 5.0`; trosak zida
+  brze opada izvan footprinta, ali zauzete i inscribed celije ostaju prepreke.
+- Collision Monitor predvida `0.8 s` unaprijed.
+- Dodatni safety filter trazi 7 susjednih LiDAR tocaka i provjerava mapu
+  `0.20 m` unaprijed u pojasu od `+/-0.08 m`.
+- Neposredne stop-udaljenosti ostaju `0.24 m` naprijed i `0.20 m` straga.
+
+Nakon izmjene runtime konfiguracije dovoljno je ponovno stvoriti `nav_cont`:
+
+```bash
+docker compose up -d --force-recreate nav_cont
+```
+
+Za provjeru uzroka zaustavljanja:
+
+```bash
+ros2 topic echo /cmd_vel_safety_status
+ros2 topic echo /collision_monitor_state
+ros2 topic echo /local_costmap/costmap
+```
 
 ## Sljedeci korak (preporuka)
 

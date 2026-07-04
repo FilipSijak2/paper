@@ -60,6 +60,7 @@ Jetson publishes back:
 
 - `/anomaly/events` (`std_msgs/String`, JSON)
 - `/anomaly/markers` (`visualization_msgs/MarkerArray`)
+- `/anomaly/detections_3d` (`visualization_msgs/MarkerArray`)
 - `/anomaly/debug_image/compressed` (`sensor_msgs/CompressedImage`)
 - `/anomaly/privacy_image/compressed` (`sensor_msgs/CompressedImage`)
 - `/anomaly/map_snapshot/compressed` (`sensor_msgs/CompressedImage`)
@@ -164,7 +165,11 @@ TRACKING_ENABLED=1
 TRACKING_BACKEND=bytetrack.yaml
 SEGMENTATION_ENABLED=1
 MARKER_RAY_ENABLED=1
+MARKER_RAY_TTL_S=2.0
 MARKER_UNCERTAINTY_ENABLED=1
+DETECTION_3D_ENABLED=1
+DETECTION_3D_TOPIC=/anomaly/detections_3d
+DETECTION_3D_REQUIRE_MASK=1
 MARKER_TTL_S=180
 YOLO_MODEL_PATH=yolov8n-seg.pt
 ```
@@ -215,6 +220,7 @@ Open panels for:
 - `/odom`
 - `/robot_pose_map`
 - `/anomaly/markers`
+- `/anomaly/detections_3d`
 - `/anomaly/events`
 - `/anomaly/debug_image/compressed`
 - `/anomaly/privacy_image/compressed`
@@ -222,12 +228,22 @@ Open panels for:
 
 `/anomaly/markers` contains an object marker, a `TEXT_VIEW_FACING` marker with
 the tracker ID, a line from the robot to the object, and an approximate
-localization-uncertainty circle. Jetson republishes active markers at 1 Hz and
-deletes them after the configured TTL, default 180 seconds.
+localization-uncertainty circle. The observation line has a short independent
+TTL and disappears when the bottle is no longer observed. Jetson republishes
+active object markers at 1 Hz and deletes them after the configured TTL,
+default 180 seconds.
 
 `/anomaly/privacy_image/compressed` blurs the complete frame and restores only
 the bottle segmentation mask. If masks are unavailable it falls back to the
 detection bounding box.
+
+Event deduplication and daily map summaries use only anomalies from the current
+local day. Historical rows remain in `events.jsonl`, but do not suppress a new
+day's events and are not drawn on the next day's map.
+
+`/anomaly/detections_3d` contains a short-lived wireframe around the visible
+3D points of the segmented bottle in the RealSense color optical frame.
+Foxglove transforms it into the selected fixed frame through `/tf_static`.
 
 ## Test Procedure
 

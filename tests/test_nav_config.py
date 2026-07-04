@@ -10,6 +10,7 @@ STACK_ROOT = REPO_ROOT.parent / "stack"
 DEFAULT_PARAMS = REPO_ROOT / "nav_cont" / "nav2_params.yaml"
 DEFAULT_TREE = REPO_ROOT / "nav_cont" / "navigate_to_pose_stable.xml"
 DEFAULT_COLLISION = REPO_ROOT / "nav_cont" / "collision_monitor_params.yaml"
+DEFAULT_SAFETY_FILTER = REPO_ROOT / "nav_cont" / "cmd_vel_safety_filter.py"
 STACK_PARAMS = STACK_ROOT / "config" / "containers" / "nav2_params.yaml"
 STACK_TREE = STACK_ROOT / "config" / "containers" / "navigate_to_pose_stable.xml"
 STACK_COLLISION = STACK_ROOT / "config" / "containers" / "collision_monitor_params.yaml"
@@ -87,6 +88,38 @@ def test_goal_tolerance_does_not_accept_large_visible_offset():
     assert scalar(goal_checker, "xy_goal_tolerance") <= 0.12
     assert scalar(goal_checker, "yaw_goal_tolerance") <= 0.30
     assert scalar(follow_path, "xy_goal_tolerance") <= 0.12
+
+
+def test_narrow_corridor_profile_retains_hard_stops():
+    text = DEFAULT_PARAMS.read_text(encoding="utf-8")
+    follow_path = indented_block(text, "FollowPath:")
+    local_costmap = indented_block(text, "local_costmap:")
+    global_costmap = indented_block(text, "global_costmap:")
+    collision = DEFAULT_COLLISION.read_text(encoding="utf-8")
+    footprint_approach = indented_block(collision, "footprint_approach:")
+
+    vtheta_samples = scalar(follow_path, "vtheta_samples")
+    assert vtheta_samples == 15
+    assert vtheta_samples % 2 == 1
+    assert scalar(local_costmap, "footprint_padding") == 0.01
+    assert scalar(local_costmap, "inflation_radius") == 0.25
+    assert scalar(local_costmap, "cost_scaling_factor") == 6.0
+    assert scalar(global_costmap, "footprint_padding") == 0.01
+    assert scalar(global_costmap, "inflation_radius") == 0.33
+    assert scalar(global_costmap, "cost_scaling_factor") == 5.0
+    assert scalar(footprint_approach, "time_before_collision") == 0.8
+
+    safety_filter = DEFAULT_SAFETY_FILTER.read_text(encoding="utf-8")
+    assert 'declare_parameter("front_stop_distance", 0.24)' in safety_filter
+    assert 'declare_parameter("rear_stop_distance", 0.20)' in safety_filter
+
+    if STACK_NAV_ENV.exists():
+        nav_env = STACK_NAV_ENV.read_text(encoding="utf-8")
+        assert "CMD_VEL_FRONT_STOP_DISTANCE=0.24" in nav_env
+        assert "CMD_VEL_REAR_STOP_DISTANCE=0.20" in nav_env
+        assert "CMD_VEL_SCAN_MIN_POINTS=7" in nav_env
+        assert "CMD_VEL_MAP_LOOKAHEAD_M=0.20" in nav_env
+        assert "CMD_VEL_MAP_HALF_WIDTH_M=0.08" in nav_env
 
 
 @pytest.mark.skipif(not STACK_ROOT.exists(), reason="Sibling stack directory is unavailable")

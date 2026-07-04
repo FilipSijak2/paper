@@ -195,7 +195,10 @@ controller_server:
       # command churn. vy is unused on this differential-drive robot.
       vx_samples: 10
       vy_samples: 1
-      vtheta_samples: 12
+      # Use an odd sample count so the lattice includes exactly zero angular
+      # velocity. In a tight straight corridor, forcing every candidate to arc
+      # slightly toward one wall can leave DWB without a valid trajectory.
+      vtheta_samples: 15
       # Look farther ahead while evaluating fewer total trajectories. This is
       # smoother in a corridor and remains lighter than the previous sampling.
       sim_time: 1.4
@@ -255,15 +258,19 @@ local_costmap:
       resolution: 0.05
       # Include static map obstacles locally so DWB cannot cut through mapped objects.
       footprint: "[[0.16, 0.165], [0.16, -0.165], [-0.11, -0.165], [-0.11, 0.165]]"
-      footprint_padding: 0.02
+      # One centimetre matches the Nav2 default and keeps a physical safety
+      # margin without adding four centimetres to total corridor width.
+      footprint_padding: 0.01
       plugins: ["static_layer", "voxel_layer", "inflation_layer"]
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 5.0
-        inflation_radius: 0.28
+        # Corridor profile: retain lethal/inscribed collision costs, but let
+        # non-lethal wall costs decay sooner so the centre line stays usable.
+        cost_scaling_factor: 6.0
+        inflation_radius: 0.25
       voxel_layer:
         plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: true
@@ -321,7 +328,7 @@ global_costmap:
       # room a high-cost field; the 22:17 bag showed wide global-plan arcs for
       # simple nearby goals.
       footprint: "[[0.16, 0.165], [0.16, -0.165], [-0.11, -0.165], [-0.11, 0.165]]"
-      footprint_padding: 0.02
+      footprint_padding: 0.01
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
@@ -355,8 +362,8 @@ global_costmap:
         map_subscribe_transient_local: true
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
-        cost_scaling_factor: 4.0
-        inflation_radius: 0.38
+        cost_scaling_factor: 5.0
+        inflation_radius: 0.33
       always_send_full_costmap: false
 
 map_server:
