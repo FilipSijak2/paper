@@ -37,6 +37,8 @@ Foxglove:
 Required inputs for Jetson:
 
 - `/camera/color/image/compressed` (`sensor_msgs/CompressedImage`)
+- `/camera/realsense/color/camera_info` (`sensor_msgs/CameraInfo`)
+- `/camera/realsense/aligned_depth_to_color/image_raw` (`sensor_msgs/Image`)
 - `/map` (`nav_msgs/OccupancyGrid`)
 - `/robot_pose_map` (`geometry_msgs/PoseStamped`) or `/amcl_pose`
   (`geometry_msgs/PoseWithCovarianceStamped`)
@@ -59,6 +61,7 @@ Jetson publishes back:
 - `/anomaly/events` (`std_msgs/String`, JSON)
 - `/anomaly/markers` (`visualization_msgs/MarkerArray`)
 - `/anomaly/debug_image/compressed` (`sensor_msgs/CompressedImage`)
+- `/anomaly/privacy_image/compressed` (`sensor_msgs/CompressedImage`)
 - `/anomaly/map_snapshot/compressed` (`sensor_msgs/CompressedImage`)
 
 ## Start Rosbridge
@@ -145,8 +148,25 @@ MAP_TOPIC=/map
 ROBOT_POSE_TOPIC=/robot_pose_map
 ANOMALY_CLASSES=bottle
 CONFIDENCE_THRESHOLD=0.5
+USE_CAMERA_INTRINSICS=1
+USE_DEPTH_DISTANCE=1
+DEPTH_SYNC_TOLERANCE_S=0.25
+YOLO_IMAGE_SIZE=640
+YOLO_IOU_THRESHOLD=0.70
+YOLO_HALF=1
+YOLO_FILTER_CLASSES=1
+PRIVACY_IMAGE_ENABLED=1
+PRIVACY_IMAGE_TOPIC=/anomaly/privacy_image/compressed
+PRIVACY_BLUR_KERNEL_SIZE=51
+PRIVACY_USE_SEGMENTATION_MASKS=1
+PRIVACY_DRAW_TRACK_ID=1
+TRACKING_ENABLED=1
+TRACKING_BACKEND=bytetrack.yaml
+SEGMENTATION_ENABLED=1
+MARKER_RAY_ENABLED=1
+MARKER_UNCERTAINTY_ENABLED=1
 MARKER_TTL_S=180
-YOLO_MODEL_PATH=yolov8n.pt
+YOLO_MODEL_PATH=yolov8n-seg.pt
 ```
 
 ## Event Example
@@ -160,11 +180,22 @@ YOLO_MODEL_PATH=yolov8n.pt
   "label": "bottle",
   "type": "semantic_object_anomaly",
   "confidence": 0.87,
+  "track_id": 7,
+  "segmentation_mask_used": true,
   "status": "active",
   "ttl_sec": 180,
   "bbox_xyxy": [312, 210, 390, 420],
   "robot_pose_map": {"x": 1.52, "y": -0.48, "yaw": 1.31},
   "object_pose_map": {"x": 2.10, "y": -0.92, "z": 0.0},
+  "localization": {
+    "distance_m": 0.82,
+    "distance_source": "depth",
+    "distance_uncertainty_m": 0.03,
+    "distance_valid_samples": 642,
+    "depth_axial_m": 0.80,
+    "rgb_depth_delta_s": 0.018,
+    "bearing_source": "camera_intrinsics"
+  },
   "jetson_files": {
     "original_image": "/home/jetson/anomaly_logs/images/original/anom_00042_bottle.jpg",
     "annotated_image": "/home/jetson/anomaly_logs/images/annotated/anom_00042_bottle.jpg",
@@ -186,11 +217,17 @@ Open panels for:
 - `/anomaly/markers`
 - `/anomaly/events`
 - `/anomaly/debug_image/compressed`
+- `/anomaly/privacy_image/compressed`
 - `/anomaly/map_snapshot/compressed`
 
-`/anomaly/markers` contains one object marker and one `TEXT_VIEW_FACING` marker
-with text `ANOMALY: bottle`. Jetson republishes active markers at 1 Hz and
+`/anomaly/markers` contains an object marker, a `TEXT_VIEW_FACING` marker with
+the tracker ID, a line from the robot to the object, and an approximate
+localization-uncertainty circle. Jetson republishes active markers at 1 Hz and
 deletes them after the configured TTL, default 180 seconds.
+
+`/anomaly/privacy_image/compressed` blurs the complete frame and restores only
+the bottle segmentation mask. If masks are unavailable it falls back to the
+detection bounding box.
 
 ## Test Procedure
 
