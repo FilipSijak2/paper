@@ -15,6 +15,7 @@ STACK_PARAMS = STACK_ROOT / "config" / "containers" / "nav2_params.yaml"
 STACK_TREE = STACK_ROOT / "config" / "containers" / "navigate_to_pose_stable.xml"
 STACK_COLLISION = STACK_ROOT / "config" / "containers" / "collision_monitor_params.yaml"
 STACK_NAV_ENV = STACK_ROOT / "config" / "containers" / "nav_cont.env"
+START_NAV = REPO_ROOT / "nav_cont" / "start_nav.sh"
 
 
 def indented_block(text: str, heading: str) -> str:
@@ -120,6 +121,21 @@ def test_narrow_corridor_profile_retains_hard_stops():
         assert "CMD_VEL_SCAN_MIN_POINTS=7" in nav_env
         assert "CMD_VEL_MAP_LOOKAHEAD_M=0.20" in nav_env
         assert "CMD_VEL_MAP_HALF_WIDTH_M=0.08" in nav_env
+
+
+def test_anomaly_inspection_is_configurable_and_safe_by_default():
+    start_nav = START_NAV.read_text(encoding="utf-8")
+    assert "ENABLE_ANOMALY_INSPECTION:=0" in start_nav
+    assert "anomaly_inspection_coordinator.py" in start_nav
+    assert "INSPECTION_ONLY_WHEN_IDLE" in start_nav
+    assert "INSPECTION_MIN_STANDOFF_M" in start_nav
+
+    if STACK_NAV_ENV.exists():
+        nav_env = STACK_NAV_ENV.read_text(encoding="utf-8")
+        assert "ENABLE_ANOMALY_INSPECTION=0" in nav_env
+        assert "INSPECTION_ONLY_WHEN_IDLE=true" in nav_env
+        assert "INSPECTION_DEFAULT_STANDOFF_M=0.70" in nav_env
+        assert "INSPECTION_REQUIRE_METRIC_DISTANCE=true" in nav_env
 
 
 @pytest.mark.skipif(not STACK_ROOT.exists(), reason="Sibling stack directory is unavailable")

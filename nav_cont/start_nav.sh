@@ -80,6 +80,19 @@ echo "============================================================"
 : "${MUX_PUBLISH_RATE_HZ:=20.0}"
 : "${MANUAL_SPEED_SCALE:=0.25}"
 : "${MANUAL_ANGULAR_SCALE:=1.0}"
+: "${ENABLE_ANOMALY_INSPECTION:=0}"
+: "${INSPECTION_REQUEST_TOPIC:=/anomaly/inspection/request}"
+: "${INSPECTION_STATUS_TOPIC:=/anomaly/inspection/status}"
+: "${INSPECTION_RESULT_TOPIC:=/anomaly/inspection/result}"
+: "${INSPECTION_ONLY_WHEN_IDLE:=true}"
+: "${INSPECTION_NAVIGATION_TIMEOUT_S:=45.0}"
+: "${INSPECTION_SETTLE_TIME_S:=1.0}"
+: "${INSPECTION_CAPTURE_RESULT_TIMEOUT_S:=12.0}"
+: "${INSPECTION_DEFAULT_STANDOFF_M:=0.70}"
+: "${INSPECTION_MIN_STANDOFF_M:=0.40}"
+: "${INSPECTION_MAX_STANDOFF_M:=1.20}"
+: "${INSPECTION_MAX_UNCERTAINTY_M:=0.30}"
+: "${INSPECTION_REQUIRE_METRIC_DISTANCE:=true}"
 
 # If MAP_FILE is set but missing, fall back to auto-resolution.
 if [ -n "${MAP_FILE}" ] && [ ! -f "${MAP_FILE}" ]; then
@@ -228,6 +241,26 @@ else
 
 	python3 /app/goal_forwarder.py --ros-args -p goal_topic:="${GOAL_TOPIC}" &
 	GOAL_FORWARDER_PID=$!
+
+	if [ "${ENABLE_ANOMALY_INSPECTION}" = "1" ]; then
+		echo "[nav_start] Starting anomaly inspection coordinator"
+		python3 /app/anomaly_inspection_coordinator.py --ros-args \
+			-p enabled:=true \
+			-p request_topic:="${INSPECTION_REQUEST_TOPIC}" \
+			-p status_topic:="${INSPECTION_STATUS_TOPIC}" \
+			-p result_topic:="${INSPECTION_RESULT_TOPIC}" \
+			-p robot_pose_topic:="${ROBOT_POSE_MAP_TOPIC}" \
+			-p only_when_idle:="${INSPECTION_ONLY_WHEN_IDLE}" \
+			-p navigation_timeout_s:="${INSPECTION_NAVIGATION_TIMEOUT_S}" \
+			-p settle_time_s:="${INSPECTION_SETTLE_TIME_S}" \
+			-p capture_timeout_s:="${INSPECTION_CAPTURE_RESULT_TIMEOUT_S}" \
+			-p default_standoff_m:="${INSPECTION_DEFAULT_STANDOFF_M}" \
+			-p min_standoff_m:="${INSPECTION_MIN_STANDOFF_M}" \
+			-p max_standoff_m:="${INSPECTION_MAX_STANDOFF_M}" \
+			-p max_uncertainty_m:="${INSPECTION_MAX_UNCERTAINTY_M}" \
+			-p require_metric_distance:="${INSPECTION_REQUIRE_METRIC_DISTANCE}" &
+		EXTRA_PIDS+=("$!")
+	fi
 fi
 
 if [ "${ENABLE_CMD_VEL_MUX}" = "1" ]; then

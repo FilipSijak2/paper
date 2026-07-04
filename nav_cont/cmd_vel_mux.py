@@ -39,6 +39,10 @@ class CmdVelMux(Node):
 
         period = 1.0 / max(self.publish_rate_hz, 1e-3)
         self.timer = self.create_timer(period, self._publish_cb)
+        # Republish mode for late subscribers such as the optional anomaly
+        # inspection coordinator. The service callback still publishes changes
+        # immediately.
+        self.mode_timer = self.create_timer(1.0, self._publish_mode)
 
         self.get_logger().info(
             f"CmdVelMux started auto={self.auto_topic} joy={self.joy_topic} out={self.out_topic} "

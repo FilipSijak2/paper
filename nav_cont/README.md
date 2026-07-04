@@ -94,6 +94,11 @@ Navigacijski kontejner (`ROS 2 Humble + Nav2`) za autonomno kretanje robota po m
 - `MANUAL_DEFAULT` (`true`/`false`)
 - `MANUAL_TIMEOUT_S` (default `0.5`)
 - `AUTO_TIMEOUT_S` (default `0.7`)
+- `ENABLE_ANOMALY_INSPECTION` (`0`/`1`, default `0`)
+- `INSPECTION_ONLY_WHEN_IDLE` (default `true`)
+- `INSPECTION_DEFAULT_STANDOFF_M` (default `0.70`)
+- `INSPECTION_NAVIGATION_TIMEOUT_S` (default `45.0`)
+- `INSPECTION_SETTLE_TIME_S` (default `1.0`)
 
 ## Pokretanje
 
@@ -140,6 +145,40 @@ ros2 topic hz /cmd_vel
 ```bash
 ros2 service call /set_manual_mode std_srvs/srv/SetBool "{data: true}"
 ros2 service call /set_manual_mode std_srvs/srv/SetBool "{data: false}"
+```
+
+## Automatski inspection boce
+
+`anomaly_inspection_coordinator.py` prima potvrdeni zahtjev s Jetsona, racuna
+standoff goal u `map` frameu i koristi isti `NavigateToPose` action kao rucni
+goalovi. Fizicka lokacija boce nikada se ne salje kao goal.
+
+Funkcija je zadano iskljucena. U aktivnom
+`stack/config/containers/nav_cont.env` ukljucuje se ovako:
+
+```env
+ENABLE_ANOMALY_INSPECTION=1
+INSPECTION_ONLY_WHEN_IDLE=true
+INSPECTION_DEFAULT_STANDOFF_M=0.70
+INSPECTION_NAVIGATION_TIMEOUT_S=45.0
+INSPECTION_SETTLE_TIME_S=1.0
+```
+
+Sigurnosna pravila:
+
+- novi zahtjev prihvaca se samo kada nema drugog Nav2 goala
+- manual mode blokira zahtjev
+- prelazak u manual mode otkazuje aktivni inspection
+- prihvacaju se samo depth/laser zahtjevi unutar praga nesigurnosti
+- navigation i capture imaju neovisne timeoute
+- collision monitor, costmap i `cmd_vel_safety_filter` ostaju aktivni
+
+Stanje se moze pratiti:
+
+```bash
+ros2 topic echo /anomaly/inspection/request
+ros2 topic echo /anomaly/inspection/status
+ros2 topic echo /anomaly/inspection/result
 ```
 
 ## Trenutna ogranicenja (vazno)
