@@ -138,6 +138,8 @@ def test_resolve_runtime_config_uses_env(monkeypatch):
     assert config["min_motor_cmd"] == 0.35
     assert config["power_adapt_enabled"] is False
     assert config["power_adapt_imu_topic"] == "/imu/data"
+    assert config["linear_traction_assist_enabled"] is False
+    assert config["linear_traction_max_motor_cmd"] == 0.42
     assert config["forward_arc_turn_enabled"] is False
 
 
@@ -259,6 +261,54 @@ def test_update_power_adapt_boost_decays_when_measured_rotation_is_high():
     )
 
     assert math.isclose(boost, 0.08, rel_tol=1e-9)
+
+
+def test_linear_traction_assist_ramps_after_sustained_drive_command():
+    module = load_direct_bridge_module()
+
+    assist = module.update_linear_traction_assist(
+        0.04,
+        cmd_linear=0.08,
+        cmd_angular=0.04,
+        active_duration_s=0.5,
+        enabled=True,
+        delay_s=0.35,
+        step_up=0.01,
+        max_assist=0.14,
+    )
+
+    assert math.isclose(assist, 0.05, rel_tol=1e-9)
+
+
+def test_linear_traction_assist_does_not_raise_pwm_before_delay():
+    module = load_direct_bridge_module()
+
+    assist = module.update_linear_traction_assist(
+        0.04,
+        cmd_linear=0.08,
+        cmd_angular=0.04,
+        active_duration_s=0.1,
+        enabled=True,
+        delay_s=0.35,
+        step_down=0.02,
+    )
+
+    assert math.isclose(assist, 0.02, rel_tol=1e-9)
+
+
+def test_linear_traction_assist_decays_when_robot_stops():
+    module = load_direct_bridge_module()
+
+    assist = module.update_linear_traction_assist(
+        0.08,
+        cmd_linear=0.0,
+        cmd_angular=0.0,
+        active_duration_s=None,
+        enabled=True,
+        step_down=0.03,
+    )
+
+    assert math.isclose(assist, 0.05, rel_tol=1e-9)
 
 
 def test_integrate_pose_updates_position_and_heading():

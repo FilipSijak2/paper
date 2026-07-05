@@ -273,6 +273,38 @@ def update_power_adapt_boost(
     return clamp(current_boost, 0.0, max_boost)
 
 
+def update_linear_traction_assist(
+    current_assist,
+    cmd_linear,
+    cmd_angular,
+    active_duration_s,
+    *,
+    enabled=True,
+    min_linear=0.02,
+    max_angular=0.18,
+    delay_s=0.35,
+    max_assist=0.14,
+    step_up=0.006,
+    step_down=0.02,
+):
+    """Ramp the minimum PWM floor during a sustained low-speed drive command.
+
+    This is deliberately command-based: when wheel encoders are disabled there
+    is no measured linear velocity from which to infer a real stall.
+    """
+    current_assist = clamp(float(current_assist), 0.0, float(max_assist))
+    eligible = (
+        enabled
+        and abs(cmd_linear) >= min_linear
+        and abs(cmd_angular) <= max_angular
+        and active_duration_s is not None
+        and active_duration_s >= delay_s
+    )
+    if eligible:
+        return clamp(current_assist + step_up, 0.0, max_assist)
+    return clamp(current_assist - step_down, 0.0, max_assist)
+
+
 def resolve_runtime_config(args):
     return {
         "i2c_bus": args.i2c_bus if args.i2c_bus is not None else _env_int("I2C_BUS", 1, minimum=0),
@@ -309,6 +341,13 @@ def resolve_runtime_config(args):
         "power_adapt_step_up": _env_float("POWER_ADAPT_STEP_UP", 0.01, minimum=0.0),
         "power_adapt_step_down": _env_float("POWER_ADAPT_STEP_DOWN", 0.004, minimum=0.0),
         "power_adapt_feedback_timeout_s": _env_float("POWER_ADAPT_FEEDBACK_TIMEOUT_S", 0.25, minimum=0.01),
+        "linear_traction_assist_enabled": _env_bool("LINEAR_TRACTION_ASSIST_ENABLED", False),
+        "linear_traction_min_linear": _env_float("LINEAR_TRACTION_MIN_LINEAR", 0.02, minimum=0.0),
+        "linear_traction_max_angular": _env_float("LINEAR_TRACTION_MAX_ANGULAR", 0.18, minimum=0.0),
+        "linear_traction_delay_s": _env_float("LINEAR_TRACTION_DELAY_S", 0.35, minimum=0.0),
+        "linear_traction_max_motor_cmd": _env_float("LINEAR_TRACTION_MAX_MOTOR_CMD", 0.42, minimum=0.0),
+        "linear_traction_step_up": _env_float("LINEAR_TRACTION_STEP_UP", 0.006, minimum=0.0),
+        "linear_traction_step_down": _env_float("LINEAR_TRACTION_STEP_DOWN", 0.02, minimum=0.0),
         "forward_arc_turn_enabled": _env_bool("FORWARD_ARC_TURN_ENABLED", False),
         "forward_arc_turn_min_angular": _env_float("FORWARD_ARC_TURN_MIN_ANGULAR", 0.12, minimum=0.0),
         "forward_arc_turn_max_linear": _env_float("FORWARD_ARC_TURN_MAX_LINEAR", 0.03, minimum=0.0),
@@ -353,6 +392,13 @@ class RobotRpiDirectBridge(Node):
         power_adapt_step_up=0.01,
         power_adapt_step_down=0.004,
         power_adapt_feedback_timeout_s=0.25,
+        linear_traction_assist_enabled=False,
+        linear_traction_min_linear=0.02,
+        linear_traction_max_angular=0.18,
+        linear_traction_delay_s=0.35,
+        linear_traction_max_motor_cmd=0.42,
+        linear_traction_step_up=0.006,
+        linear_traction_step_down=0.02,
         forward_arc_turn_enabled=False,
         forward_arc_turn_min_angular=0.12,
         forward_arc_turn_max_linear=0.03,
@@ -409,6 +455,21 @@ class RobotRpiDirectBridge(Node):
         self.power_adapt_boost = 0.0
         self.feedback_angular_z = 0.0
         self.last_feedback_time = 0.0
+        self.linear_traction_assist_enabled = bool(
+            linear_traction_assist_enabled
+        )
+        self.linear_traction_min_linear = float(linear_traction_min_linear)
+        self.linear_traction_max_angular = float(linear_traction_max_angular)
+        self.linear_traction_delay_s = float(linear_traction_delay_s)
+        self.linear_traction_max_motor_cmd = clamp(
+            float(linear_traction_max_motor_cmd),
+            self.min_motor_cmd,
+            1.0,
+        )
+        self.linear_traction_step_up = float(linear_traction_step_up)
+        self.linear_traction_step_down = float(linear_traction_step_down)
+        self.linear_traction_assist = 0.0
+        self.linear_traction_started_at = 0.0
         self.forward_arc_turn_enabled = bool(forward_arc_turn_enabled)
         self.forward_arc_turn_min_angular = float(forward_arc_turn_min_angular)
         self.forward_arc_turn_max_linear = float(forward_arc_turn_max_linear)
@@ -472,6 +533,8 @@ class RobotRpiDirectBridge(Node):
             f"max_linear_vel={self.max_linear_vel:.3f}, max_angular_vel={self.max_angular_vel:.3f}, "
             f"min_motor_cmd={self.min_motor_cmd:.3f}, "
             f"power_adapt_enabled={self.power_adapt_enabled}, "
+            f"linear_traction_assist_enabled={self.linear_traction_assist_enabled}, "
+            f"linear_traction_max_motor_cmd={self.linear_traction_max_motor_cmd:.3f}, "
             f"forward_arc_turn_enabled={self.forward_arc_turn_enabled}, "
             f"odom_source={'open_loop_cmd_vel' if self.open_loop_odom_from_cmd else 'encoders'})"
         )
@@ -714,6 +777,37 @@ class RobotRpiDirectBridge(Node):
             feedback_timeout_s=self.power_adapt_feedback_timeout_s,
         )
         motor_angular = self.cmd_angular * (1.0 + self.power_adapt_boost)
+        traction_command_active = (
+            abs(self.cmd_linear) >= self.linear_traction_min_linear
+            and abs(self.cmd_angular) <= self.linear_traction_max_angular
+        )
+        if traction_command_active:
+            if self.linear_traction_started_at <= 0.0:
+                self.linear_traction_started_at = now
+            traction_duration_s = now - self.linear_traction_started_at
+        else:
+            self.linear_traction_started_at = 0.0
+            traction_duration_s = None
+        max_traction_assist = max(
+            0.0, self.linear_traction_max_motor_cmd - self.min_motor_cmd
+        )
+        self.linear_traction_assist = update_linear_traction_assist(
+            self.linear_traction_assist,
+            self.cmd_linear,
+            self.cmd_angular,
+            traction_duration_s,
+            enabled=self.linear_traction_assist_enabled,
+            min_linear=self.linear_traction_min_linear,
+            max_angular=self.linear_traction_max_angular,
+            delay_s=self.linear_traction_delay_s,
+            max_assist=max_traction_assist,
+            step_up=self.linear_traction_step_up,
+            step_down=self.linear_traction_step_down,
+        )
+        effective_min_motor_cmd = min(
+            self.linear_traction_max_motor_cmd,
+            self.min_motor_cmd + self.linear_traction_assist,
+        )
 
         use_forward_arc_turn = (
             self.forward_arc_turn_enabled
@@ -725,7 +819,7 @@ class RobotRpiDirectBridge(Node):
             left_cmd, right_cmd = compute_forward_arc_turn_commands(
                 motor_angular,
                 self.max_angular_vel,
-                min_motor_cmd=self.min_motor_cmd,
+                min_motor_cmd=effective_min_motor_cmd,
                 inner_motor_cmd=self.forward_arc_turn_inner_cmd,
                 left_inverted=self.left_motor_inverted,
                 right_inverted=self.right_motor_inverted,
@@ -736,7 +830,7 @@ class RobotRpiDirectBridge(Node):
                 motor_angular,
                 self.max_linear_vel,
                 self.max_angular_vel,
-                min_motor_cmd=self.min_motor_cmd,
+                min_motor_cmd=effective_min_motor_cmd,
                 left_inverted=self.left_motor_inverted,
                 right_inverted=self.right_motor_inverted,
             )
@@ -783,6 +877,8 @@ class RobotRpiDirectBridge(Node):
             f"PWR_ADAPT={1 if self.power_adapt_enabled else 0} "
             f"PWR_BOOST={self.power_adapt_boost:.3f} "
             f"IMU_WZ={self.feedback_angular_z:.3f} "
+            f"TRACTION={1 if self.linear_traction_assist_enabled else 0} "
+            f"TRACTION_PWM={self.min_motor_cmd + self.linear_traction_assist:.3f} "
             f"FWD_ARC={1 if self.forward_arc_turn_enabled else 0} "
             f"FWD_ARC_ACTIVE={1 if self.forward_arc_turn_active else 0} "
             f"FLAGS=0x{self.sensor_flags:04X} "

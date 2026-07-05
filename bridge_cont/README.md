@@ -44,6 +44,20 @@ Typical interfaces:
 
 The navigation/localization stack should not assume reliable wheel encoder odometry in the active configuration. It should use the current LiDAR/SLAM/AMCL/Nav2 pose sources.
 
+## Carpet traction assist
+
+`LINEAR_TRACTION_ASSIST_ENABLED=1` enables command-based static-friction
+compensation. After a low-speed linear command remains active for
+`LINEAR_TRACTION_DELAY_S`, the bridge gradually raises the minimum motor PWM up
+to `LINEAR_TRACTION_MAX_MOTOR_CMD`. Nav2's requested linear and angular
+velocities are not changed.
+
+Because the active setup has `ENCODERS_ENABLED=0`, this feature cannot measure a
+real wheel stall; it infers that extra torque may be needed from a sustained
+drive command. Encoder or motor-current feedback is required for true
+resistance detection. Runtime values live in
+`stack/config/containers/bridge_rpi_direct.env`.
+
 ## Legacy Modes
 
 `serial_legacy` support can remain in the repository for historical or debugging purposes, but it is not the active thesis implementation.
