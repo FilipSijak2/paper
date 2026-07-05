@@ -8,6 +8,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 STACK_ROOT = REPO_ROOT.parent / "stack"
 RUN_MAPPING_PATH = REPO_ROOT / "slam_cont" / "run_mapping.sh"
 STACK_SLAM_ENV_PATH = STACK_ROOT / "config" / "containers" / "slam_cont.env"
+STACK_SLAM_PARAMS_PATH = STACK_ROOT / "config" / "containers" / "slam_params.yaml"
+STACK_NAV_ENV_PATH = STACK_ROOT / "config" / "containers" / "nav_cont.env"
+START_NAV_PATH = REPO_ROOT / "nav_cont" / "start_nav.sh"
+RF2O_LAUNCH_PATH = REPO_ROOT / "slam_cont" / "rf2o_odom.launch.py"
 
 
 def run_mapping_text() -> str:
@@ -39,6 +43,39 @@ def test_mapping_preflight_requires_corrected_imu_and_ekf_when_expected():
     assert "IMU_YAW_PREFLIGHT_TOPIC" in content
     assert "MAPPING_EKF_ODOM_TOPIC" in content
     assert "preflight_mapping_odometry\npreflight_mapping_imu_yaw_correction\npreflight_mapping_scan_topic" in content
+
+
+def test_mapping_profile_limits_speed_only_in_mapping_mode():
+    start_nav = START_NAV_PATH.read_text(encoding="utf-8")
+    nav_env = STACK_NAV_ENV_PATH.read_text(encoding="utf-8")
+
+    assert 'if [ "${MAPPING_MODE}" = "1" ]; then' in start_nav
+    assert 'CMD_VEL_FORWARD_MAX_SPEED="${MAPPING_FORWARD_MAX_SPEED}"' in start_nav
+    assert 'CMD_VEL_ANGULAR_MAX_SPEED="${MAPPING_ANGULAR_MAX_SPEED}"' in start_nav
+    assert "MAPPING_FORWARD_MAX_SPEED=0.05" in nav_env
+    assert "MAPPING_ANGULAR_MAX_SPEED=0.12" in nav_env
+
+
+def test_mapping_enables_conservative_loop_closure_and_larger_search():
+    runtime_override = run_mapping_text()
+    slam_params = STACK_SLAM_PARAMS_PATH.read_text(encoding="utf-8")
+
+    for content in (runtime_override, slam_params):
+        assert "do_loop_closing: true" in content
+        assert "loop_match_minimum_response_coarse: 0.75" in content
+        assert "loop_match_maximum_variance_coarse: 0.5" in content
+        assert "loop_search_maximum_distance: 2.5" in content
+        assert "correlation_search_space_dimension: 1.5" in content
+
+
+def test_rf2o_and_slam_use_same_filtered_scan_topic():
+    rf2o_launch = RF2O_LAUNCH_PATH.read_text(encoding="utf-8")
+    slam_params = STACK_SLAM_PARAMS_PATH.read_text(encoding="utf-8")
+    slam_env = STACK_SLAM_ENV_PATH.read_text(encoding="utf-8")
+
+    assert '"RF2O_SCAN_TOPIC", "/scan_filtered"' in rf2o_launch
+    assert "scan_topic: /scan_filtered" in slam_params
+    assert "RF2O_SCAN_TOPIC=/scan_filtered" in slam_env
 
 
 @pytest.mark.skipif(not STACK_SLAM_ENV_PATH.exists(), reason="Sibling stack slam_cont.env is not available")

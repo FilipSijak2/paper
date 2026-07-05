@@ -6,6 +6,9 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     rf2o_log_level = os.environ.get("RF2O_LOG_LEVEL", "error")
+    rf2o_scan_topic = os.environ.get(
+        "RF2O_SCAN_TOPIC", "/scan_filtered"
+    )
 
     return LaunchDescription(
         [
@@ -21,7 +24,7 @@ def generate_launch_description():
                 ],
                 parameters=[
                     {
-                        "laser_scan_topic": "/scan",
+                        "laser_scan_topic": rf2o_scan_topic,
                         "odom_topic": "/odom_rf2o",
                         "publish_tf": False,
                         "base_frame_id": "base_link",

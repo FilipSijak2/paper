@@ -173,12 +173,16 @@ class SlamManager(Node):
         return encoders == "0"
 
     def start_rf2o(self):
+        scan_topic = os.environ.get("RF2O_SCAN_TOPIC", "/scan_filtered")
         rf2o_cmd = [
             "ros2",
             "launch",
             "/app/rf2o_odom.launch.py",
         ]
-        self.get_logger().info("Pokrecem rf2o_laser_odometry kao zamjenu za wheel_odom...")
+        self.get_logger().info(
+            "Pokrecem rf2o_laser_odometry kao zamjenu za wheel_odom "
+            f"(scan={scan_topic})..."
+        )
         try:
             self.rf2o_process = subprocess.Popen(rf2o_cmd)
         except FileNotFoundError:
@@ -188,8 +192,8 @@ class SlamManager(Node):
         """Start scan_range_filter.py: filters 0.0 m RPLIDAR invalid returns.
 
         Republishes /scan as /scan_filtered with readings outside [0.2, range_max]
-        replaced by inf.  slam_toolbox uses /scan_filtered (set in slam_params.yaml)
-        so it never receives the 0.0 m readings that cause a CorrelationGrid crash.
+        replaced by inf. slam_toolbox and RF2O both use /scan_filtered so scan
+        matching and mapping consume the same cleaned measurements.
         """
         cmd = ["python3", "/app/scan_range_filter.py"]
         self.get_logger().info("Pokrecem scan_range_filter (/scan → /scan_filtered, min=0.2 m)...")

@@ -80,6 +80,11 @@ echo "============================================================"
 : "${MUX_PUBLISH_RATE_HZ:=20.0}"
 : "${MANUAL_SPEED_SCALE:=0.25}"
 : "${MANUAL_ANGULAR_SCALE:=1.0}"
+: "${MAPPING_MANUAL_SPEED_SCALE:=0.15}"
+: "${MAPPING_MANUAL_ANGULAR_SCALE:=0.50}"
+: "${MAPPING_FORWARD_MAX_SPEED:=0.05}"
+: "${MAPPING_REVERSE_MAX_SPEED:=0.04}"
+: "${MAPPING_ANGULAR_MAX_SPEED:=0.12}"
 : "${ENABLE_ANOMALY_INSPECTION:=0}"
 : "${INSPECTION_REQUEST_TOPIC:=/anomaly/inspection/request}"
 : "${INSPECTION_STATUS_TOPIC:=/anomaly/inspection/status}"
@@ -93,6 +98,15 @@ echo "============================================================"
 : "${INSPECTION_MAX_STANDOFF_M:=2.50}"
 : "${INSPECTION_MAX_UNCERTAINTY_M:=0.30}"
 : "${INSPECTION_REQUIRE_METRIC_DISTANCE:=true}"
+
+if [ "${MAPPING_MODE}" = "1" ]; then
+	MANUAL_SPEED_SCALE="${MAPPING_MANUAL_SPEED_SCALE}"
+	MANUAL_ANGULAR_SCALE="${MAPPING_MANUAL_ANGULAR_SCALE}"
+	CMD_VEL_FORWARD_MAX_SPEED="${MAPPING_FORWARD_MAX_SPEED}"
+	CMD_VEL_REVERSE_MAX_SPEED="${MAPPING_REVERSE_MAX_SPEED}"
+	CMD_VEL_ANGULAR_MAX_SPEED="${MAPPING_ANGULAR_MAX_SPEED}"
+	echo "[nav_start] Mapping speed profile: forward<=${CMD_VEL_FORWARD_MAX_SPEED}m/s reverse<=${CMD_VEL_REVERSE_MAX_SPEED}m/s angular<=${CMD_VEL_ANGULAR_MAX_SPEED}rad/s"
+fi
 : "${INSPECTION_CAPTURE_ON_NAV_FAILURE:=true}"
 
 # If MAP_FILE is set but missing, fall back to auto-resolution.

@@ -568,24 +568,24 @@ slam_toolbox:
     # corrupt the probability grid, causing a FATAL probability search crash.
     minimum_laser_range: 0.2
     max_laser_range: 10.0
-    # Conservative mapping: dense scan insertion in narrow halls caused repeated
-    # map->odom jumps and smeared loop closures. Prefer fewer, more distinct scans.
-    minimum_time_interval: 0.12
-    minimum_travel_distance: 0.05
-    minimum_travel_heading: 0.08
+    # Slow mapping profile plus moderately dense scan insertion improves
+    # alignment during turns without flooding the pose graph.
+    minimum_time_interval: 0.15
+    minimum_travel_distance: 0.04
+    minimum_travel_heading: 0.05
     # Larger search space: rf2o without encoders can accumulate >25 cm heading
     # error during rotation.  0.5 m (±25 cm) was too small and caused the
     # CorrelationGrid crash.  1.5 m (±75 cm) tolerates typical rf2o drift.
-    correlation_search_space_dimension: 0.5
+    correlation_search_space_dimension: 1.5
     correlation_search_space_resolution: 0.01
     correlation_search_space_smear_deviation: 0.1
     coarse_search_angle_offset: 0.349
     coarse_angle_resolution: 0.0349
-    do_loop_closing: false
-    loop_match_minimum_response_coarse: 0.70
-    loop_match_maximum_variance_coarse: 1.0
+    do_loop_closing: true
+    loop_match_minimum_response_coarse: 0.75
+    loop_match_maximum_variance_coarse: 0.5
     loop_match_minimum_chain_size: 20
-    loop_search_maximum_distance: 1.5
+    loop_search_maximum_distance: 2.5
 MAPPING_YAML
 			# setsid: run slam_toolbox in its own process group so CTRL+C from the
 			# terminal does NOT kill it. cleanup() will kill it explicitly AFTER
