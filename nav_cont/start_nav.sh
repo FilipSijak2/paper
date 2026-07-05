@@ -90,9 +90,10 @@ echo "============================================================"
 : "${INSPECTION_CAPTURE_RESULT_TIMEOUT_S:=12.0}"
 : "${INSPECTION_DEFAULT_STANDOFF_M:=0.70}"
 : "${INSPECTION_MIN_STANDOFF_M:=0.40}"
-: "${INSPECTION_MAX_STANDOFF_M:=1.20}"
+: "${INSPECTION_MAX_STANDOFF_M:=2.50}"
 : "${INSPECTION_MAX_UNCERTAINTY_M:=0.30}"
 : "${INSPECTION_REQUIRE_METRIC_DISTANCE:=true}"
+: "${INSPECTION_CAPTURE_ON_NAV_FAILURE:=true}"
 
 # If MAP_FILE is set but missing, fall back to auto-resolution.
 if [ -n "${MAP_FILE}" ] && [ ! -f "${MAP_FILE}" ]; then
@@ -258,7 +259,8 @@ else
 			-p min_standoff_m:="${INSPECTION_MIN_STANDOFF_M}" \
 			-p max_standoff_m:="${INSPECTION_MAX_STANDOFF_M}" \
 			-p max_uncertainty_m:="${INSPECTION_MAX_UNCERTAINTY_M}" \
-			-p require_metric_distance:="${INSPECTION_REQUIRE_METRIC_DISTANCE}" &
+			-p require_metric_distance:="${INSPECTION_REQUIRE_METRIC_DISTANCE}" \
+			-p capture_on_navigation_failure:="${INSPECTION_CAPTURE_ON_NAV_FAILURE}" &
 		EXTRA_PIDS+=("$!")
 	fi
 fi

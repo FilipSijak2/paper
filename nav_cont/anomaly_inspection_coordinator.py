@@ -33,6 +33,7 @@ class ActiveInspection:
     deadline: float
     goal_handle: Any = None
     settle_until: float = 0.0
+    fallback_reason: str = ""
 
 
 class AnomalyInspectionCoordinator(Node):
@@ -94,6 +95,9 @@ class AnomalyInspectionCoordinator(Node):
         ).get_parameter_value().double_value
         self.require_metric_distance = self.declare_parameter(
             "require_metric_distance", True
+        ).get_parameter_value().bool_value
+        self.capture_on_navigation_failure = self.declare_parameter(
+            "capture_on_navigation_failure", True
         ).get_parameter_value().bool_value
 
         self.status_pub = self.create_publisher(String, self.status_topic, 10)
@@ -172,12 +176,22 @@ class AnomalyInspectionCoordinator(Node):
                 request, self.latest_robot_position
             )
         except ValueError as exc:
-            self._publish_status(request.request_id, "rejected", str(exc))
+            if self.capture_on_navigation_failure:
+                self._begin_fallback_capture(request, f"goal_geometry: {exc}")
+            else:
+                self._publish_status(request.request_id, "rejected", str(exc))
             return
         if not self.action_client.wait_for_server(timeout_sec=0.8):
-            self._publish_status(
-                request.request_id, "rejected", "navigate_to_pose_unavailable"
-            )
+            if self.capture_on_navigation_failure:
+                self._begin_fallback_capture(
+                    request, "navigate_to_pose_unavailable"
+                )
+            else:
+                self._publish_status(
+                    request.request_id,
+                    "rejected",
+                    "navigate_to_pose_unavailable",
+                )
             return
 
         self.active = ActiveInspection(
@@ -216,10 +230,14 @@ class AnomalyInspectionCoordinator(Node):
         try:
             goal_handle = future.result()
         except Exception as exc:
-            self._finish("failed", f"goal_send_failed: {exc}")
+            self._navigation_failed_or_fallback(f"goal_send_failed: {exc}")
+            return
+        if active.state != "sending_goal":
+            if goal_handle.accepted:
+                goal_handle.cancel_goal_async()
             return
         if not goal_handle.accepted:
-            self._finish("failed", "goal_rejected")
+            self._navigation_failed_or_fallback("goal_rejected")
             return
         active.goal_handle = goal_handle
         active.state = "navigating"
@@ -229,12 +247,12 @@ class AnomalyInspectionCoordinator(Node):
 
     def _goal_result_cb(self, future: Any) -> None:
         active = self.active
-        if active is None:
+        if active is None or active.state != "navigating":
             return
         try:
             status = int(future.result().status)
         except Exception as exc:
-            self._finish("failed", f"goal_result_error: {exc}")
+            self._navigation_failed_or_fallback(f"goal_result_error: {exc}")
             return
         if status == GoalStatus.STATUS_SUCCEEDED:
             active.state = "settling"
@@ -242,9 +260,9 @@ class AnomalyInspectionCoordinator(Node):
             active.deadline = active.settle_until + self.capture_timeout_s
             self._publish_status(active.request.request_id, "arrived")
         elif status == GoalStatus.STATUS_CANCELED:
-            self._finish("canceled", "navigation_canceled")
+            self._navigation_failed_or_fallback("navigation_canceled")
         else:
-            self._finish("failed", f"navigation_status_{status}")
+            self._navigation_failed_or_fallback(f"navigation_status_{status}")
 
     def _feedback_cb(self, _feedback_msg: Any) -> None:
         # Nav2 feedback keeps the action connection active; timeout is enforced
@@ -260,14 +278,17 @@ class AnomalyInspectionCoordinator(Node):
             active.state = "waiting_capture"
             active.deadline = now + self.capture_timeout_s
             self._publish_status(
-                active.request.request_id, "capture_requested"
+                active.request.request_id,
+                "capture_requested",
+                active.fallback_reason,
+                fallback=bool(active.fallback_reason),
             )
             return
         if now < active.deadline:
             return
         if active.state in {"sending_goal", "navigating"}:
             self._cancel_active_goal()
-            self._finish("timeout", "navigation_timeout")
+            self._navigation_failed_or_fallback("navigation_timeout")
         elif active.state in {"settling", "waiting_capture"}:
             self._finish("capture_failed", "capture_result_timeout")
 
@@ -284,9 +305,15 @@ class AnomalyInspectionCoordinator(Node):
         if bool(result.get("success")):
             self._finish(
                 "completed",
-                "privacy_capture_saved",
+                (
+                    "fallback_privacy_capture_saved"
+                    if active.fallback_reason
+                    else "privacy_capture_saved"
+                ),
                 privacy_image=result.get("privacy_image"),
                 sharpness_score=result.get("sharpness_score"),
+                fallback=bool(active.fallback_reason),
+                fallback_reason=active.fallback_reason,
             )
         else:
             self._finish(
@@ -328,6 +355,40 @@ class AnomalyInspectionCoordinator(Node):
     def _cancel_active_goal(self) -> None:
         if self.active is not None and self.active.goal_handle is not None:
             self.active.goal_handle.cancel_goal_async()
+
+    def _navigation_failed_or_fallback(self, reason: str) -> None:
+        active = self.active
+        if active is None:
+            return
+        if self.capture_on_navigation_failure and not self.manual_mode:
+            self._begin_fallback_capture(active.request, reason)
+        else:
+            self._finish("failed", reason)
+
+    def _begin_fallback_capture(
+        self,
+        request: InspectionRequest,
+        reason: str,
+    ) -> None:
+        now = time.monotonic()
+        if self.active is None:
+            self.active = ActiveInspection(
+                request=request,
+                state="settling",
+                deadline=now + self.settle_time_s + self.capture_timeout_s,
+            )
+        active = self.active
+        active.state = "settling"
+        active.goal_handle = None
+        active.fallback_reason = reason
+        active.settle_until = now + self.settle_time_s
+        active.deadline = active.settle_until + self.capture_timeout_s
+        self._publish_status(
+            request.request_id,
+            "fallback_capture",
+            reason,
+            fallback=True,
+        )
 
     def _finish(self, state: str, reason: str, **extra: Any) -> None:
         active = self.active

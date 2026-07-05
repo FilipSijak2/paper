@@ -160,8 +160,10 @@ Funkcija je zadano iskljucena. U aktivnom
 ENABLE_ANOMALY_INSPECTION=1
 INSPECTION_ONLY_WHEN_IDLE=true
 INSPECTION_DEFAULT_STANDOFF_M=0.70
+INSPECTION_MAX_STANDOFF_M=2.50
 INSPECTION_NAVIGATION_TIMEOUT_S=45.0
 INSPECTION_SETTLE_TIME_S=1.0
+INSPECTION_CAPTURE_ON_NAV_FAILURE=true
 ```
 
 Sigurnosna pravila:
@@ -172,6 +174,14 @@ Sigurnosna pravila:
 - prihvacaju se samo depth/laser zahtjevi unutar praga nesigurnosti
 - navigation i capture imaju neovisne timeoute
 - collision monitor, costmap i `cmd_vel_safety_filter` ostaju aktivni
+- ako Nav2 nema siguran put, opcionalni fallback snima iz trenutne pozicije
+  umjesto slanja nesigurnog alternativnog goala
+
+Goal je geometrijska standoff tocka okrenuta prema boci ili sredistu grupe.
+Nav2 globalni costmap provjerava staticku mapu, LaserScan i AI prepreke, a
+lokalni costmap dodatno koristi RealSense pointcloud. Ako je cilj zauzet ili do
+njega nema putanje, Nav2 ga odbacuje/prekida; coordinator tada moze traziti
+fallback fotografiju, ali nikada ne iskljucuje obstacle provjere.
 
 Stanje se moze pratiti:
 

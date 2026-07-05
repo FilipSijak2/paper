@@ -135,7 +135,9 @@ def test_anomaly_inspection_is_configurable_and_safe_by_default():
         assert "ENABLE_ANOMALY_INSPECTION=0" in nav_env
         assert "INSPECTION_ONLY_WHEN_IDLE=true" in nav_env
         assert "INSPECTION_DEFAULT_STANDOFF_M=0.70" in nav_env
+        assert "INSPECTION_MAX_STANDOFF_M=2.50" in nav_env
         assert "INSPECTION_REQUIRE_METRIC_DISTANCE=true" in nav_env
+        assert "INSPECTION_CAPTURE_ON_NAV_FAILURE=true" in nav_env
 
 
 @pytest.mark.skipif(not STACK_ROOT.exists(), reason="Sibling stack directory is unavailable")
