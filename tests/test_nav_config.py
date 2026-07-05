@@ -108,7 +108,12 @@ def test_narrow_corridor_profile_retains_hard_stops():
     assert scalar(global_costmap, "footprint_padding") == 0.01
     assert scalar(global_costmap, "inflation_radius") == 0.33
     assert scalar(global_costmap, "cost_scaling_factor") == 5.0
-    assert scalar(footprint_approach, "time_before_collision") == 0.8
+    assert scalar(footprint_approach, "time_before_collision") == 1.2
+    assert 0.3 <= scalar(follow_path, "BaseObstacle.scale") <= 0.5
+    assert scalar(follow_path, "PathAlign.forward_point_distance") <= 0.4
+    assert scalar(follow_path, "PathDist.scale") > scalar(
+        follow_path, "GoalDist.scale"
+    )
 
     safety_filter = DEFAULT_SAFETY_FILTER.read_text(encoding="utf-8")
     assert 'declare_parameter("front_stop_distance", 0.24)' in safety_filter

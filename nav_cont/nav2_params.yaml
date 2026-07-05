@@ -219,19 +219,18 @@ controller_server:
           "PathDist",
           "GoalDist",
         ]
-      # Slightly softer obstacle critic for narrow hallway driving. Safety is
-      # still enforced by costmap inflation + collision monitor, but DWB should
-      # not overreact to every wall-adjacent inflated cell.
-      BaseObstacle.scale: 0.20
-      # The global plan can contain small grid-level kinks. Do not chase its
-      # instantaneous heading too hard; look farther ahead and prioritize
-      # staying near the path/goal over left-right heading corrections.
-      PathAlign.scale: 1.0
-      PathAlign.forward_point_distance: 0.85
-      GoalAlign.scale: 0.8
-      GoalAlign.forward_point_distance: 0.85
-      PathDist.scale: 22.0
-      GoalDist.scale: 26.0
+      # Keep a usable corridor profile, but penalize trajectories that skim
+      # inflated obstacle cells before the collision monitor has to stop.
+      BaseObstacle.scale: 0.40
+      # The previous 0.85 m forward point looked beyond nearby corners and
+      # encouraged DWB to cut the bend toward the goal. Track the local segment
+      # of the global plan instead.
+      PathAlign.scale: 4.0
+      PathAlign.forward_point_distance: 0.40
+      GoalAlign.scale: 1.5
+      GoalAlign.forward_point_distance: 0.40
+      PathDist.scale: 32.0
+      GoalDist.scale: 14.0
       RotateToGoal.scale: 24.0
       RotateToGoal.slowing_factor: 18.0
       RotateToGoal.lookahead_time: 0.5
@@ -246,7 +245,7 @@ controller_server:
 local_costmap:
   local_costmap:
     ros__parameters:
-      update_frequency: 3.0
+      update_frequency: 4.0
       publish_frequency: 1.5
       global_frame: odom
       robot_base_frame: base_link

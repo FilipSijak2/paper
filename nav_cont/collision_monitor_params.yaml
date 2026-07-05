@@ -63,7 +63,7 @@ collision_monitor:
       # Keep a warning zone, but do not starve in-place rotations of torque.
       # With 0.55 the 2026-06-21 180-degree turn bags were reduced to ~0.13
       # rad/s and the drivetrain stalled.
-      slowdown_ratio: 0.90
+      slowdown_ratio: 0.75
       # Require a small cluster before slowdown so scan speckles do not keep
       # toggling velocity while Nav2 is trying to finish a goal.
       max_points: 12
@@ -86,11 +86,9 @@ collision_monitor:
       type: "polygon"
       action_type: "approach"
       footprint_topic: "/local_costmap/published_footprint"
-      # At the current slow speeds, 0.8 s prediction is enough and avoids
-      # over-conservative braking while backing away from a front obstacle.
-      # At 0.08 m/s this still predicts about 6.4 cm ahead, while reducing
-      # false braking caused by corridor walls during small steering commands.
-      time_before_collision: 0.8
+      # Give DWB time to correct its heading before reaching the directional
+      # hard stop. At 0.08 m/s this predicts roughly 9.6 cm ahead.
+      time_before_collision: 1.2
       simulation_time_step: 0.05
       max_points: 5
       visualize: false

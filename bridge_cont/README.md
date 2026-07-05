@@ -54,8 +54,10 @@ velocities are not changed.
 
 Because the active setup has `ENCODERS_ENABLED=0`, this feature cannot measure a
 real wheel stall; it infers that extra torque may be needed from a sustained
-drive command. Encoder or motor-current feedback is required for true
-resistance detection. Runtime values live in
+drive command. It therefore also raises real wheel speed on low-resistance
+floors while open-loop odometry remains unchanged, causing localization drift.
+Keep it disabled in the active configuration until encoder or motor-current
+feedback is available for true resistance detection. Runtime values live in
 `stack/config/containers/bridge_rpi_direct.env`.
 
 ## Legacy Modes
