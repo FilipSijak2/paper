@@ -109,7 +109,7 @@ def test_narrow_corridor_profile_retains_hard_stops():
     assert scalar(global_costmap, "inflation_radius") == 0.33
     assert scalar(global_costmap, "cost_scaling_factor") == 5.0
     assert scalar(footprint_approach, "time_before_collision") == 1.2
-    assert 0.3 <= scalar(follow_path, "BaseObstacle.scale") <= 0.5
+    assert scalar(follow_path, "BaseObstacle.scale") == 0.8
     assert scalar(follow_path, "PathAlign.forward_point_distance") <= 0.4
     assert scalar(follow_path, "PathDist.scale") > scalar(
         follow_path, "GoalDist.scale"
@@ -128,7 +128,7 @@ def test_narrow_corridor_profile_retains_hard_stops():
         assert "CMD_VEL_MAP_HALF_WIDTH_M=0.08" in nav_env
 
 
-def test_anomaly_inspection_is_configurable_and_safe_by_default():
+def test_anomaly_inspection_is_configurable_and_enabled_in_runtime():
     start_nav = START_NAV.read_text(encoding="utf-8")
     assert "ENABLE_ANOMALY_INSPECTION:=0" in start_nav
     assert "anomaly_inspection_coordinator.py" in start_nav
@@ -137,7 +137,7 @@ def test_anomaly_inspection_is_configurable_and_safe_by_default():
 
     if STACK_NAV_ENV.exists():
         nav_env = STACK_NAV_ENV.read_text(encoding="utf-8")
-        assert "ENABLE_ANOMALY_INSPECTION=0" in nav_env
+        assert "ENABLE_ANOMALY_INSPECTION=1" in nav_env
         assert "INSPECTION_ONLY_WHEN_IDLE=true" in nav_env
         assert "INSPECTION_DEFAULT_STANDOFF_M=0.70" in nav_env
         assert "INSPECTION_MAX_STANDOFF_M=2.50" in nav_env

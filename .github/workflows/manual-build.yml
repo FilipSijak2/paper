@@ -135,12 +135,8 @@ jobs:
           echo "Bringing up Tailscale tunnel..."
           sudo tailscale up --authkey "$TAILSCALE_KEY" --hostname "gh-run-${GITHUB_RUN_ID}" --accept-routes --ssh --timeout 40s || {
             echo "Tailscale up failed" >&2;
-            sudo tailscale status || true
             exit 1
           }
-          echo 'Tailscale status:'
-          sudo tailscale status || true
-
       - name: Normalize registry host
         id: normalize
         env:

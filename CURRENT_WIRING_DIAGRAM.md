@@ -1,16 +1,14 @@
-# Trenutna shema ožičenja (`rpi_direct`)
+# Current Wiring (`rpi_direct`)
 
-Ovaj dokument opisuje aktualno fizičko ožičenje robota u trenutnoj izvedbi diplomskog rada.
-
-## Aktualna arhitektura ožičenja
+This document describes the deployed motor wiring.
 
 ```text
-Raspberry Pi 5 -> GPIO -> DRV8833 -> lijevi i desni motor
+Raspberry Pi 5 -> GPIO -> DRV8833 -> left and right motors
 ```
 
-Raspberry Pi 5 upravlja motorima preko GPIO pinova i `libgpiod` sučelja. DRV8833 upravlja smjerom i brzinom lijevog i desnog motora. Sustav koristi vanjsko napajanje motora i zajedničku masu između Raspberry Pi računala, DRV8833 modula i motornog napajanja.
+The Raspberry Pi controls direction and speed through `libgpiod`. The motor supply is separate from the Raspberry Pi supply. Raspberry Pi ground, DRV8833 ground and motor-supply ground must be connected.
 
-## Vizualizacija
+## Wiring diagram
 
 ```mermaid
 flowchart TB
@@ -19,19 +17,17 @@ flowchart TB
     DRV[DRV8833]
     LEFT[Left motor]
     RIGHT[Right motor]
-    GND((Common GND))
+    GND((Common ground))
 
     SUPPLY --> VM[VM or VIN plus]
     VM --> DRV
     SUPPLY --> GND
-
     RPI --> P17[GPIO17 pin 11 to SLP]
     RPI --> P24[GPIO24 pin 18 to BIN2]
     RPI --> P19[GPIO19 pin 35 to BIN1]
     RPI --> P23[GPIO23 pin 16 to AIN2]
     RPI --> P18[GPIO18 pin 12 to AIN1]
-    RPI --> RPIGND[GND pin 6]
-
+    RPI --> RPIGND[Ground pin 6]
     P17 --> DRV
     P24 --> DRV
     P19 --> DRV
@@ -39,60 +35,49 @@ flowchart TB
     P18 --> DRV
     RPIGND --> GND
     DRV --> GND
-
     DRV --> AOUT[AOUT1 and AOUT2]
     DRV --> BOUT[BOUT1 and BOUT2]
     AOUT --> LEFT
     BOUT --> RIGHT
 ```
 
-## Korišteni pinovi
+## Raspberry Pi pins
 
-| Raspberry Pi signal | Fizički pin | DRV8833 pin / funkcija | Uloga |
+| Signal | Physical pin | DRV8833 input | Function |
 | --- | ---: | --- | --- |
-| GPIO17 | 11 | `SLP` / `nSLEEP` | aktivacija DRV8833 modula |
-| GPIO24 | 18 | `BIN2` | desni motor, ulaz 2 |
-| GPIO19 | 35 | `BIN1` | desni motor, ulaz 1 |
-| GPIO23 | 16 | `AIN2` | lijevi motor, ulaz 2 |
-| GPIO18 | 12 | `AIN1` | lijevi motor, ulaz 1 |
-| GND | npr. 6 | `GND` | zajednička masa |
+| GPIO17 | 11 | `SLP` / `nSLEEP` | Driver enable |
+| GPIO24 | 18 | `BIN2` | Right motor input 2 |
+| GPIO19 | 35 | `BIN1` | Right motor input 1 |
+| GPIO23 | 16 | `AIN2` | Left motor input 2 |
+| GPIO18 | 12 | `AIN1` | Left motor input 1 |
+| Ground | 6 | `GND` | Common ground |
 
-## Povezivanje DRV8833 izlaza
+## Motor outputs
 
-| DRV8833 izlaz | Komponenta |
+| DRV8833 output | Connection |
 | --- | --- |
-| `AOUT1` / `AOUT2` | lijevi motor |
-| `BOUT1` / `BOUT2` | desni motor |
-| `VM` / `VIN+` | vanjsko napajanje motora |
-| `GND` | zajednička masa |
+| `AOUT1` / `AOUT2` | Left motor |
+| `BOUT1` / `BOUT2` | Right motor |
+| `VM` / `VIN+` | External motor supply |
+| `GND` | Common ground |
 
-## Motor driver konfiguracija
+## Active configuration
+
+The deployed values are maintained in `robot-stack/config/containers/bridge_rpi_direct.env`:
 
 ```env
 BRIDGE_MODE=rpi_direct
-GPIOCHIP=/dev/gpiochip4
-DRIVER=drv8833
+DRV_AIN1_PIN=18
+DRV_AIN2_PIN=23
+DRV_BIN1_PIN=19
+DRV_BIN2_PIN=24
+DRV_SLEEP_PIN=17
 ENCODERS_ENABLED=0
-CMD_VEL_TOPIC=/cmd_vel
+RPI_LGPIO_CHIP=4
 ```
 
-## Napajanje
-
-- Raspberry Pi 5 dobiva stabilno USB-C napajanje ili kvalitetan powerbank s pouzdanim izlazom.
-- Motori dobivaju odvojeno vanjsko napajanje prilagođeno motorima.
-- Raspberry Pi GND, DRV8833 GND i masa motornog napajanja čine zajedničku masu sustava.
-- Sigurno gašenje prije prekida napajanja:
+Always shut down the Raspberry Pi before disconnecting power:
 
 ```bash
 sudo shutdown -h now
 ```
-
-## Trenutno stanje fizičkog ožičenja
-
-- Pogon motora: Raspberry Pi 5 GPIO -> DRV8833 -> motori.
-- Način rada bridgea: `BRIDGE_MODE=rpi_direct`.
-- Konfiguracija bridgea: `ENCODERS_ENABLED=0`.
-- Izvor pozicije za navigaciju: LiDAR, SLAM, AMCL/Nav2 i dostupni ROS izvori poze.
-- Zajednička masa povezuje Raspberry Pi, DRV8833 i vanjsko napajanje motora.
-
-Arhitektura Jetson Orin anomaly pipelinea, `rosbridge` komunikacija i Foxglove vizualizacija opisani su u [ARCHITECTURE_OVERVIEW.md](./ARCHITECTURE_OVERVIEW.md).

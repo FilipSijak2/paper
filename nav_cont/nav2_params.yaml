@@ -221,7 +221,7 @@ controller_server:
         ]
       # Keep a usable corridor profile, but penalize trajectories that skim
       # inflated obstacle cells before the collision monitor has to stop.
-      BaseObstacle.scale: 0.40
+      BaseObstacle.scale: 0.80
       # The previous 0.85 m forward point looked beyond nearby corners and
       # encouraged DWB to cut the bend toward the goal. Track the local segment
       # of the global plan instead.

@@ -37,7 +37,7 @@ Robot pose for navigation comes from LiDAR, SLAM, AMCL/Nav2 and available ROS po
 
 ## Perception and Navigation Sensors
 
-Active / planned sensors:
+Active sensors:
 
 - RPLidar A1 for `/scan`, SLAM and Nav2
 - Intel RealSense camera for RGB/depth/camera_info/IMU topics

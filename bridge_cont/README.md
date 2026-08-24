@@ -1,73 +1,27 @@
-# bridge_cont
+# Raspberry Pi Motor Bridge
 
-ROS 2 robot bridge container for the Devastator robot.
-
-## Active Runtime Mode
-
-The active thesis runtime uses:
+The deployed bridge drives a DRV8833 directly from Raspberry Pi 5 GPIO.
 
 ```env
 BRIDGE_MODE=rpi_direct
-DRIVER=drv8833
-GPIOCHIP=/dev/gpiochip4
 ENCODERS_ENABLED=0
 ```
 
-In this mode Raspberry Pi drives the DRV8833 motor driver directly through GPIO.
+The exact GPIO pins, velocity limits and motor-assist values are maintained in `robot-stack/config/containers/bridge_rpi_direct.env`. That file is the runtime source of truth.
 
-## Current Hardware Assumptions
-
-Active:
-
-- Raspberry Pi 5 GPIO
-- DRV8833 motor driver
-- left and right motors
-- common ground between Raspberry Pi, motor driver and motor supply
-
-Not active in the current setup:
-
-- AS5600 wheel encoders
-- TCA9548A I2C multiplexer
-- encoder-based odometry
-- Nano ESP32 serial bridge as the main motor path
-- UNO R4 as the main motor path
-
-If older code still contains encoder-related parameters, treat them as legacy/optional. The current robot should be documented and tested with `ENCODERS_ENABLED=0`.
-
-## ROS Interfaces
-
-Typical interfaces:
+## ROS interfaces
 
 - subscribes to `/cmd_vel`
-- publishes bridge/motor status topics
-- may publish open-loop or placeholder wheel odometry depending on configuration
+- publishes bridge status and open-loop odometry
+- reads corrected yaw-rate feedback from `/imu/base_link_corrected` for adaptive rotation power
 
-The navigation/localization stack should not assume reliable wheel encoder odometry in the active configuration. It should use the current LiDAR/SLAM/AMCL/Nav2 pose sources.
+Because wheel encoders are disabled, the bridge integrates open-loop odometry from commanded velocity. Navigation uses LiDAR, SLAM, AMCL and corrected IMU data to constrain localization.
 
-## Carpet traction assist
+## Hardware
 
-`LINEAR_TRACTION_ASSIST_ENABLED=1` enables command-based static-friction
-compensation. After a low-speed linear command remains active for
-`LINEAR_TRACTION_DELAY_S`, the bridge gradually raises the minimum motor PWM up
-to `LINEAR_TRACTION_MAX_MOTOR_CMD`. Nav2's requested linear and angular
-velocities are not changed.
+- Raspberry Pi 5
+- DRV8833 motor driver
+- left and right DC motors
+- separate motor supply with a common ground
 
-Because the active setup has `ENCODERS_ENABLED=0`, this feature cannot measure a
-real wheel stall; it infers that extra torque may be needed from a sustained
-drive command. It therefore also raises real wheel speed on low-resistance
-floors while open-loop odometry remains unchanged, causing localization drift.
-Keep it disabled in the active configuration until encoder or motor-current
-feedback is available for true resistance detection. Runtime values live in
-`stack/config/containers/bridge_rpi_direct.env`.
-
-## Legacy Modes
-
-`serial_legacy` support can remain in the repository for historical or debugging purposes, but it is not the active thesis implementation.
-
-The legacy hardware references include:
-
-- Nano ESP32 custom serial protocol
-- AS5600 encoder handling
-- TCA9548A multiplexer handling
-
-Do not describe these as the current robot architecture unless they are intentionally reintroduced and tested again.
+See [the current wiring diagram](../CURRENT_WIRING_DIAGRAM.md) for the deployed pin mapping.

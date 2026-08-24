@@ -31,7 +31,7 @@ class SlamManager(Node):
 
         rmw = os.environ.get("RMW_IMPLEMENTATION", "")
         if "cyclonedx" in rmw:
-            self.get_logger().warn(f"RMW tipfeler '{rmw}' -> koristim rmw_cyclonedds_cpp")
+            self.get_logger().warn(f"Unrecognized RMW value '{rmw}'; using rmw_cyclonedds_cpp")
             os.environ["RMW_IMPLEMENTATION"] = "rmw_cyclonedds_cpp"
         elif not rmw:
             os.environ["RMW_IMPLEMENTATION"] = "rmw_cyclonedds_cpp"
@@ -152,8 +152,8 @@ class SlamManager(Node):
             self.start_rf2o()
         else:
             self.get_logger().info(
-                "rf2o_laser_odometry preskočen (START_RF2O=auto + ENCODERS_ENABLED=1). "
-                "Koristi se wheel odometry + EKF. Postavi START_RF2O=1 za ručno pokretanje."
+                "Skipping rf2o_laser_odometry (START_RF2O=auto and ENCODERS_ENABLED=1). "
+                "Wheel odometry and EKF are active. Set START_RF2O=1 to start RF2O manually."
             )
 
     def _should_start_rf2o(self) -> bool:
@@ -186,7 +186,7 @@ class SlamManager(Node):
         try:
             self.rf2o_process = subprocess.Popen(rf2o_cmd)
         except FileNotFoundError:
-            self.get_logger().error("rf2o_laser_odometry_node nije pronadjen - provjeri Dockerfile!")
+            self.get_logger().error("rf2o_laser_odometry_node was not found; check the Dockerfile")
 
     def start_scan_filter(self) -> None:
         """Start scan_range_filter.py: filters 0.0 m RPLIDAR invalid returns.
@@ -231,7 +231,9 @@ class SlamManager(Node):
                 alive_static_tf.append((child, proc))
                 continue
             if return_code != 0:
-                self.get_logger().warn(f"Static TF publisher za {child} zavrsio s kodom {return_code}")
+                self.get_logger().warn(
+                    f"Static TF publisher for {child} exited with code {return_code}"
+                )
         self.static_tf_processes = alive_static_tf
 
     def stop_slam_toolbox(self):
@@ -265,7 +267,7 @@ class SlamManager(Node):
                 try:
                     self.process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
-                    self.get_logger().warn("slam_toolbox nije zavrsio na SIGTERM, saljem SIGKILL.")
+                    self.get_logger().warn("slam_toolbox did not stop after SIGTERM; sending SIGKILL.")
                     self.process.kill()
                     self.process.wait(timeout=5)
             self.process = None
@@ -278,7 +280,7 @@ class SlamManager(Node):
                 proc.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self.get_logger().warn(
-                    f"Static TF publisher za {child} nije zavrsio na SIGTERM, saljem SIGKILL."
+                    f"Static TF publisher for {child} did not stop after SIGTERM; sending SIGKILL."
                 )
                 proc.kill()
                 proc.wait(timeout=5)
@@ -288,7 +290,7 @@ class SlamManager(Node):
         """Handle SIGINT/SIGTERM without automatic map saving."""
         self.get_logger().info(
             "Signal zavrsetka primljen - gasenje bez automatskog spremanja "
-            "(koristi save_current_map service za rucno spremanje)."
+            "(use the save_current_map service to save it manually)."
         )
         self.stop_slam_toolbox()
         rclpy.shutdown()

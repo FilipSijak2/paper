@@ -24,8 +24,8 @@ DEFAULT_DB_CONFIG = {
     "host": "db_cont",
     "port": 5432,
     "database": "robot_data",
-    "user": "app_user",
-    "password": "app_pass",
+    "user": "robot_user",
+    "password": None,
     "connect_timeout": 5,
 }
 
@@ -67,11 +67,7 @@ def resolve_connection_params(
             or DEFAULT_DB_CONFIG["database"]
         ),
         "user": username or _env_first("ROBOT_DB_USER", "DB_USER") or DEFAULT_DB_CONFIG["user"],
-        "password": (
-            password
-            or _env_first("ROBOT_DB_PASSWORD", "DB_PASSWORD", "DB_PASS")
-            or DEFAULT_DB_CONFIG["password"]
-        ),
+        "password": password or _env_first("ROBOT_DB_PASSWORD", "DB_PASSWORD", "DB_PASS"),
         "connect_timeout": _coerce_int(
             connect_timeout
             if connect_timeout is not None

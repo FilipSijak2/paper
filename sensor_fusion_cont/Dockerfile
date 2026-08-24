@@ -31,7 +31,7 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
 
 ENV TZ=Europe/Zagreb
 
-# Postavi ROS okruzenje
+# Configure the ROS environment.
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
     && printf '%s\n' "export PS1='\\[\\033[1;34m\\]sensor_fusion: \\[\\033[0m\\]'" >> /root/.bashrc
 

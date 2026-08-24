@@ -31,7 +31,7 @@ def test_robot_database_prefers_explicit_args_over_environment(monkeypatch):
     assert db.connection_params["host"] == "explicit-host"
     assert db.connection_params["port"] == 1234
     assert db.connection_params["database"] == "explicit-db"
-    assert db.connection_params["user"] == "app_user"
+    assert db.connection_params["user"] == "robot_user"
 
 
 def test_resolve_connection_params_supports_legacy_db_pass(monkeypatch):

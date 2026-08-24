@@ -17,10 +17,7 @@ RUN if [ "$INSTALL_EDITORS" = "true" ]; then \
             echo "Skipping editor installation (set INSTALL_EDITORS=true to enable)."; \
         fi
 
-# Settings for the database
-ENV POSTGRES_DB=robot_data
-ENV POSTGRES_USER=robot_user
-ENV POSTGRES_PASSWORD=robot_pass
+# POSTGRES_DB, POSTGRES_USER and POSTGRES_PASSWORD are supplied at runtime.
 
 RUN apt-get update && apt-get install -y tzdata && rm -rf /var/lib/apt/lists/*
 ENV TZ=Europe/Zagreb

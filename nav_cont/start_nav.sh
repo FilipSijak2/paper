@@ -159,7 +159,7 @@ if [ -n "${MAP_FILE}" ]; then
 		done
 	fi
 else
-	echo "[nav_start][INFO] No existing map resolved -> generating temporary placeholder so GUI prikazuje nešto."
+	echo "[nav_start][INFO] No map was resolved; generating a temporary placeholder for the GUI."
 	PLACEHOLDER_DIR="${MAP_ROOT}/__auto_placeholder"
 	mkdir -p "${PLACEHOLDER_DIR}"
 	PLACE_YAML="${PLACEHOLDER_DIR}/map.yaml"
@@ -189,7 +189,7 @@ negate: 0
 occupied_thresh: 0.65
 free_thresh: 0.196
 placeholder: true
-note: "Automatski generirana privremena mapa - zamijeni postavljanjem MAP_FILE / MAP_SESSION i restartom nav kontenjera"
+note: "Automatically generated temporary map; set MAP_FILE or MAP_SESSION and restart nav_cont"
 EOF
 	MAP_FILE="${PLACE_YAML}"
 	echo "[nav_start] Placeholder map generated at ${MAP_FILE}"
@@ -378,9 +378,9 @@ if [ "${MAPPING_MODE}" = "1" ]; then
 else
 	echo "[nav_start] Nav2 PID=${NAV2_PID}; GoalForwarder PID=${GOAL_FORWARDER_PID}"
 	echo "[nav_start] Ready. If you later define a map, restart this container to apply it (or use select_map.sh if present)."
-	echo "[nav_start] AMCL localization active: postavite početnu pozu preko Foxglove 2D Pose Estimate (publisha na /initialpose) ili:"
+	echo "[nav_start] AMCL localization is active. Set the initial pose with Foxglove 2D Pose Estimate (/initialpose) or:"
 	echo "[nav_start]   python3 /app/set_initial_pose.py <x> <y> <yaw_deg> [map_frame]"
-	echo "[nav_start] Primjer: python3 /app/set_initial_pose.py 0.0 0.0 90"
+	echo "[nav_start] Example: python3 /app/set_initial_pose.py 0.0 0.0 90"
 fi
 
 trap 'echo "[nav_start] Stopping..."; kill ${GOAL_FORWARDER_PID:-} ${NAV2_PID:-} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; wait ${GOAL_FORWARDER_PID:-} ${NAV2_PID:-} ${EXTRA_PIDS[@]:-} 2>/dev/null || true; exit 0' INT TERM
