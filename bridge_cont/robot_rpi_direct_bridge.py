@@ -8,6 +8,7 @@ Architecture:
 Published topics:
     /wheel_odom (nav_msgs/Odometry)
     /robot_status (std_msgs/String)
+    /motor_pwm (std_msgs/Float32MultiArray; signed left/right normalized PWM)
 
 Subscribed topics:
     /cmd_vel (geometry_msgs/Twist)
@@ -26,7 +27,7 @@ from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
-from std_msgs.msg import String
+from std_msgs.msg import Float32MultiArray, String
 
 try:
     if "RPI_LGPIO_REVISION" not in os.environ:
@@ -89,6 +90,15 @@ class UnwrapState:
     turns: int = 0
 
 
+@dataclass
+class MotorRampState:
+    output: float = 0.0
+    reversal_neutral_remaining_s: float = 0.0
+    reversal_target_sign: int = 0
+    last_nonzero_sign: int = 0
+    zero_duration_s: float = 0.0
+
+
 def _env_int(name, default, minimum=None):
     raw = os.environ.get(name)
     if raw in (None, ""):
@@ -124,6 +134,98 @@ def _env_bool(name, default=False):
 
 def clamp(value, low, high):
     return max(low, min(high, value))
+
+
+def sign(value, deadband=1e-9):
+    if value > deadband:
+        return 1
+    if value < -deadband:
+        return -1
+    return 0
+
+
+def move_toward(current, target, max_delta):
+    max_delta = max(0.0, float(max_delta))
+    if current < target:
+        return min(target, current + max_delta)
+    return max(target, current - max_delta)
+
+
+def update_motor_ramp(
+    state,
+    target,
+    dt_s,
+    *,
+    enabled=True,
+    rate_up=0.8,
+    rate_down=1.6,
+    reversal_neutral_s=0.15,
+    immediate_stop=True,
+):
+    """Apply slew limiting and a neutral interval before direction reversal."""
+
+    target = clamp(float(target), -1.0, 1.0)
+    dt_s = max(0.0, float(dt_s))
+    if not enabled:
+        state.output = target
+        state.reversal_neutral_remaining_s = 0.0
+        state.reversal_target_sign = 0
+        if target_sign := sign(target):
+            state.last_nonzero_sign = target_sign
+            state.zero_duration_s = 0.0
+        else:
+            state.zero_duration_s += dt_s
+        return target
+
+    target_sign = sign(target)
+    output_sign = sign(state.output)
+    if output_sign != 0 and state.last_nonzero_sign == 0:
+        state.last_nonzero_sign = output_sign
+    if target_sign == 0 and immediate_stop:
+        state.output = 0.0
+        state.reversal_neutral_remaining_s = 0.0
+        state.reversal_target_sign = 0
+        state.zero_duration_s += dt_s
+        return 0.0
+
+    output_sign = sign(state.output)
+    if output_sign != 0 and target_sign != 0 and output_sign != target_sign:
+        state.last_nonzero_sign = output_sign
+        state.zero_duration_s = 0.0
+        state.output = move_toward(state.output, 0.0, rate_down * dt_s)
+        if sign(state.output) == 0:
+            state.output = 0.0
+            state.reversal_neutral_remaining_s = max(0.0, reversal_neutral_s)
+            state.reversal_target_sign = target_sign
+        return state.output
+
+    if output_sign == 0 and target_sign != 0:
+        reversing = (
+            state.last_nonzero_sign != 0
+            and target_sign != state.last_nonzero_sign
+        )
+        if reversing:
+            remaining = max(
+                state.reversal_neutral_remaining_s,
+                reversal_neutral_s - state.zero_duration_s,
+            )
+            if remaining > 0.0:
+                state.reversal_target_sign = target_sign
+                state.reversal_neutral_remaining_s = max(0.0, remaining - dt_s)
+                state.zero_duration_s += dt_s
+                return 0.0
+        state.reversal_neutral_remaining_s = 0.0
+        state.reversal_target_sign = 0
+
+    accelerating = abs(target) > abs(state.output)
+    rate = rate_up if accelerating else rate_down
+    state.output = move_toward(state.output, target, rate * dt_s)
+    if sign(state.output) != 0:
+        state.last_nonzero_sign = sign(state.output)
+        state.zero_duration_s = 0.0
+    else:
+        state.zero_duration_s += dt_s
+    return state.output
 
 
 def euler_to_quaternion(yaw, pitch=0.0, roll=0.0):
@@ -332,6 +434,12 @@ def resolve_runtime_config(args):
         "max_linear_vel": _env_float("MAX_LINEAR_VEL", 0.5, minimum=0.01),
         "max_angular_vel": _env_float("MAX_ANGULAR_VEL", 1.0, minimum=0.01),
         "min_motor_cmd": _env_float("MIN_MOTOR_CMD", 0.35, minimum=0.0),
+        "drive_profile_name": os.environ.get("DRIVE_PROFILE_NAME", "unprofiled"),
+        "motor_slew_enabled": _env_bool("MOTOR_SLEW_ENABLED", False),
+        "motor_slew_rate_up": _env_float("MOTOR_SLEW_RATE_UP", 0.8, minimum=0.01),
+        "motor_slew_rate_down": _env_float("MOTOR_SLEW_RATE_DOWN", 1.6, minimum=0.01),
+        "motor_reversal_neutral_s": _env_float("MOTOR_REVERSAL_NEUTRAL_S", 0.15, minimum=0.0),
+        "motor_immediate_stop": _env_bool("MOTOR_IMMEDIATE_STOP", True),
         "power_adapt_enabled": _env_bool("POWER_ADAPT_ENABLED", False),
         "power_adapt_imu_topic": os.environ.get("POWER_ADAPT_IMU_TOPIC", "/imu/data"),
         "power_adapt_min_angular": _env_float("POWER_ADAPT_MIN_ANGULAR", 0.12, minimum=0.0),
@@ -383,6 +491,12 @@ class RobotRpiDirectBridge(Node):
         max_linear_vel=0.5,
         max_angular_vel=1.0,
         min_motor_cmd=0.35,
+        drive_profile_name="unprofiled",
+        motor_slew_enabled=False,
+        motor_slew_rate_up=0.8,
+        motor_slew_rate_down=1.6,
+        motor_reversal_neutral_s=0.15,
+        motor_immediate_stop=True,
         power_adapt_enabled=False,
         power_adapt_imu_topic="/imu/data",
         power_adapt_min_angular=0.12,
@@ -443,6 +557,14 @@ class RobotRpiDirectBridge(Node):
         self.max_linear_vel = float(max_linear_vel)
         self.max_angular_vel = float(max_angular_vel)
         self.min_motor_cmd = float(min_motor_cmd)
+        self.drive_profile_name = str(drive_profile_name)
+        self.motor_slew_enabled = bool(motor_slew_enabled)
+        self.motor_slew_rate_up = float(motor_slew_rate_up)
+        self.motor_slew_rate_down = float(motor_slew_rate_down)
+        self.motor_reversal_neutral_s = float(motor_reversal_neutral_s)
+        self.motor_immediate_stop = bool(motor_immediate_stop)
+        self.left_motor_ramp = MotorRampState()
+        self.right_motor_ramp = MotorRampState()
         self.power_adapt_enabled = bool(power_adapt_enabled)
         self.power_adapt_imu_topic = str(power_adapt_imu_topic)
         self.power_adapt_min_angular = float(power_adapt_min_angular)
@@ -511,6 +633,7 @@ class RobotRpiDirectBridge(Node):
 
         self.odom_pub = self.create_publisher(Odometry, "wheel_odom", 10)
         self.status_pub = self.create_publisher(String, "robot_status", 10)
+        self.motor_pwm_pub = self.create_publisher(Float32MultiArray, "motor_pwm", 10)
         self.cmd_sub = self.create_subscription(Twist, "cmd_vel", self.cmd_vel_callback, 10)
         if self.power_adapt_enabled:
             self.imu_feedback_sub = self.create_subscription(
@@ -532,6 +655,11 @@ class RobotRpiDirectBridge(Node):
             f"encoders_enabled={self.encoders_enabled}, "
             f"max_linear_vel={self.max_linear_vel:.3f}, max_angular_vel={self.max_angular_vel:.3f}, "
             f"min_motor_cmd={self.min_motor_cmd:.3f}, "
+            f"drive_profile={self.drive_profile_name}, "
+            f"motor_slew_enabled={self.motor_slew_enabled}, "
+            f"motor_slew_up={self.motor_slew_rate_up:.3f}/s, "
+            f"motor_slew_down={self.motor_slew_rate_down:.3f}/s, "
+            f"reversal_neutral={self.motor_reversal_neutral_s:.3f}s, "
             f"power_adapt_enabled={self.power_adapt_enabled}, "
             f"linear_traction_assist_enabled={self.linear_traction_assist_enabled}, "
             f"linear_traction_max_motor_cmd={self.linear_traction_max_motor_cmd:.3f}, "
@@ -578,8 +706,15 @@ class RobotRpiDirectBridge(Node):
             self.pwm_bin2.ChangeDutyCycle(right_duty)
 
         self.stats["motor_updates"] += 1
+        pwm_msg = Float32MultiArray()
+        # Signed normalized DRV8833 commands after mixing, minimum-command
+        # compensation and adaptive boost. Values are in [-1.0, 1.0].
+        pwm_msg.data = [float(left_cmd), float(right_cmd)]
+        self.motor_pwm_pub.publish(pwm_msg)
 
     def _stop_motors(self):
+        self.left_motor_ramp = MotorRampState()
+        self.right_motor_ramp = MotorRampState()
         self._set_motor_output(0.0, 0.0)
 
     def _select_mux_channel(self, channel):
@@ -848,6 +983,26 @@ class RobotRpiDirectBridge(Node):
                     inner_motor_cmd=self.forward_arc_turn_inner_cmd,
                 )
         self.forward_arc_turn_active = use_forward_arc_turn
+        left_cmd = update_motor_ramp(
+            self.left_motor_ramp,
+            left_cmd,
+            self.control_period_s,
+            enabled=self.motor_slew_enabled,
+            rate_up=self.motor_slew_rate_up,
+            rate_down=self.motor_slew_rate_down,
+            reversal_neutral_s=self.motor_reversal_neutral_s,
+            immediate_stop=self.motor_immediate_stop,
+        )
+        right_cmd = update_motor_ramp(
+            self.right_motor_ramp,
+            right_cmd,
+            self.control_period_s,
+            enabled=self.motor_slew_enabled,
+            rate_up=self.motor_slew_rate_up,
+            rate_down=self.motor_slew_rate_down,
+            reversal_neutral_s=self.motor_reversal_neutral_s,
+            immediate_stop=self.motor_immediate_stop,
+        )
         self._set_motor_output(left_cmd, right_cmd)
 
         if self.open_loop_odom_from_cmd:
@@ -874,6 +1029,10 @@ class RobotRpiDirectBridge(Node):
             f"OPEN_LOOP_UPD={self.stats['open_loop_updates']} "
             f"ENC_EN={1 if self.encoders_enabled else 0} "
             f"ODOM_SRC={'OPEN_LOOP' if self.open_loop_odom_from_cmd else 'ENC'} "
+            f"DRIVE_PROFILE={self.drive_profile_name} "
+            f"SLEW={1 if self.motor_slew_enabled else 0} "
+            f"PWM_L={self.left_motor_ramp.output:.3f} "
+            f"PWM_R={self.right_motor_ramp.output:.3f} "
             f"PWR_ADAPT={1 if self.power_adapt_enabled else 0} "
             f"PWR_BOOST={self.power_adapt_boost:.3f} "
             f"IMU_WZ={self.feedback_angular_z:.3f} "

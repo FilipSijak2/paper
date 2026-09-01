@@ -61,6 +61,10 @@ def load_direct_bridge_module():
     class String:
         pass
 
+    class Float32MultiArray:
+        def __init__(self):
+            self.data = []
+
     class SMBus:
         def __init__(self, *args, **kwargs):
             pass
@@ -74,6 +78,7 @@ def load_direct_bridge_module():
     setattr(nav_msgs_msg, "Odometry", Odometry)
     setattr(sensor_msgs_msg, "Imu", Imu)
     setattr(std_msgs_msg, "String", String)
+    setattr(std_msgs_msg, "Float32MultiArray", Float32MultiArray)
 
     setattr(geometry_msgs, "msg", geometry_msgs_msg)
     setattr(nav_msgs, "msg", nav_msgs_msg)
@@ -136,6 +141,12 @@ def test_resolve_runtime_config_uses_env(monkeypatch):
     assert config["open_loop_odom_from_cmd"] is True
     assert config["max_angular_vel"] == 1.0
     assert config["min_motor_cmd"] == 0.35
+    assert config["drive_profile_name"] == "unprofiled"
+    assert config["motor_slew_enabled"] is False
+    assert config["motor_slew_rate_up"] == 0.8
+    assert config["motor_slew_rate_down"] == 1.6
+    assert config["motor_reversal_neutral_s"] == 0.15
+    assert config["motor_immediate_stop"] is True
     assert config["power_adapt_enabled"] is False
     assert config["power_adapt_imu_topic"] == "/imu/data"
     assert config["linear_traction_assist_enabled"] is False
@@ -188,6 +199,89 @@ def test_compute_wheel_commands_applies_min_motor_cmd_deadband_compensation():
 
     assert left == -0.25
     assert right == 0.25
+
+
+def test_motor_ramp_limits_acceleration_but_stops_immediately():
+    module = load_direct_bridge_module()
+    state = module.MotorRampState()
+
+    first = module.update_motor_ramp(state, 0.5, 0.02, rate_up=0.8)
+    second = module.update_motor_ramp(state, 0.5, 0.02, rate_up=0.8)
+    stopped = module.update_motor_ramp(state, 0.0, 0.02, immediate_stop=True)
+
+    assert math.isclose(first, 0.016)
+    assert math.isclose(second, 0.032)
+    assert stopped == 0.0
+
+
+def test_motor_slew_disabled_bypasses_ramp_and_reversal_interlock():
+    module = load_direct_bridge_module()
+    state = module.MotorRampState(output=0.35, last_nonzero_sign=1)
+
+    output = module.update_motor_ramp(
+        state,
+        -0.40,
+        0.02,
+        enabled=False,
+        rate_up=0.01,
+        rate_down=0.01,
+        reversal_neutral_s=10.0,
+    )
+
+    assert output == -0.40
+    assert state.output == -0.40
+    assert state.reversal_neutral_remaining_s == 0.0
+
+
+def test_motor_ramp_requires_neutral_interval_before_reversal():
+    module = load_direct_bridge_module()
+    state = module.MotorRampState(output=0.10)
+
+    assert module.update_motor_ramp(
+        state, -0.20, 0.05, rate_down=1.0, reversal_neutral_s=0.10
+    ) == 0.05
+    assert module.update_motor_ramp(
+        state, -0.20, 0.05, rate_down=1.0, reversal_neutral_s=0.10
+    ) == 0.0
+    assert state.reversal_neutral_remaining_s == 0.10
+    assert module.update_motor_ramp(
+        state, -0.20, 0.05, rate_up=1.0, reversal_neutral_s=0.10
+    ) == 0.0
+    assert module.update_motor_ramp(
+        state, -0.20, 0.05, rate_up=1.0, reversal_neutral_s=0.10
+    ) == 0.0
+    assert module.update_motor_ramp(
+        state, -0.20, 0.05, rate_up=1.0, reversal_neutral_s=0.10
+    ) == -0.05
+
+
+def test_motor_ramp_can_cancel_pending_reversal():
+    module = load_direct_bridge_module()
+    state = module.MotorRampState(
+        output=0.0,
+        reversal_neutral_remaining_s=0.10,
+        reversal_target_sign=-1,
+        last_nonzero_sign=1,
+    )
+
+    output = module.update_motor_ramp(state, 0.20, 0.05, rate_up=1.0)
+
+    assert output == 0.05
+    assert state.reversal_neutral_remaining_s == 0.0
+
+
+def test_motor_ramp_counts_zero_time_toward_reversal_interlock():
+    module = load_direct_bridge_module()
+    state = module.MotorRampState(output=0.20, last_nonzero_sign=1)
+
+    assert module.update_motor_ramp(state, 0.0, 0.05, reversal_neutral_s=0.10) == 0.0
+    # The first reverse cycle completes the remaining 50 ms neutral time.
+    assert module.update_motor_ramp(
+        state, -0.20, 0.05, rate_up=1.0, reversal_neutral_s=0.10
+    ) == 0.0
+    assert module.update_motor_ramp(
+        state, -0.20, 0.05, rate_up=1.0, reversal_neutral_s=0.10
+    ) == -0.05
 
 
 def test_compute_forward_arc_turn_commands_keeps_both_wheels_forward():
