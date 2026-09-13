@@ -1,2 +1,2 @@
-pytest
-psycopg2-binary
+pytest>=9.0.3,<10
+psycopg2-binary==2.9.13
