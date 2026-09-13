@@ -33,8 +33,9 @@ DEFAULT_CONFIG = {
     "log_dir": "/logs",
     "state_file": "/logs/.container-log-state.json",
     "date_folder_format": "%-d-%-m-%Y",
-    "scan_interval_seconds": 5,
+    "scan_interval_seconds": 30,
     "reconnect_delay_seconds": 3,
+    "state_flush_interval_seconds": 30,
     "include_containers": [],
     "exclude_containers": [],
 }
@@ -92,6 +93,12 @@ class ContainerLogCollector:
         self.date_folder_format = str(config["date_folder_format"])
         self.scan_interval_seconds = int(config["scan_interval_seconds"])
         self.reconnect_delay_seconds = int(config["reconnect_delay_seconds"])
+        self.state_flush_interval_seconds = max(
+            1,
+            int(config.get("state_flush_interval_seconds", 30)),
+        )
+        self.state_dirty = False
+        self.last_state_flush = time.monotonic()
         self.include_containers = [str(name) for name in config.get("include_containers", [])]
         self.exclude_containers = {str(name) for name in config.get("exclude_containers", [])}
         self.compose_project = os.environ.get("COMPOSE_PROJECT_NAME", "stack")
@@ -135,8 +142,24 @@ class ContainerLogCollector:
             else:
                 entry["last_timestamp"] = docker_timestamp
                 entry["lines_at_last_timestamp"] = 1
-            self._save_state_locked()
+            self.state_dirty = True
 
+    def _flush_state_if_due(self, force: bool = False) -> None:
+        now = time.monotonic()
+        with self.state_lock:
+            if not self.state_dirty:
+                return
+
+        if (
+            not force
+            and now - self.last_state_flush < self.state_flush_interval_seconds
+        ):
+            return
+
+        self._save_state_locked()
+        self.state_dirty = False
+        self.last_state_flush = now
+    
     def _get_resume_marker(self, container_name: str) -> Tuple[str, int]:
         with self.state_lock:
             entry = self.state.get(container_name, {})
@@ -293,7 +316,13 @@ class ContainerLogCollector:
 
         while True:
             self._ensure_streams()
-            time.sleep(self.scan_interval_seconds)
+            self._flush_state_if_due()
+            time.sleep(
+                min(
+                    self.scan_interval_seconds,
+                    self.state_flush_interval_seconds,
+                )
+            )
 
 
 def main() -> int:

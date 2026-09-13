@@ -31,7 +31,7 @@ DEFAULT_EXPECTED_TOPICS = [
     "/wheel_odom",
     "/tf",
     "/tf_static",
-    "/imu/data",
+    "/imu/base_link_corrected",
     "/camera/realsense/color/image_raw",
 ]
 

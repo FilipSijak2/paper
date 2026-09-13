@@ -90,21 +90,6 @@ def generate_launch_description():
         output_topic = os.environ.get('SF_IMU_OUTPUT_TOPIC', '/imu/data')
         nodes = [
             Node(
-                package='imu_filter_madgwick',
-                executable='imu_filter_madgwick_node',
-                name='camera_imu_filter',
-                output='screen',
-                emulate_tty=True,
-                parameters=[{
-                    'use_mag': False,
-                    'publish_tf': False,
-                }],
-                remappings=[
-                    ('imu/data_raw', input_topic),
-                    ('imu/data', output_topic),
-                ],
-            ),
-            Node(
                 package='sensor_fusion_pkg',
                 executable='realsense_imu_transform',
                 name='realsense_imu_transform',

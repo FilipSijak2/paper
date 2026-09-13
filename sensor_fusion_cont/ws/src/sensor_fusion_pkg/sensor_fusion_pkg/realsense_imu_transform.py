@@ -47,7 +47,7 @@ def transform_covariance(covariance: Iterable[float]) -> list[float]:
 class RealSenseImuTransform(Node):
     def __init__(self) -> None:
         super().__init__("realsense_imu_transform")
-        self.input_topic = os.environ.get("SF_IMU_OUTPUT_TOPIC", "/imu/data")
+        self.input_topic = os.environ.get("SF_IMU_OUTPUT_TOPIC", "/camera/realsense/imu")
         self.output_topic = os.environ.get("SF_IMU_BASE_TOPIC", "/imu/base_link")
         self.output_frame = os.environ.get("SF_IMU_BASE_FRAME", "base_link")
 
