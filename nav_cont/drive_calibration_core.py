@@ -45,6 +45,18 @@ class Result:
     mean_left_motor_pwm: float | None
     mean_right_motor_pwm: float | None
     peak_abs_motor_pwm: float | None
+    phase: str = "hold"
+    requested_duration_s: float | None = None
+    start_stamp_s: float | None = None
+    end_stamp_s: float | None = None
+
+
+def stamp_is_fresh(stamp_s: float, now_s: float, previous_s: float = 0.0) -> bool:
+    return (
+        math.isfinite(stamp_s) and math.isfinite(now_s)
+        and stamp_s > max(0.0, previous_s)
+        and -0.05 <= now_s - stamp_s <= 0.5
+    )
 
 
 def normalize_angle(angle: float) -> float:
@@ -62,6 +74,8 @@ def calculate_result(
     end: Pose2D,
     motor_pwm_samples: list[tuple[float, float]] | None = None,
 ) -> Result:
+    if not math.isfinite(trial.duration_s) or trial.duration_s <= 0.0:
+        raise ValueError("measurement duration must be positive and finite")
     dx = end.x - start.x
     dy = end.y - start.y
     cos_yaw = math.cos(start.yaw)
@@ -74,7 +88,11 @@ def calculate_result(
     measured_angular = yaw_delta / trial.duration_s
     linear_ratio = measured_linear / trial.linear_x if abs(trial.linear_x) > 1e-6 else None
     angular_ratio = measured_angular / trial.angular_z if abs(trial.angular_z) > 1e-6 else None
-    moved = path >= 0.015 or abs(yaw_delta) >= math.radians(3.0)
+    moved = (
+        yaw_delta * math.copysign(1.0, trial.angular_z) >= math.radians(3.0)
+        if abs(trial.angular_z) > 1e-6 and abs(trial.linear_x) < 1e-6
+        else forward * math.copysign(1.0, trial.linear_x) >= 0.015
+    )
     samples = motor_pwm_samples or []
     mean_left_pwm = sum(sample[0] for sample in samples) / len(samples) if samples else None
     mean_right_pwm = sum(sample[1] for sample in samples) / len(samples) if samples else None
@@ -170,6 +188,7 @@ def mean_ratio(values: list[float | None]) -> float | None:
 
 
 def summarize(results: list[Result]) -> dict:
+    results = [r for r in results if r.phase == "hold"]
     linear = [r for r in results if abs(r.requested_linear_mps) > 1e-6]
     forward = [r for r in linear if r.requested_linear_mps > 0.0]
     left = [r for r in results if r.requested_angular_rps > 0.0]
