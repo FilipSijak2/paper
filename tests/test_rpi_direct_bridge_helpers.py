@@ -24,6 +24,8 @@ def load_direct_bridge_module():
     geometry_msgs_msg = ModuleType("geometry_msgs.msg")
     nav_msgs = ModuleType("nav_msgs")
     nav_msgs_msg = ModuleType("nav_msgs.msg")
+    rcl_interfaces = ModuleType("rcl_interfaces")
+    rcl_interfaces_msg = ModuleType("rcl_interfaces.msg")
     sensor_msgs = ModuleType("sensor_msgs")
     sensor_msgs_msg = ModuleType("sensor_msgs.msg")
     std_msgs = ModuleType("std_msgs")
@@ -65,6 +67,11 @@ def load_direct_bridge_module():
         def __init__(self):
             self.data = []
 
+    class SetParametersResult:
+        def __init__(self, successful=False, reason=""):
+            self.successful = successful
+            self.reason = reason
+
     class SMBus:
         def __init__(self, *args, **kwargs):
             pass
@@ -79,11 +86,13 @@ def load_direct_bridge_module():
     setattr(sensor_msgs_msg, "Imu", Imu)
     setattr(std_msgs_msg, "String", String)
     setattr(std_msgs_msg, "Float32MultiArray", Float32MultiArray)
+    setattr(rcl_interfaces_msg, "SetParametersResult", SetParametersResult)
 
     setattr(geometry_msgs, "msg", geometry_msgs_msg)
     setattr(nav_msgs, "msg", nav_msgs_msg)
     setattr(sensor_msgs, "msg", sensor_msgs_msg)
     setattr(std_msgs, "msg", std_msgs_msg)
+    setattr(rcl_interfaces, "msg", rcl_interfaces_msg)
 
     setattr(rpi_mod, "GPIO", rpi_gpio_mod)
     setattr(smbus2_mod, "SMBus", SMBus)
@@ -99,6 +108,8 @@ def load_direct_bridge_module():
     inject("sensor_msgs.msg", sensor_msgs_msg)
     inject("std_msgs", std_msgs)
     inject("std_msgs.msg", std_msgs_msg)
+    inject("rcl_interfaces", rcl_interfaces)
+    inject("rcl_interfaces.msg", rcl_interfaces_msg)
     inject("RPi", rpi_mod)
     inject("RPi.GPIO", rpi_gpio_mod)
     inject("smbus2", smbus2_mod)
@@ -231,6 +242,36 @@ def test_motor_slew_disabled_bypasses_ramp_and_reversal_interlock():
     assert output == -0.40
     assert state.output == -0.40
     assert state.reversal_neutral_remaining_s == 0.0
+
+
+def test_ros_parameter_toggles_motor_slew_and_reversal_logic_together():
+    module = load_direct_bridge_module()
+
+    class Logger:
+        def info(self, *args):
+            pass
+
+    node = SimpleNamespace(motor_slew_enabled=True, get_logger=lambda: Logger())
+    result = module.RobotRpiDirectBridge._on_set_parameters(
+        node,
+        [SimpleNamespace(name="motor_slew_enabled", value=False)],
+    )
+
+    assert result.successful is True
+    assert node.motor_slew_enabled is False
+
+
+def test_ros_parameter_rejects_non_boolean_motor_slew_value():
+    module = load_direct_bridge_module()
+    node = SimpleNamespace(motor_slew_enabled=True, get_logger=lambda: None)
+
+    result = module.RobotRpiDirectBridge._on_set_parameters(
+        node,
+        [SimpleNamespace(name="motor_slew_enabled", value="false")],
+    )
+
+    assert result.successful is False
+    assert node.motor_slew_enabled is True
 
 
 def test_motor_ramp_requires_neutral_interval_before_reversal():

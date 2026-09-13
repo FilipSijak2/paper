@@ -40,6 +40,19 @@ def test_repeated_trials_include_both_turn_directions_and_requested_repeats():
     assert trials[2].name.endswith("_r3")
 
 
+def test_rotation_only_extended_trials_skip_linear_and_probe_more_torque():
+    trials = repeated_trials(
+        1.5,
+        include_reverse=False,
+        repeats=1,
+        rotation_only=True,
+        extended_rotation=True,
+    )
+    assert all(trial.linear_x == 0.0 for trial in trials)
+    assert max(abs(trial.angular_z) for trial in trials) == 0.16
+    assert {trial.angular_z for trial in trials} >= {0.13, 0.16, -0.13, -0.16}
+
+
 def test_report_contains_results_and_summary(tmp_path):
     trial = Trial("forward_080_r1", 0.08, 0.0, 2.0)
     result = calculate_result("carpet", trial, Pose2D(0, 0, 0), Pose2D(0.12, 0.01, 0))

@@ -24,6 +24,7 @@ from pathlib import Path
 import rclpy
 from geometry_msgs.msg import Point, Quaternion, Twist
 from nav_msgs.msg import Odometry
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Imu
@@ -559,6 +560,8 @@ class RobotRpiDirectBridge(Node):
         self.min_motor_cmd = float(min_motor_cmd)
         self.drive_profile_name = str(drive_profile_name)
         self.motor_slew_enabled = bool(motor_slew_enabled)
+        self.declare_parameter("motor_slew_enabled", self.motor_slew_enabled)
+        self.add_on_set_parameters_callback(self._on_set_parameters)
         self.motor_slew_rate_up = float(motor_slew_rate_up)
         self.motor_slew_rate_down = float(motor_slew_rate_down)
         self.motor_reversal_neutral_s = float(motor_reversal_neutral_s)
@@ -666,6 +669,23 @@ class RobotRpiDirectBridge(Node):
             f"forward_arc_turn_enabled={self.forward_arc_turn_enabled}, "
             f"odom_source={'open_loop_cmd_vel' if self.open_loop_odom_from_cmd else 'encoders'})"
         )
+
+    def _on_set_parameters(self, parameters):
+        for parameter in parameters:
+            if parameter.name != "motor_slew_enabled":
+                continue
+            if not isinstance(parameter.value, bool):
+                return SetParametersResult(
+                    successful=False,
+                    reason="motor_slew_enabled must be a boolean",
+                )
+            self.motor_slew_enabled = parameter.value
+            self.get_logger().info(
+                "Motor transition control "
+                f"{'enabled' if self.motor_slew_enabled else 'disabled'} "
+                "through ROS parameter"
+            )
+        return SetParametersResult(successful=True)
 
     def _init_gpio(self):
         GPIO.setmode(GPIO.BCM)

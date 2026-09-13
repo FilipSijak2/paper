@@ -42,15 +42,24 @@ def test_drive_profiles_enable_safe_slew_and_immediate_stop(name):
     assert values["MOTOR_IMMEDIATE_STOP"] == "1"
 
 
-def test_profiles_do_not_guess_uncalibrated_motor_mapping():
+def test_uncalibrated_profiles_do_not_guess_motor_mapping():
     forbidden = {
         "MIN_MOTOR_CMD",
         "MAX_LINEAR_VEL",
         "MAX_ANGULAR_VEL",
         "LINEAR_TRACTION_ASSIST_ENABLED",
     }
-    for path in PROFILE_DIR.glob("*.env"):
+    for name in ("safe-demo", "laminate"):
+        path = PROFILE_DIR / f"{name}.env"
         assert forbidden.isdisjoint(parse_env(path)), path.name
+
+
+def test_carpet_profile_raises_rotation_pwm_without_changing_linear_mapping():
+    values = parse_env(PROFILE_DIR / "carpet.env")
+    assert float(values["MAX_ANGULAR_VEL"]) == 0.25
+    assert float(values["POWER_ADAPT_MIN_ANGULAR"]) == 0.06
+    assert "MAX_LINEAR_VEL" not in values
+    assert "MIN_MOTOR_CMD" not in values
 
 
 def test_env_example_defaults_to_safe_demo_profile():

@@ -30,6 +30,19 @@ MOTOR_SLEW_ENABLED=0  # both disabled; target PWM is applied immediately
 `MOTOR_REVERSAL_NEUTRAL_S` are ignored while the switch is disabled. Immediate
 zero-command stopping is independent of the switch.
 
+The environment value initializes a live ROS 2 parameter with the same purpose.
+It can be changed without restarting the container:
+
+```bash
+ros2 param set /robot_rpi_direct_bridge motor_slew_enabled false
+ros2 param set /robot_rpi_direct_bridge motor_slew_enabled true
+ros2 param get /robot_rpi_direct_bridge motor_slew_enabled
+```
+
+The live value controls both PWM slew limiting and the reversal neutral
+interlock. A runtime change is not persisted; after restart the node again uses
+`MOTOR_SLEW_ENABLED` from the selected deployment configuration.
+
 ## ROS interfaces
 
 - subscribes to `/cmd_vel`

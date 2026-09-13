@@ -105,12 +105,19 @@ def calculate_result(
     )
 
 
-def default_trials(duration_s: float, include_reverse: bool) -> list[Trial]:
-    trials = [
+def default_trials(
+    duration_s: float,
+    include_reverse: bool,
+    rotation_only: bool = False,
+    extended_rotation: bool = False,
+) -> list[Trial]:
+    linear_trials = [
         Trial("forward_020", 0.02, 0.0, duration_s),
         Trial("forward_040", 0.04, 0.0, duration_s),
         Trial("forward_060", 0.06, 0.0, duration_s),
         Trial("forward_080", 0.08, 0.0, duration_s),
+    ]
+    rotation_trials = [
         Trial("rotate_left_040", 0.0, 0.04, duration_s),
         Trial("rotate_left_070", 0.0, 0.07, duration_s),
         Trial("rotate_left_100", 0.0, 0.10, duration_s),
@@ -118,6 +125,16 @@ def default_trials(duration_s: float, include_reverse: bool) -> list[Trial]:
         Trial("rotate_right_070", 0.0, -0.07, duration_s),
         Trial("rotate_right_100", 0.0, -0.10, duration_s),
     ]
+    if extended_rotation:
+        rotation_trials.extend(
+            [
+                Trial("rotate_left_130", 0.0, 0.13, duration_s),
+                Trial("rotate_left_160", 0.0, 0.16, duration_s),
+                Trial("rotate_right_130", 0.0, -0.13, duration_s),
+                Trial("rotate_right_160", 0.0, -0.16, duration_s),
+            ]
+        )
+    trials = rotation_trials if rotation_only else linear_trials + rotation_trials
     if include_reverse:
         trials.extend(
             [
@@ -128,10 +145,21 @@ def default_trials(duration_s: float, include_reverse: bool) -> list[Trial]:
     return trials
 
 
-def repeated_trials(duration_s: float, include_reverse: bool, repeats: int) -> list[Trial]:
+def repeated_trials(
+    duration_s: float,
+    include_reverse: bool,
+    repeats: int,
+    rotation_only: bool = False,
+    extended_rotation: bool = False,
+) -> list[Trial]:
     return [
         Trial(f"{trial.name}_r{repeat}", trial.linear_x, trial.angular_z, trial.duration_s)
-        for trial in default_trials(duration_s, include_reverse)
+        for trial in default_trials(
+            duration_s,
+            include_reverse,
+            rotation_only=rotation_only,
+            extended_rotation=extended_rotation,
+        )
         for repeat in range(1, repeats + 1)
     ]
 

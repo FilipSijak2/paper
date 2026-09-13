@@ -138,6 +138,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--settle", type=float, default=1.0)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--include-reverse", action="store_true")
+    parser.add_argument(
+        "--rotation-only",
+        action="store_true",
+        help="Run only in-place rotation trials.",
+    )
+    parser.add_argument(
+        "--extended-rotation",
+        action="store_true",
+        help="Add higher-torque +/-0.13 and +/-0.16 rad/s trials; use only after standard rotation tests.",
+    )
     parser.add_argument("--continuous", action="store_true")
     parser.add_argument("--yes", action="store_true")
     parser.add_argument("--output-dir", type=Path, default=Path("/srv/calibration_results"))
@@ -207,7 +217,13 @@ def main() -> int:
             f"Mux compensation: linear={args.manual_speed_scale:.3f}, "
             f"angular={args.manual_angular_scale:.3f}."
         )
-        trials = repeated_trials(args.duration, args.include_reverse, args.repeats)
+        trials = repeated_trials(
+            args.duration,
+            args.include_reverse,
+            args.repeats,
+            rotation_only=args.rotation_only,
+            extended_rotation=args.extended_rotation,
+        )
         for index, trial in enumerate(trials, start=1):
             print(
                 f"\n[{index}/{len(trials)}] {trial.name}: "
