@@ -139,6 +139,8 @@ def test_update_state_counts_duplicate_timestamps_and_persists(tmp_path):
     assert collector.state["nav_cont"]["last_timestamp"] == "2026-03-22T10:01:00.000000000Z"
     assert collector.state["nav_cont"]["lines_at_last_timestamp"] == 1
 
+    assert not (tmp_path / "state.json").exists()
+    collector._flush_state_if_due(force=True)
     state_on_disk = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     assert state_on_disk["containers"]["nav_cont"]["last_timestamp"] == "2026-03-22T10:01:00.000000000Z"
     assert state_on_disk["containers"]["nav_cont"]["lines_at_last_timestamp"] == 1
