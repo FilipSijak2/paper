@@ -1,6 +1,7 @@
 import importlib.util
 import math
 import sys
+import pytest
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 
@@ -181,10 +182,10 @@ def test_unwrap_raw_handles_wraparound():
 def test_compute_wheel_commands_matches_expected_mapping():
     module = load_direct_bridge_module()
 
-    # max_linear_vel=1.0, max_angular_vel=1.0: lin=0.5, ang=1.0 -> left=-0.5, right=1.0 (clamped)
+    # 20 cm track: a 0.5 m/s, 1 rad/s arc needs 0.4 / 0.6 m/s.
     left, right = module.compute_wheel_commands(0.5, 1.0, 1.0, 1.0)
-    assert left == -0.5
-    assert right == 1.0
+    assert left == pytest.approx(0.4)
+    assert right == pytest.approx(0.6)
 
     # pure linear, no angular: left == right == normalised linear
     left2, right2 = module.compute_wheel_commands(0.5, 0.0, 1.0, 1.0)
@@ -210,6 +211,45 @@ def test_compute_wheel_commands_applies_min_motor_cmd_deadband_compensation():
 
     assert left == -0.25
     assert right == 0.25
+
+
+@pytest.mark.parametrize("direction", [-1.0, 1.0])
+def test_recorded_gentle_arc_keeps_both_wheels_forward(direction):
+    module = load_direct_bridge_module()
+    v, omega, base = 0.053333, direction * 0.042857, 0.20
+    left, right = module.compute_wheel_commands(
+        v, omega, 0.40, 0.25, min_motor_cmd=0.28, wheel_base=base,
+    )
+    assert left > 0.0 and right > 0.0
+    assert left / right == pytest.approx((v - omega * base / 2) / (v + omega * base / 2))
+    assert max(left, right) == pytest.approx(0.28)
+
+
+@pytest.mark.parametrize("v,omega,base", [
+    (0.8, 1.0, 0.2), (-0.8, 1.0, 0.2), (0.1, 2.0, 0.3),
+    (0.01, 0.099, 0.2), (0.0, -0.1, 0.25),
+])
+def test_saturation_and_starting_duty_preserve_wheel_ratio(v, omega, base):
+    module = load_direct_bridge_module()
+    left, right = module.compute_wheel_commands(
+        v, omega, 0.4, 0.25, min_motor_cmd=0.28, wheel_base=base,
+    )
+    assert max(abs(left), abs(right)) <= 1.0
+    assert left / right == pytest.approx((v - omega * base / 2) / (v + omega * base / 2))
+
+
+def test_stop_and_stationary_inner_wheel_are_not_promoted_to_minimum_pwm():
+    module = load_direct_bridge_module()
+    assert module.compute_wheel_commands(0, 0, .4, .25, .28) == (0, 0)
+    left, right = module.compute_wheel_commands(.01, .1, .4, .25, .28)
+    assert left == pytest.approx(0, abs=1e-15)
+    assert right == pytest.approx(.28)
+
+
+@pytest.mark.parametrize("v,omega,base", [(float('nan'), 0, .2), (0, float('inf'), .2), (0, .1, 0)])
+def test_invalid_motion_geometry_stops_motors(v, omega, base):
+    module = load_direct_bridge_module()
+    assert module.compute_wheel_commands(v, omega, .4, .25, .28, wheel_base=base) == (0, 0)
 
 
 def test_motor_ramp_limits_acceleration_but_stops_immediately():

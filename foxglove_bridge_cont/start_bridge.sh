@@ -20,6 +20,18 @@ ROS_ARGS=(
 	"-p" "address:=${FOXGLOVE_ADDRESS}"
 )
 
+# YAML string arrays are passed as single arguments (never evaluated by bash).
+# Heavy camera streams can still be enabled explicitly for short diagnostics.
+: "${FOXGLOVE_TOPIC_WHITELIST:=[\"^/(?!camera/).*\",\"^/camera/[^/]+/color/(image_raw/compressed|image_compressed)$\",\"^/camera/[^/]+/(imu|gyro/sample|accel/sample|[^/]+/camera_info)$\"]}"
+: "${FOXGLOVE_SERVICE_WHITELIST:=[\"^/(?!.*get_type_description$).*\"]}"
+: "${FOXGLOVE_CAPABILITIES:=[\"clientPublish\",\"parameters\",\"parametersSubscribe\",\"services\",\"assets\"]}"
+ROS_ARGS+=(
+	"-p" "topic_whitelist:=${FOXGLOVE_TOPIC_WHITELIST}"
+	"-p" "service_whitelist:=${FOXGLOVE_SERVICE_WHITELIST}"
+	"-p" "capabilities:=${FOXGLOVE_CAPABILITIES}"
+	"-p" "use_compression:=false"
+)
+
 if [[ "${FOXGLOVE_TLS}" == "1" || "${FOXGLOVE_TLS}" == "true" ]]; then
 	ROS_ARGS+=("-p" "tls:=true")
 	if [[ -n "${FOXGLOVE_TLS_CERT:-}" ]]; then

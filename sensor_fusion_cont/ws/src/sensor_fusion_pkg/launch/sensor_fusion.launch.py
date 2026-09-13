@@ -86,8 +86,6 @@ def generate_launch_description():
     ekf_node = build_ekf_node()
 
     if imu_source == 'realsense':
-        input_topic = os.environ.get('SF_IMU_INPUT_TOPIC', '/camera/realsense/imu')
-        output_topic = os.environ.get('SF_IMU_OUTPUT_TOPIC', '/imu/data')
         nodes = [
             Node(
                 package='sensor_fusion_pkg',

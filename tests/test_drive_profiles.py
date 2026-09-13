@@ -54,7 +54,7 @@ def test_uncalibrated_profiles_do_not_guess_motor_mapping():
         assert forbidden.isdisjoint(parse_env(path)), path.name
 
 
-def test_carpet_profile_raises_rotation_pwm_without_changing_linear_mapping():
+def test_carpet_profile_sets_angular_limit_without_changing_linear_mapping():
     values = parse_env(PROFILE_DIR / "carpet.env")
     assert float(values["MAX_ANGULAR_VEL"]) == 0.25
     assert float(values["POWER_ADAPT_MIN_ANGULAR"]) == 0.06

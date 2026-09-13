@@ -11,6 +11,15 @@ RUN set -e; \
     apt-get install -y --no-install-recommends \
     ros-${ROS_DISTRO}-foxglove-bridge \
     ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+    ros-${ROS_DISTRO}-nav2-msgs \
+    ros-${ROS_DISTRO}-dwb-msgs \
+    ros-${ROS_DISTRO}-map-msgs \
+    ros-${ROS_DISTRO}-vision-msgs \
+    ros-${ROS_DISTRO}-bond \
+    ros-${ROS_DISTRO}-robot-localization \
+    ros-${ROS_DISTRO}-rosapi-msgs \
+    ros-${ROS_DISTRO}-rosbridge-msgs \
+    ros-${ROS_DISTRO}-realsense2-camera-msgs \
     curl \
     iproute2 \
     && rm -rf /var/lib/apt/lists/*

@@ -279,27 +279,40 @@ def compute_wheel_commands(
     max_linear_vel, max_angular_vel,
     min_motor_cmd=0.0,
     left_inverted=False, right_inverted=False,
+    wheel_base=0.20,
 ):
-    # Normalise SI cmd_vel to [-1, 1] independently for each axis, then mix.
-    # Using wheel_base/2 directly gave only ~10% duty at typical angular_z
-    # values (e.g. 1 rad/s * 0.10 m = 0.10), making rotation too weak.
-    lin = cmd_linear  / max_linear_vel  if max_linear_vel  > 0.0 else 0.0
-    ang = cmd_angular / max_angular_vel if max_angular_vel > 0.0 else 0.0
+    """Open-loop feed-forward with differential-drive geometry in SI units.
 
-    left_speed  = lin - ang
-    right_speed = lin + ang
+    Axis limits, PWM saturation and the starting-duty floor scale BOTH wheels
+    together. Independently normalising v and omega can reverse an inner wheel
+    during a gentle forward arc. This preserves target curvature, but actual
+    wheel velocity still requires encoder feedback and surface calibration.
+    """
+    if not all(math.isfinite(value) for value in (
+        cmd_linear, cmd_angular, max_linear_vel, max_angular_vel,
+        wheel_base, min_motor_cmd,
+    )) or min(max_linear_vel, max_angular_vel, wheel_base) <= 0.0:
+        return 0.0, 0.0
+
+    command_scale = max(1.0, abs(cmd_linear) / max_linear_vel,
+                        abs(cmd_angular) / max_angular_vel)
+    linear = cmd_linear / command_scale
+    angular = cmd_angular / command_scale
+    left_speed = (linear - angular * wheel_base / 2.0) / max_linear_vel
+    right_speed = (linear + angular * wheel_base / 2.0) / max_linear_vel
+
+    peak = max(abs(left_speed), abs(right_speed))
+    if peak > 0.0:
+        # Floor the stronger wheel, not each wheel independently: inflating an
+        # almost-stationary inner wheel would destroy the requested arc.
+        target_peak = clamp(peak, clamp(float(min_motor_cmd), 0.0, 1.0), 1.0)
+        left_speed *= target_peak / peak
+        right_speed *= target_peak / peak
 
     if left_inverted:
         left_speed = -left_speed
     if right_inverted:
         right_speed = -right_speed
-
-    min_motor_cmd = clamp(float(min_motor_cmd), 0.0, 1.0)
-    if min_motor_cmd > 0.0:
-        if 0.0 < abs(left_speed) < min_motor_cmd:
-            left_speed = math.copysign(min_motor_cmd, left_speed)
-        if 0.0 < abs(right_speed) < min_motor_cmd:
-            right_speed = math.copysign(min_motor_cmd, right_speed)
 
     return clamp(left_speed, -1.0, 1.0), clamp(right_speed, -1.0, 1.0)
 
@@ -985,6 +998,7 @@ class RobotRpiDirectBridge(Node):
                 motor_angular,
                 self.max_linear_vel,
                 self.max_angular_vel,
+                wheel_base=self.wheel_base,
                 min_motor_cmd=effective_min_motor_cmd,
                 left_inverted=self.left_motor_inverted,
                 right_inverted=self.right_motor_inverted,
